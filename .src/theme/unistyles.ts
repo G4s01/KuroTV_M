@@ -1,4 +1,5 @@
-import { StyleSheet, UnistylesRuntime } from 'react-native-unistyles';
+import React from 'react';
+import { StyleSheet as RNStyleSheet } from 'react-native';
 
 export const oledTheme = {
   name: 'oled' as const,
@@ -7,17 +8,17 @@ export const oledTheme = {
     card: '#0D0D0D',
     surface: '#171717',
     surfaceSubtle: '#262626',
-    border: '#333333',
-    borderActive: '#FFFFFF',
+    border: '#2A2A2A',
+    borderActive: '#E50914',
     text: '#FFFFFF',
     textSecondary: '#A3A3A3',
     textMuted: '#737373',
     primary: '#E50914',
     primaryHover: '#F40612',
     accent: '#E50914',
-    focusGlow: 'rgba(255, 255, 255, 0.25)',
-    focusRing: '#FFFFFF',
-    focusCard: '#1C1C1C',
+    focusGlow: 'transparent',
+    focusRing: '#E50914',
+    focusCard: '#171717',
     error: '#EF4444',
     success: '#10B981',
     warning: '#F59E0B',
@@ -27,50 +28,58 @@ export const oledTheme = {
     xs: 4,
     sm: 8,
     md: 16,
-    lg: 24,
-    xl: 32,
-    xxl: 48,
-    screenHorizontal: 56, // 10-foot TV overscan safe margin
-    screenVertical: 40,
+    lg: 20,
+    xl: 24,
+    xxl: 32,
+    screenHorizontal: 16, // Mobile screen edge padding
+    screenVertical: 12,
+    minTouchTarget: 44, // Mobile minimum touch target >= 44dp
   },
   typography: {
     hero: {
-      fontSize: 48,
+      fontSize: 28,
       fontWeight: 'bold' as const,
-      lineHeight: 56,
-      textTransform: 'uppercase' as const,
+      lineHeight: 34,
     },
     title: {
-      fontSize: 32,
+      fontSize: 22,
       fontWeight: 'bold' as const,
-      lineHeight: 40,
-      textTransform: 'uppercase' as const,
+      lineHeight: 28,
     },
     subtitle: {
-      fontSize: 24,
+      fontSize: 18,
       fontWeight: '600' as const,
-      lineHeight: 32,
-      textTransform: 'uppercase' as const,
+      lineHeight: 24,
     },
     body: {
-      fontSize: 18,
+      fontSize: 15,
       fontWeight: 'normal' as const,
-      lineHeight: 26,
-      textTransform: 'uppercase' as const,
+      lineHeight: 22,
     },
     caption: {
-      fontSize: 14,
+      fontSize: 13,
       fontWeight: '500' as const,
-      lineHeight: 20,
-      textTransform: 'uppercase' as const,
+      lineHeight: 18,
     },
   },
   radius: {
-    sm: 6,
-    md: 10,
+    xs: 4,
+    sm: 8,
+    md: 12,
     lg: 16,
+    xl: 24,
     full: 9999,
   },
+};
+
+export const darkTheme = {
+  name: 'dark' as const,
+  colors: {
+    ...oledTheme.colors,
+  },
+  spacing: oledTheme.spacing,
+  typography: oledTheme.typography,
+  radius: oledTheme.radius,
 };
 
 export const lightTheme = {
@@ -104,6 +113,14 @@ export const lightTheme = {
 export type ThemeColors = typeof oledTheme.colors;
 export type ColorKey = keyof ThemeColors;
 
+export interface AppTheme {
+  name: string;
+  colors: ThemeColors;
+  spacing: typeof oledTheme.spacing;
+  typography: typeof oledTheme.typography;
+  radius: typeof oledTheme.radius;
+}
+
 export interface MaterialYouPalette {
   id: string;
   name: string;
@@ -112,6 +129,7 @@ export interface MaterialYouPalette {
   accent: string;
   focusRing: string;
   focusCard: string;
+  category?: string;
 }
 
 export const MATERIAL_YOU_PALETTES: MaterialYouPalette[] = [
@@ -131,61 +149,81 @@ export const MATERIAL_YOU_PALETTES: MaterialYouPalette[] = [
     primaryHover: '#60A5FA',
     accent: '#3B82F6',
     focusRing: '#93C5FD',
-    focusCard: '#131D2E',
+    focusCard: '#1E293B',
   },
   {
     id: 'emerald-green',
-    name: 'SMERALDO',
+    name: 'VERDE SMERALDO',
     primary: '#10B981',
     primaryHover: '#34D399',
     accent: '#10B981',
     focusRing: '#6EE7B7',
-    focusCard: '#0F261F',
+    focusCard: '#064E3B',
   },
   {
-    id: 'amethyst-purple',
-    name: 'AMETISTA',
+    id: 'cyber-purple',
+    name: 'VIOLA CYBER',
     primary: '#8B5CF6',
     primaryHover: '#A78BFA',
     accent: '#8B5CF6',
     focusRing: '#C4B5FD',
-    focusCard: '#1E1730',
+    focusCard: '#3B0764',
   },
   {
-    id: 'amber-sunset',
-    name: 'AMBRA',
+    id: 'sunset-amber',
+    name: 'AMBRA TRAMONTO',
     primary: '#F59E0B',
     primaryHover: '#FBBF24',
     accent: '#F59E0B',
-    focusRing: '#FDE68A',
-    focusCard: '#2B200E',
+    focusRing: '#FCD34D',
+    focusCard: '#451A03',
   },
   {
-    id: 'monochrome',
-    name: 'MONOCROMO',
-    primary: '#E5E7EB',
-    primaryHover: '#FFFFFF',
-    accent: '#E5E7EB',
-    focusRing: '#FFFFFF',
-    focusCard: '#262626',
+    id: 'sakura-pink',
+    name: 'ROSA SAKURA',
+    primary: '#EC4899',
+    primaryHover: '#F472B6',
+    accent: '#EC4899',
+    focusRing: '#F9A8D4',
+    focusCard: '#500724',
+  },
+  {
+    id: 'neon-cyan',
+    name: 'CIANO NEON',
+    primary: '#06B6D4',
+    primaryHover: '#22D3EE',
+    accent: '#06B6D4',
+    focusRing: '#67E8F9',
+    focusCard: '#164E63',
+  },
+  {
+    id: 'ruby-crimson',
+    name: 'CREMISI RUBINO',
+    primary: '#E11D48',
+    primaryHover: '#FB7185',
+    accent: '#E11D48',
+    focusRing: '#FDA4AF',
+    focusCard: '#4C0519',
   },
   {
     id: 'pikachu',
     name: 'PIKACHU',
     primary: '#FAD61D',
-    primaryHover: '#E19720',
+    primaryHover: '#FFF275',
     accent: '#FAD61D',
     focusRing: '#FAD61D',
     focusCard: '#241E00',
+    category: 'custom',
   },
   {
     id: 'orchid',
     name: 'ORCHIDEA',
     primary: '#E941FB',
-    primaryHover: '#6A26F2',
+    primaryHover: '#F28BFE',
     accent: '#E941FB',
     focusRing: '#E941FB',
     focusCard: '#1E0F3D',
+    category: 'custom',
   },
   {
     id: 'rainbow',
@@ -195,83 +233,84 @@ export const MATERIAL_YOU_PALETTES: MaterialYouPalette[] = [
     accent: '#73FEC8',
     focusRing: '#73FEC8',
     focusCard: '#132B25',
+    category: 'custom',
   },
 ];
 
 export const PIKACHU_DARK_COLORS: Readonly<Partial<ThemeColors>> = Object.freeze({
   primary: '#FAD61D',
-  primaryHover: '#E19720',
+  primaryHover: '#FFF275',
   accent: '#FAD61D',
   focusRing: '#FAD61D',
   focusCard: '#241E00',
-  error: '#F62D14',
-  warning: '#E19720',
+  error: '#FF5A5A',
+  warning: '#FFA834',
   text: '#FFFFFF',
-  textSecondary: '#D4D4D4',
-  textMuted: '#A3A3A3',
+  textSecondary: '#E8DFB8',
+  textMuted: '#9B9477',
   background: '#000000',
   card: '#0D0D0D',
   surface: '#171717',
-  surfaceSubtle: '#262626',
-  border: '#333333',
+  surfaceSubtle: '#262417',
+  border: '#332F1A',
   borderActive: '#FAD61D',
 });
 
 export const PIKACHU_LIGHT_COLORS: Readonly<Partial<ThemeColors>> = Object.freeze({
-  primary: '#F62D14',
-  primaryHover: '#811E09',
-  accent: '#F62D14',
-  focusRing: '#811E09',
-  focusCard: '#FEF3C7',
-  error: '#F62D14',
-  warning: '#E19720',
-  text: '#000000',
-  textSecondary: '#374151',
-  textMuted: '#6B7280',
-  background: '#FFFFFF',
-  card: '#FFFBEB',
-  surface: '#FEF3C7',
-  surfaceSubtle: '#FDE68A',
-  border: '#FAD61D',
-  borderActive: '#811E09',
+  primary: '#C9A100',
+  primaryHover: '#D4AF12',
+  accent: '#C9A100',
+  focusRing: '#C9A100',
+  focusCard: '#FFF8DB',
+  error: '#DC2626',
+  warning: '#D97706',
+  text: '#1C190D',
+  textSecondary: '#4A432A',
+  textMuted: '#787050',
+  background: '#FFFDF5',
+  card: '#FFFFFF',
+  surface: '#FFF9E5',
+  surfaceSubtle: '#FFF3C4',
+  border: '#E8DCB0',
+  borderActive: '#C9A100',
 });
 
 export const ORCHID_DARK_COLORS: Readonly<Partial<ThemeColors>> = Object.freeze({
   primary: '#E941FB',
-  primaryHover: '#6A26F2',
+  primaryHover: '#F28BFE',
   accent: '#E941FB',
   focusRing: '#E941FB',
   focusCard: '#1E0F3D',
-  error: '#E8114E',
-  warning: '#F59E0B',
-  text: '#F5F1E6',
-  textSecondary: '#D4CEE8',
-  textMuted: '#8B82A8',
+  error: '#FF4E78',
+  warning: '#FFAC42',
+  text: '#FFFFFF',
+  textSecondary: '#E3CBE8',
+  textMuted: '#96819B',
   background: '#000000',
   card: '#0D0D0D',
   surface: '#171717',
-  surfaceSubtle: '#331A84',
-  border: '#331A84',
+  surfaceSubtle: '#27172B',
+  border: '#361F3C',
   borderActive: '#E941FB',
 });
 
 export const ORCHID_LIGHT_COLORS: Readonly<Partial<ThemeColors>> = Object.freeze({
-  primary: '#9334C2',
-  primaryHover: '#BB55D3',
-  accent: '#DB6ED6',
-  focusRing: '#9334C2',
-  focusCard: '#C1E6EC',
-  error: '#E8114E',
+  primary: '#B61CD6',
+  primaryHover: '#C635E4',
+  accent: '#B61CD6',
+  focusRing: '#B61CD6',
+  focusCard: '#FDF0FF',
+  error: '#DC2626',
   warning: '#D97706',
-  text: '#1A0B2E',
-  textSecondary: '#4A3E56',
-  textMuted: '#766E82',
-  background: '#E9EDF0',
+  text: '#200D24',
+  textSecondary: '#542E5E',
+  textMuted: '#835F8E',
+  background: '#FCF7FD',
   card: '#FFFFFF',
-  surface: '#F4F8FA',
-  surfaceSubtle: '#C1E6EC',
-  border: '#DB6ED6',
-  borderActive: '#9334C2',
+  surface: '#F8EAFB',
+  surfaceSubtle: '#F3D6F9',
+  border: '#E3BDEB',
+  borderActive: '#B61CD6',
 });
 
 export const RAINBOW_DARK_COLORS: Readonly<Partial<ThemeColors>> = Object.freeze({
@@ -324,34 +363,150 @@ export const customTheme = {
 
 export const breakpoints = {
   xs: 0,
-  sm: 576,
-  md: 768,
-  lg: 1024,
-  xl: 1280,
-  tv: 1920,
+  sm: 360,
+  md: 480,
+  lg: 768,
+  xl: 1024,
 };
 
-export const appThemes = {
+export const appThemes: Record<string, AppTheme> = {
   oled: oledTheme,
+  dark: darkTheme,
   light: lightTheme,
   custom: customTheme,
+};
+
+export type ThemeName = 'oled' | 'dark' | 'light' | 'custom';
+
+let currentThemeName: ThemeName = 'oled';
+type ThemeListener = (themeName: ThemeName, theme: AppTheme) => void;
+const themeListeners = new Set<ThemeListener>();
+
+function notifyThemeListeners(name: ThemeName, theme: AppTheme): void {
+  themeListeners.forEach((listener) => {
+    try {
+      listener(name, theme);
+    } catch {
+      // Ignore listener errors
+    }
+  });
+}
+
+export const UnistylesRuntime = {
+  get themeName(): ThemeName {
+    return currentThemeName;
+  },
+  setTheme(name: ThemeName): void {
+    if (appThemes[name]) {
+      currentThemeName = name;
+      notifyThemeListeners(currentThemeName, appThemes[currentThemeName]);
+    }
+  },
+  updateTheme(name: ThemeName, updater: (oldTheme: AppTheme) => AppTheme): void {
+    if (appThemes[name]) {
+      const updated = updater(appThemes[name]);
+      if (updated && updated.colors) {
+        Object.assign(appThemes[name].colors, updated.colors);
+      }
+      notifyThemeListeners(name, appThemes[name]);
+    }
+  },
+  get colorScheme(): 'dark' | 'light' {
+    return currentThemeName === 'light' ? 'light' : 'dark';
+  },
+  get hasAdaptiveThemes(): boolean {
+    return false;
+  },
+  get breakpoints(): typeof breakpoints {
+    return breakpoints;
+  },
+  get breakpoint(): string {
+    return 'sm';
+  },
+  get enabled(): boolean {
+    return true;
+  },
+  get insets(): { top: number; bottom: number; left: number; right: number } {
+    return { top: 0, bottom: 0, left: 0, right: 0 };
+  },
+  get screen(): { width: number; height: number } {
+    return { width: 360, height: 800 };
+  },
+  setRootViewBackgroundColor(_color?: string): void {},
+  statusBar: {
+    setColor(_color?: string): void {},
+    setHidden(_hidden?: boolean): void {},
+  },
+  navigationBar: {
+    setColor(_color?: string): void {},
+    setHidden(_hidden?: boolean): void {},
+  },
+  addListener(listener: ThemeListener): () => void {
+    themeListeners.add(listener);
+    return () => {
+      themeListeners.delete(listener);
+    };
+  },
+};
+
+export const StyleSheet = {
+  ...RNStyleSheet,
+  configure(config?: {
+    settings?: { initialTheme?: string; adaptiveThemes?: boolean };
+    breakpoints?: Record<string, number>;
+    themes?: Record<string, any>;
+  }): void {
+    if (config?.settings?.initialTheme && appThemes[config.settings.initialTheme]) {
+      currentThemeName = config.settings.initialTheme as ThemeName;
+    }
+  },
+  create<T extends Record<string, any>>(
+    styles: T | ((theme: AppTheme, rt: typeof UnistylesRuntime) => T)
+  ): T {
+    if (typeof styles === 'function') {
+      const fn = styles;
+      const targetObj = Object.assign(
+        (...args: any[]) => (fn as any)(...args),
+        { __builder: fn, __isUnistyles: true }
+      );
+      return new Proxy(targetObj as any, {
+        get(target, prop, receiver) {
+          if (prop === '__builder' || prop === '__isUnistyles') {
+            return fn;
+          }
+          const activeTheme = appThemes[currentThemeName] || oledTheme;
+          const evaluated = RNStyleSheet.create(fn(activeTheme, UnistylesRuntime));
+          return Reflect.get(evaluated, prop, receiver);
+        },
+      });
+    }
+    return RNStyleSheet.create(styles);
+  },
 };
 
 StyleSheet.configure({
   settings: {
     initialTheme: 'oled',
-    adaptiveThemes: false, // Default to OLED Black for TV
+    adaptiveThemes: false, // Default to pure OLED Black
   },
   breakpoints,
   themes: appThemes,
 });
 
 export const DEFAULT_OLED_COLORS: Readonly<ThemeColors> = Object.freeze({ ...oledTheme.colors });
+export const DEFAULT_DARK_COLORS: Readonly<ThemeColors> = DEFAULT_OLED_COLORS;
 export const DEFAULT_LIGHT_COLORS: Readonly<ThemeColors> = Object.freeze({ ...lightTheme.colors });
 
-export function applyThemeColors(themeName: 'oled' | 'light', colors: Partial<ThemeColors>): void {
-  const targetTheme = themeName === 'light' ? lightTheme : oledTheme;
+export function applyThemeColors(
+  themeName: 'oled' | 'light' | 'dark',
+  colors: Partial<ThemeColors>
+): void {
+  const targetTheme =
+    themeName === 'light' ? lightTheme : themeName === 'dark' ? darkTheme : oledTheme;
   Object.assign(targetTheme.colors, colors);
+  if (themeName === 'oled') {
+    Object.assign(darkTheme.colors, colors);
+  }
   UnistylesRuntime.updateTheme(themeName, (oldTheme) => ({
     ...oldTheme,
     colors: {
@@ -361,7 +516,7 @@ export function applyThemeColors(themeName: 'oled' | 'light', colors: Partial<Th
   }));
 }
 
-export function resetThemeToDefaults(themeName: 'oled' | 'light' | 'custom'): void {
+export function resetThemeToDefaults(themeName: 'oled' | 'light' | 'custom' | 'dark'): void {
   if (themeName === 'custom') {
     Object.assign(customTheme.colors, DEFAULT_OLED_COLORS);
     UnistylesRuntime.updateTheme('custom', (oldTheme) => ({
@@ -373,8 +528,12 @@ export function resetThemeToDefaults(themeName: 'oled' | 'light' | 'custom'): vo
     return;
   }
   const defaults = themeName === 'light' ? DEFAULT_LIGHT_COLORS : DEFAULT_OLED_COLORS;
-  const targetTheme = themeName === 'light' ? lightTheme : oledTheme;
+  const targetTheme =
+    themeName === 'light' ? lightTheme : themeName === 'dark' ? darkTheme : oledTheme;
   Object.assign(targetTheme.colors, defaults);
+  if (themeName === 'oled') {
+    Object.assign(darkTheme.colors, defaults);
+  }
   UnistylesRuntime.updateTheme(themeName, (oldTheme) => ({
     ...oldTheme,
     colors: {
@@ -427,12 +586,215 @@ export function applyRainbowTheme(themeName: 'oled' | 'light'): void {
   }
 }
 
-type AppThemes = typeof appThemes;
-type AppBreakpoints = typeof breakpoints;
-
-/* eslint-disable @typescript-eslint/no-empty-object-type */
-declare module 'react-native-unistyles' {
-  export interface UnistylesThemes extends AppThemes {}
-  export interface UnistylesBreakpoints extends AppBreakpoints {}
+export function applyThemeFamily(family: string): void {
+  if (family === 'pikachu') {
+    applyPikachuTheme('oled');
+  } else if (family === 'orchid') {
+    applyOrchidTheme('oled');
+  } else if (family === 'rainbow') {
+    applyRainbowTheme('oled');
+  } else if (family === 'oled' || family === 'default') {
+    resetThemeToDefaults('oled');
+  }
 }
 
+export function initThemeFromStorage(): void {
+  try {
+    const { AppStorage } = require('@/services/storage');
+    if (AppStorage && typeof AppStorage.getThemeFamily === 'function') {
+      const family = AppStorage.getThemeFamily();
+      if (family && family !== 'default' && family !== 'oled') {
+        applyThemeFamily(family);
+      }
+    }
+  } catch {
+    // Storage might not be available in all runtimes
+  }
+}
+
+// Safely attempt initial load of saved theme
+try {
+  initThemeFromStorage();
+} catch {
+  // Ignored
+}
+
+export function createStyleSheet<T extends Record<string, any>>(
+  styles: T | ((theme: AppTheme, rt: typeof UnistylesRuntime) => T)
+): T {
+  return StyleSheet.create(styles);
+}
+
+export interface ThemeContextValue {
+  theme: AppTheme;
+  themeName: ThemeName;
+  setTheme: (name: ThemeName) => void;
+  updateTheme: (name: ThemeName, colors: Partial<ThemeColors>) => void;
+}
+
+export const ThemeContext = React.createContext<ThemeContextValue>({
+  theme: oledTheme,
+  themeName: 'oled',
+  setTheme: () => {},
+  updateTheme: () => {},
+});
+
+export function ThemeProvider({ children }: { children: React.ReactNode }) {
+  const [themeName, setThemeName] = React.useState<ThemeName>(currentThemeName);
+  const [themeVersion, setThemeVersion] = React.useState(0);
+
+  React.useEffect(() => {
+    initThemeFromStorage();
+    const unsubscribe = UnistylesRuntime.addListener((name) => {
+      setThemeName(name);
+      setThemeVersion((v) => v + 1);
+    });
+    return unsubscribe;
+  }, []);
+
+  const activeTheme = appThemes[themeName] || oledTheme;
+
+  const value = React.useMemo<ThemeContextValue>(
+    () => ({
+      theme: activeTheme,
+      themeName,
+      setTheme: (name: ThemeName) => {
+        UnistylesRuntime.setTheme(name);
+      },
+      updateTheme: (name: ThemeName, colors: Partial<ThemeColors>) => {
+        applyThemeColors(name === 'light' ? 'light' : 'oled', colors);
+      },
+    }),
+    [activeTheme, themeName, themeVersion]
+  );
+
+  return React.createElement(ThemeContext.Provider, { value }, children);
+}
+
+export function useTheme(): AppTheme {
+  const context = React.useContext(ThemeContext);
+  return context?.theme || appThemes[currentThemeName] || oledTheme;
+}
+
+export function useUnistyles(): { theme: AppTheme; rt: typeof UnistylesRuntime } {
+  const theme = useTheme();
+  return {
+    theme,
+    rt: UnistylesRuntime,
+  };
+}
+
+export function withUnistyles<P extends object>(Component: React.ComponentType<P>): React.ComponentType<P> {
+  return Component;
+}
+
+export const mq = {
+  only: {
+    width: (val: number) => val,
+    height: (val: number) => val,
+  },
+  width: (val: number) => val,
+  height: (val: number) => val,
+};
+
+export const ColorScheme = {
+  Dark: 'dark',
+  Light: 'light',
+  Unspecified: 'unspecified',
+} as const;
+
+export const Orientation = {
+  Portrait: 'portrait',
+  Landscape: 'landscape',
+} as const;
+
+export const StatusBarStyle = {
+  Light: 'light',
+  Dark: 'dark',
+} as const;
+
+export const UnistyleDependency = {
+  Theme: 1,
+  ThemeName: 2,
+  AdaptiveThemes: 3,
+  Breakpoints: 4,
+  Breakpoint: 5,
+  ColorScheme: 6,
+  Dimensions: 7,
+  Orientation: 8,
+  ContentSizeCategory: 9,
+  Insets: 10,
+  StatusBar: 11,
+  NavigationBar: 12,
+} as const;
+
+export const Display: React.FC<{ children?: React.ReactNode; [key: string]: any }> = ({ children }) =>
+  React.createElement(React.Fragment, null, children);
+export const Hide: React.FC<{ children?: React.ReactNode; [key: string]: any }> = () => null;
+export const ScopedTheme: React.FC<{ children?: React.ReactNode; [key: string]: any }> = ({ children }) =>
+  React.createElement(React.Fragment, null, children);
+
+export function useStyles<T extends Record<string, any>>(
+  stylesheet?: T | ((theme: AppTheme, rt: typeof UnistylesRuntime) => T)
+): {
+  styles: T;
+  theme: AppTheme;
+  breakpoint: string;
+} {
+  const theme = useTheme();
+  const styles = React.useMemo(() => {
+    if (!stylesheet) return {} as T;
+    const builder =
+      (stylesheet as any)?.__builder || (typeof stylesheet === 'function' ? stylesheet : null);
+    if (builder) {
+      return RNStyleSheet.create(builder(theme, UnistylesRuntime));
+    }
+    return RNStyleSheet.create(stylesheet as any);
+  }, [theme, stylesheet]);
+
+  return { styles, theme, breakpoint: 'sm' };
+}
+
+export default {
+  StyleSheet,
+  UnistylesRuntime,
+  createStyleSheet,
+  useStyles,
+  useUnistyles,
+  withUnistyles,
+  useTheme,
+  ThemeProvider,
+  ThemeContext,
+  mq,
+  ColorScheme,
+  Orientation,
+  StatusBarStyle,
+  UnistyleDependency,
+  Display,
+  Hide,
+  ScopedTheme,
+  oledTheme,
+  darkTheme,
+  lightTheme,
+  customTheme,
+  breakpoints,
+  appThemes,
+  MATERIAL_YOU_PALETTES,
+  PIKACHU_DARK_COLORS,
+  PIKACHU_LIGHT_COLORS,
+  ORCHID_DARK_COLORS,
+  ORCHID_LIGHT_COLORS,
+  RAINBOW_DARK_COLORS,
+  RAINBOW_LIGHT_COLORS,
+  DEFAULT_OLED_COLORS,
+  DEFAULT_DARK_COLORS,
+  DEFAULT_LIGHT_COLORS,
+  applyThemeColors,
+  resetThemeToDefaults,
+  applyCustomColors,
+  applyPikachuTheme,
+  applyOrchidTheme,
+  applyRainbowTheme,
+  applyThemeFamily,
+  initThemeFromStorage,
+};

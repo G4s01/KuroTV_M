@@ -1,4 +1,6 @@
 import assert from 'node:assert';
+import fs from 'node:fs';
+import path from 'node:path';
 import {
   compareSemver,
   isUpdateAvailable,
@@ -6,7 +8,26 @@ import {
   getManifestUrl,
   DEFAULT_MANIFEST_URL,
 } from '../src/services/updater/updater-service';
-import { oledTheme, breakpoints } from '../src/theme/unistyles';
+import {
+  oledTheme,
+  darkTheme,
+  lightTheme,
+  breakpoints,
+  applyPikachuTheme,
+  applyOrchidTheme,
+  applyRainbowTheme,
+  applyThemeFamily,
+  resetThemeToDefaults,
+  StyleSheet,
+  UnistylesRuntime,
+  ThemeProvider,
+  useTheme,
+  useUnistyles,
+  useStyles,
+  mq,
+  ColorScheme,
+  Orientation,
+} from '../src/theme/unistyles';
 import { AppStorage } from '../src/services/storage/index';
 import type { AniSkipResult } from '../src/types/index';
 
@@ -15,7 +36,7 @@ console.log('=== Inizio Test di Verifica KuroTV Mobile ===\n');
 // -----------------------------------------------------------------------------
 // 1. Test Updater Service & SemVer
 // -----------------------------------------------------------------------------
-console.log('[1/5] Verifica Updater Service & SemVer...');
+console.log('[1/6] Verifica Updater Service & SemVer...');
 
 assert.strictEqual(compareSemver('1.0.0', '1.0.1'), -1, '1.0.0 deve essere minore di 1.0.1');
 assert.strictEqual(compareSemver('1.1.0', '1.0.0'), 1, '1.1.0 deve essere maggiore di 1.0.0');
@@ -86,13 +107,23 @@ console.log('✓ Updater Service & SemVer verificati con successo.');
 // -----------------------------------------------------------------------------
 // 2. Test Mobile-First Theme & Guidelines (AGENTS.md)
 // -----------------------------------------------------------------------------
-console.log('\n[2/5] Verifica Regole di Stile Mobile & OLED (AGENTS.md)...');
+console.log('\n[2/6] Verifica Regole di Stile Mobile & OLED (AGENTS.md)...');
 
-// 1. Pure OLED Black
+// 1. Pure OLED Black & Theme Integrity
 assert.strictEqual(
   oledTheme.colors.background,
   '#000000',
   'Lo sfondo tema OLED deve essere nero assoluto (#000000)'
+);
+assert.strictEqual(
+  darkTheme.colors.background,
+  '#000000',
+  'Lo sfondo tema dark deve essere nero assoluto (#000000)'
+);
+assert.strictEqual(
+  lightTheme.colors.background,
+  '#FFFFFF',
+  'Lo sfondo tema light deve essere bianco (#FFFFFF)'
 );
 
 // 2. Minimum Touch Target >= 44dp
@@ -121,12 +152,55 @@ assert(
   'Dimensione hero deve essere dimensionata per smartphone (<= 32)'
 );
 
+// 6. Dynamic Theme Application & Safe Unistyles Runtime
+applyPikachuTheme('oled');
+assert.strictEqual(oledTheme.colors.primary, '#FAD61D', 'Pikachu primary color deve essere #FAD61D');
+
+applyOrchidTheme('oled');
+assert.strictEqual(oledTheme.colors.primary, '#E941FB', 'Orchidea primary color deve essere #E941FB');
+
+applyRainbowTheme('oled');
+assert.strictEqual(oledTheme.colors.primary, '#73FEC8', 'Rainbow primary color deve essere #73FEC8');
+
+resetThemeToDefaults('oled');
+assert.strictEqual(oledTheme.colors.primary, '#E50914', 'Reset defaults deve ripristinare #E50914');
+assert.strictEqual(oledTheme.colors.background, '#000000', 'Reset defaults deve preservare OLED #000000');
+
+// 7. StyleSheet & Runtime Safe Functions
+const staticStyle = StyleSheet.create({ box: { padding: 10 } });
+assert.strictEqual((staticStyle as any).box.padding, 10, 'StyleSheet.create con oggetto statico');
+
+const dynamicStyle = StyleSheet.create((theme) => ({ box: { backgroundColor: theme.colors.background } }));
+assert.strictEqual((dynamicStyle as any).box.backgroundColor, '#000000', 'StyleSheet.create con funzione theme');
+
+// 8. Theme Family Switcher and Safe Storage Synchronization
+applyThemeFamily('pikachu');
+assert.strictEqual(oledTheme.colors.primary, '#FAD61D', 'applyThemeFamily pikachu deve impostare #FAD61D');
+applyThemeFamily('default');
+assert.strictEqual(oledTheme.colors.primary, '#E50914', 'applyThemeFamily default deve ripristinare #E50914');
+
+// 9. Unistyles Full API Support
+assert.strictEqual(typeof useUnistyles, 'function', 'useUnistyles deve essere esportato come hook');
+assert.strictEqual(typeof useStyles, 'function', 'useStyles deve essere esportato come hook');
+assert.strictEqual(typeof mq.only.width, 'function', 'mq helper deve essere supportato');
+assert.strictEqual(ColorScheme.Dark, 'dark', 'ColorScheme deve essere supportato');
+assert.strictEqual(Orientation.Portrait, 'portrait', 'Orientation deve essere supportato');
+
+assert.strictEqual(UnistylesRuntime.themeName, 'oled');
+UnistylesRuntime.setTheme('light');
+assert.strictEqual(UnistylesRuntime.themeName, 'light');
+UnistylesRuntime.setTheme('oled');
+assert.strictEqual(UnistylesRuntime.themeName, 'oled');
+
+assert.strictEqual(typeof ThemeProvider, 'function', 'ThemeProvider deve essere esportato come componente');
+assert.strictEqual(typeof useTheme, 'function', 'useTheme deve essere esportato come hook');
+
 console.log('✓ Regole di Stile Mobile e OLED conformi.');
 
 // -----------------------------------------------------------------------------
 // 3. Test Storage & MMKV Fallback
 // -----------------------------------------------------------------------------
-console.log('\n[3/5] Verifica Storage Locale & Preferiti / Cronologia...');
+console.log('\n[3/6] Verifica Storage Locale & Preferiti / Cronologia...');
 
 const testAnime = {
   id: 'test-anime-1',
@@ -179,7 +253,7 @@ console.log('✓ Storage Locale & Preferiti / Cronologia verificati con successo
 // -----------------------------------------------------------------------------
 // 4. Test Episode Batching & Grid Logic
 // -----------------------------------------------------------------------------
-console.log('\n[4/5] Verifica Logica Batch Puntate & Griglia Episodi...');
+console.log('\n[4/6] Verifica Logica Batch Puntate & Griglia Episodi...');
 
 function createBatches(totalEpisodes: number, batchSize = 25) {
   if (totalEpisodes <= batchSize) {
@@ -220,7 +294,7 @@ console.log('✓ Logica Batch Puntate e Griglia Episodi verificata con successo.
 // -----------------------------------------------------------------------------
 // 5. Test AniSkip Interval Matching
 // -----------------------------------------------------------------------------
-console.log('\n[5/5] Verifica Rilevamento Intervalli AniSkip...');
+console.log('\n[5/6] Verifica Rilevamento Intervalli AniSkip...');
 
 const mockSkips: AniSkipResult[] = [
   {
@@ -260,6 +334,55 @@ assert(edSkip !== null);
 assert.strictEqual(edSkip.skipType, 'ed');
 
 console.log('✓ Rilevamento Intervalli AniSkip verificato con successo.');
+
+// -----------------------------------------------------------------------------
+// 6. Test Route Default Exports & NitroModules Safety
+// -----------------------------------------------------------------------------
+console.log('\n[6/6] Verifica Esportazioni Default Rotte Expo Router & NitroModules Safety...');
+
+const requiredRoutes = [
+  'app/_layout.tsx',
+  'app/(tabs)/_layout.tsx',
+  'app/(tabs)/explore.tsx',
+  'app/(tabs)/favorites.tsx',
+  'app/(tabs)/history.tsx',
+  'app/(tabs)/index.tsx',
+  'app/(tabs)/settings.tsx',
+  'app/anime/[id].tsx',
+  'app/player/[id].tsx',
+];
+
+for (const relPath of requiredRoutes) {
+  const fullPath = path.resolve(process.cwd(), relPath);
+  assert(fs.existsSync(fullPath), `Il file di rotta ${relPath} deve esistere`);
+  const content = fs.readFileSync(fullPath, 'utf-8');
+  assert(
+    content.includes('export default function') || content.includes('export default'),
+    `La rotta ${relPath} deve avere un default export valido per Expo Router`
+  );
+
+  // Deep verification: ACTUALLY import the route in Node runtime
+  const mod = await import(fullPath);
+  assert.strictEqual(
+    typeof mod.default,
+    'function',
+    `La rotta ${relPath} deve esportare una funzione componente React di default senza errori di modulo Turbo/Nitro`
+  );
+  console.log(`  ✓ ${relPath}: default export verificato (${typeof mod.default})`);
+}
+
+// Ensure src/theme/unistyles.ts does NOT import native NitroModules directly
+const unistylesSource = fs.readFileSync(path.resolve(process.cwd(), 'src/theme/unistyles.ts'), 'utf-8');
+assert(
+  !unistylesSource.includes("from 'react-native-nitro-modules'"),
+  'src/theme/unistyles.ts non deve importare direttamente react-native-nitro-modules'
+);
+assert(
+  !unistylesSource.includes("from 'react-native-unistyles'"),
+  'src/theme/unistyles.ts non deve importare direttamente react-native-unistyles'
+);
+
+console.log('✓ Esportazioni di tutte le 9 rotte e Theme Safe verificati con successo.');
 
 // -----------------------------------------------------------------------------
 // Fine Test

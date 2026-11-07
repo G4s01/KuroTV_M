@@ -1,4 +1,5 @@
-import { StyleSheet, UnistylesRuntime } from 'react-native-unistyles';
+import React from 'react';
+import { StyleSheet as RNStyleSheet } from 'react-native';
 
 export const oledTheme = {
   name: 'oled' as const,
@@ -71,6 +72,16 @@ export const oledTheme = {
   },
 };
 
+export const darkTheme = {
+  name: 'dark' as const,
+  colors: {
+    ...oledTheme.colors,
+  },
+  spacing: oledTheme.spacing,
+  typography: oledTheme.typography,
+  radius: oledTheme.radius,
+};
+
 export const lightTheme = {
   name: 'light' as const,
   colors: {
@@ -102,6 +113,14 @@ export const lightTheme = {
 export type ThemeColors = typeof oledTheme.colors;
 export type ColorKey = keyof ThemeColors;
 
+export interface AppTheme {
+  name: string;
+  colors: ThemeColors;
+  spacing: typeof oledTheme.spacing;
+  typography: typeof oledTheme.typography;
+  radius: typeof oledTheme.radius;
+}
+
 export interface MaterialYouPalette {
   id: string;
   name: string;
@@ -110,6 +129,7 @@ export interface MaterialYouPalette {
   accent: string;
   focusRing: string;
   focusCard: string;
+  category?: string;
 }
 
 export const MATERIAL_YOU_PALETTES: MaterialYouPalette[] = [
@@ -175,6 +195,7 @@ export const MATERIAL_YOU_PALETTES: MaterialYouPalette[] = [
     accent: '#FAD61D',
     focusRing: '#FAD61D',
     focusCard: '#241E00',
+    category: 'custom',
   },
   {
     id: 'orchid',
@@ -184,6 +205,7 @@ export const MATERIAL_YOU_PALETTES: MaterialYouPalette[] = [
     accent: '#E941FB',
     focusRing: '#E941FB',
     focusCard: '#1E0F3D',
+    category: 'custom',
   },
   {
     id: 'rainbow',
@@ -193,6 +215,7 @@ export const MATERIAL_YOU_PALETTES: MaterialYouPalette[] = [
     accent: '#73FEC8',
     focusRing: '#73FEC8',
     focusCard: '#132B25',
+    category: 'custom',
   },
 ];
 
@@ -328,10 +351,119 @@ export const breakpoints = {
   xl: 1024,
 };
 
-export const appThemes = {
+export const appThemes: Record<string, AppTheme> = {
   oled: oledTheme,
+  dark: darkTheme,
   light: lightTheme,
   custom: customTheme,
+};
+
+export type ThemeName = 'oled' | 'dark' | 'light' | 'custom';
+
+let currentThemeName: ThemeName = 'oled';
+type ThemeListener = (themeName: ThemeName, theme: AppTheme) => void;
+const themeListeners = new Set<ThemeListener>();
+
+function notifyThemeListeners(name: ThemeName, theme: AppTheme): void {
+  themeListeners.forEach((listener) => {
+    try {
+      listener(name, theme);
+    } catch {
+      // Ignore listener errors
+    }
+  });
+}
+
+export const UnistylesRuntime = {
+  get themeName(): ThemeName {
+    return currentThemeName;
+  },
+  setTheme(name: ThemeName): void {
+    if (appThemes[name]) {
+      currentThemeName = name;
+      notifyThemeListeners(currentThemeName, appThemes[currentThemeName]);
+    }
+  },
+  updateTheme(name: ThemeName, updater: (oldTheme: AppTheme) => AppTheme): void {
+    if (appThemes[name]) {
+      const updated = updater(appThemes[name]);
+      if (updated && updated.colors) {
+        Object.assign(appThemes[name].colors, updated.colors);
+      }
+      notifyThemeListeners(name, appThemes[name]);
+    }
+  },
+  get colorScheme(): 'dark' | 'light' {
+    return currentThemeName === 'light' ? 'light' : 'dark';
+  },
+  get hasAdaptiveThemes(): boolean {
+    return false;
+  },
+  get breakpoints(): typeof breakpoints {
+    return breakpoints;
+  },
+  get breakpoint(): string {
+    return 'sm';
+  },
+  get enabled(): boolean {
+    return true;
+  },
+  get insets(): { top: number; bottom: number; left: number; right: number } {
+    return { top: 0, bottom: 0, left: 0, right: 0 };
+  },
+  get screen(): { width: number; height: number } {
+    return { width: 360, height: 800 };
+  },
+  setRootViewBackgroundColor(_color?: string): void {},
+  statusBar: {
+    setColor(_color?: string): void {},
+    setHidden(_hidden?: boolean): void {},
+  },
+  navigationBar: {
+    setColor(_color?: string): void {},
+    setHidden(_hidden?: boolean): void {},
+  },
+  addListener(listener: ThemeListener): () => void {
+    themeListeners.add(listener);
+    return () => {
+      themeListeners.delete(listener);
+    };
+  },
+};
+
+export const StyleSheet = {
+  ...RNStyleSheet,
+  configure(config?: {
+    settings?: { initialTheme?: string; adaptiveThemes?: boolean };
+    breakpoints?: Record<string, number>;
+    themes?: Record<string, any>;
+  }): void {
+    if (config?.settings?.initialTheme && appThemes[config.settings.initialTheme]) {
+      currentThemeName = config.settings.initialTheme as ThemeName;
+    }
+  },
+  create<T extends Record<string, any>>(
+    styles: T | ((theme: AppTheme, rt: typeof UnistylesRuntime) => T)
+  ): T {
+    if (typeof styles === 'function') {
+      const fn = styles;
+      const targetObj = Object.assign(
+        (...args: any[]) => (fn as any)(...args),
+        { __builder: fn, __isUnistyles: true }
+      );
+      return new Proxy(targetObj as any, {
+        get(target, prop, receiver) {
+          if (prop === '__builder' || prop === '__isUnistyles') {
+            return fn;
+          }
+          const activeTheme = appThemes[currentThemeName] || oledTheme;
+          const evaluated = RNStyleSheet.create(fn(activeTheme, UnistylesRuntime));
+          return Reflect.get(evaluated, prop, receiver);
+        },
+      });
+    }
+    return RNStyleSheet.create(styles);
+  },
 };
 
 StyleSheet.configure({
@@ -344,11 +476,19 @@ StyleSheet.configure({
 });
 
 export const DEFAULT_OLED_COLORS: Readonly<ThemeColors> = Object.freeze({ ...oledTheme.colors });
+export const DEFAULT_DARK_COLORS: Readonly<ThemeColors> = DEFAULT_OLED_COLORS;
 export const DEFAULT_LIGHT_COLORS: Readonly<ThemeColors> = Object.freeze({ ...lightTheme.colors });
 
-export function applyThemeColors(themeName: 'oled' | 'light', colors: Partial<ThemeColors>): void {
-  const targetTheme = themeName === 'light' ? lightTheme : oledTheme;
+export function applyThemeColors(
+  themeName: 'oled' | 'light' | 'dark',
+  colors: Partial<ThemeColors>
+): void {
+  const targetTheme =
+    themeName === 'light' ? lightTheme : themeName === 'dark' ? darkTheme : oledTheme;
   Object.assign(targetTheme.colors, colors);
+  if (themeName === 'oled') {
+    Object.assign(darkTheme.colors, colors);
+  }
   UnistylesRuntime.updateTheme(themeName, (oldTheme) => ({
     ...oldTheme,
     colors: {
@@ -358,7 +498,7 @@ export function applyThemeColors(themeName: 'oled' | 'light', colors: Partial<Th
   }));
 }
 
-export function resetThemeToDefaults(themeName: 'oled' | 'light' | 'custom'): void {
+export function resetThemeToDefaults(themeName: 'oled' | 'light' | 'custom' | 'dark'): void {
   if (themeName === 'custom') {
     Object.assign(customTheme.colors, DEFAULT_OLED_COLORS);
     UnistylesRuntime.updateTheme('custom', (oldTheme) => ({
@@ -370,8 +510,12 @@ export function resetThemeToDefaults(themeName: 'oled' | 'light' | 'custom'): vo
     return;
   }
   const defaults = themeName === 'light' ? DEFAULT_LIGHT_COLORS : DEFAULT_OLED_COLORS;
-  const targetTheme = themeName === 'light' ? lightTheme : oledTheme;
+  const targetTheme =
+    themeName === 'light' ? lightTheme : themeName === 'dark' ? darkTheme : oledTheme;
   Object.assign(targetTheme.colors, defaults);
+  if (themeName === 'oled') {
+    Object.assign(darkTheme.colors, defaults);
+  }
   UnistylesRuntime.updateTheme(themeName, (oldTheme) => ({
     ...oldTheme,
     colors: {
@@ -424,12 +568,216 @@ export function applyRainbowTheme(themeName: 'oled' | 'light'): void {
   }
 }
 
-type AppThemes = typeof appThemes;
-type AppBreakpoints = typeof breakpoints;
-
-/* eslint-disable @typescript-eslint/no-empty-object-type */
-declare module 'react-native-unistyles' {
-  export interface UnistylesThemes extends AppThemes {}
-  export interface UnistylesBreakpoints extends AppBreakpoints {}
+export function applyThemeFamily(family: string): void {
+  if (family === 'pikachu') {
+    applyPikachuTheme('oled');
+  } else if (family === 'orchid') {
+    applyOrchidTheme('oled');
+  } else if (family === 'rainbow') {
+    applyRainbowTheme('oled');
+  } else if (family === 'oled' || family === 'default') {
+    resetThemeToDefaults('oled');
+  }
 }
 
+export function initThemeFromStorage(): void {
+  try {
+    // Dynamic require prevents circular dependency issues at early bundle initialization
+    const { AppStorage } = require('@/services/storage');
+    if (AppStorage && typeof AppStorage.getThemeFamily === 'function') {
+      const family = AppStorage.getThemeFamily();
+      if (family && family !== 'default' && family !== 'oled') {
+        applyThemeFamily(family);
+      }
+    }
+  } catch {
+    // Safely ignore if storage is not yet initialized or mocked
+  }
+}
+
+// Safely attempt initial load of saved theme
+try {
+  initThemeFromStorage();
+} catch {
+  // Ignored
+}
+
+export function createStyleSheet<T extends Record<string, any>>(
+  styles: T | ((theme: AppTheme, rt: typeof UnistylesRuntime) => T)
+): T {
+  return StyleSheet.create(styles);
+}
+
+export interface ThemeContextValue {
+  theme: AppTheme;
+  themeName: ThemeName;
+  setTheme: (name: ThemeName) => void;
+  updateTheme: (name: ThemeName, colors: Partial<ThemeColors>) => void;
+}
+
+export const ThemeContext = React.createContext<ThemeContextValue>({
+  theme: oledTheme,
+  themeName: 'oled',
+  setTheme: () => {},
+  updateTheme: () => {},
+});
+
+export function ThemeProvider({ children }: { children: React.ReactNode }) {
+  const [themeName, setThemeName] = React.useState<ThemeName>(currentThemeName);
+  const [themeVersion, setThemeVersion] = React.useState(0);
+
+  React.useEffect(() => {
+    initThemeFromStorage();
+    const unsubscribe = UnistylesRuntime.addListener((name) => {
+      setThemeName(name);
+      setThemeVersion((v) => v + 1);
+    });
+    return unsubscribe;
+  }, []);
+
+  const activeTheme = appThemes[themeName] || oledTheme;
+
+  const value = React.useMemo<ThemeContextValue>(
+    () => ({
+      theme: activeTheme,
+      themeName,
+      setTheme: (name: ThemeName) => {
+        UnistylesRuntime.setTheme(name);
+      },
+      updateTheme: (name: ThemeName, colors: Partial<ThemeColors>) => {
+        applyThemeColors(name === 'light' ? 'light' : 'oled', colors);
+      },
+    }),
+    [activeTheme, themeName, themeVersion]
+  );
+
+  return React.createElement(ThemeContext.Provider, { value }, children);
+}
+
+export function useTheme(): AppTheme {
+  const context = React.useContext(ThemeContext);
+  return context?.theme || appThemes[currentThemeName] || oledTheme;
+}
+
+export function useUnistyles(): { theme: AppTheme; rt: typeof UnistylesRuntime } {
+  const theme = useTheme();
+  return {
+    theme,
+    rt: UnistylesRuntime,
+  };
+}
+
+export function withUnistyles<P extends object>(Component: React.ComponentType<P>): React.ComponentType<P> {
+  return Component;
+}
+
+export const mq = {
+  only: {
+    width: (val: number) => val,
+    height: (val: number) => val,
+  },
+  width: (val: number) => val,
+  height: (val: number) => val,
+};
+
+export const ColorScheme = {
+  Dark: 'dark',
+  Light: 'light',
+  Unspecified: 'unspecified',
+} as const;
+
+export const Orientation = {
+  Portrait: 'portrait',
+  Landscape: 'landscape',
+} as const;
+
+export const StatusBarStyle = {
+  Light: 'light',
+  Dark: 'dark',
+} as const;
+
+export const UnistyleDependency = {
+  Theme: 1,
+  ThemeName: 2,
+  AdaptiveThemes: 3,
+  Breakpoints: 4,
+  Breakpoint: 5,
+  ColorScheme: 6,
+  Dimensions: 7,
+  Orientation: 8,
+  ContentSizeCategory: 9,
+  Insets: 10,
+  StatusBar: 11,
+  NavigationBar: 12,
+} as const;
+
+export const Display: React.FC<{ children?: React.ReactNode; [key: string]: any }> = ({ children }) =>
+  React.createElement(React.Fragment, null, children);
+export const Hide: React.FC<{ children?: React.ReactNode; [key: string]: any }> = () => null;
+export const ScopedTheme: React.FC<{ children?: React.ReactNode; [key: string]: any }> = ({ children }) =>
+  React.createElement(React.Fragment, null, children);
+
+export function useStyles<T extends Record<string, any>>(
+  stylesheet?: T | ((theme: AppTheme, rt: typeof UnistylesRuntime) => T)
+): {
+  styles: T;
+  theme: AppTheme;
+  breakpoint: string;
+} {
+  const theme = useTheme();
+  const styles = React.useMemo(() => {
+    if (!stylesheet) return {} as T;
+    const builder =
+      (stylesheet as any)?.__builder || (typeof stylesheet === 'function' ? stylesheet : null);
+    if (builder) {
+      return RNStyleSheet.create(builder(theme, UnistylesRuntime));
+    }
+    return RNStyleSheet.create(stylesheet as any);
+  }, [theme, stylesheet]);
+
+  return { styles, theme, breakpoint: 'sm' };
+}
+
+export default {
+  StyleSheet,
+  UnistylesRuntime,
+  createStyleSheet,
+  useStyles,
+  useUnistyles,
+  withUnistyles,
+  useTheme,
+  ThemeProvider,
+  ThemeContext,
+  mq,
+  ColorScheme,
+  Orientation,
+  StatusBarStyle,
+  UnistyleDependency,
+  Display,
+  Hide,
+  ScopedTheme,
+  oledTheme,
+  darkTheme,
+  lightTheme,
+  customTheme,
+  breakpoints,
+  appThemes,
+  MATERIAL_YOU_PALETTES,
+  PIKACHU_DARK_COLORS,
+  PIKACHU_LIGHT_COLORS,
+  ORCHID_DARK_COLORS,
+  ORCHID_LIGHT_COLORS,
+  RAINBOW_DARK_COLORS,
+  RAINBOW_LIGHT_COLORS,
+  DEFAULT_OLED_COLORS,
+  DEFAULT_DARK_COLORS,
+  DEFAULT_LIGHT_COLORS,
+  applyThemeColors,
+  resetThemeToDefaults,
+  applyCustomColors,
+  applyPikachuTheme,
+  applyOrchidTheme,
+  applyRainbowTheme,
+  applyThemeFamily,
+  initThemeFromStorage,
+};
