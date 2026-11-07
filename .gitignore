@@ -1,3 +1,8 @@
+# Old TV Reference Folders & Legacy Symlinks
+.src/
+.scripts/
+scripts
+
 # Dependencies
 node_modules/
 .pnp
@@ -50,10 +55,18 @@ yarn-debug.*
 yarn-error.*
 *.log
 
-# OS
+# OS & Temp
 .DS_Store
 Thumbs.db
 *.pem
+tmp/
+temp/
+*.tar.gz
+*.zip
+*.7z
+release-artifacts/
+.antigravity/
+.system_generated/
 
 # Environment files
 .env
@@ -67,8 +80,9 @@ wrangler.log
 .dev.vars
 .dev.vars.*
 
-# TypeScript
+# TypeScript & Cache
 *.tsbuildinfo
+.turbo/
 
 # Test & Coverage
 coverage/
@@ -81,3 +95,4 @@ coverage/
 .vscode/*
 !.vscode/settings.json
 !.vscode/extensions.json
+
