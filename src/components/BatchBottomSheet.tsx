@@ -3,7 +3,7 @@ import { StyleSheet, Text, View, Pressable, ScrollView } from 'react-native';
 import { BottomSheet } from '@expo/ui';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
-import { oledTheme } from '@/theme';
+import { oledTheme, useTheme } from '@/theme';
 
 export interface EpisodeBatch {
   id: string;
@@ -39,12 +39,14 @@ export const BatchBottomSheet: React.FC<BatchBottomSheetProps> = ({
   currentSeasonId,
   onSelectSeason,
 }) => {
+  const { theme } = useTheme();
+
   return (
     <BottomSheet
       isPresented={isVisible}
       onDismiss={onClose}
       showDragIndicator={true}
-      containerColor={oledTheme.colors.card}
+      containerColor={theme.colors.card}
     >
       <View style={styles.container}>
         <Text style={styles.title}>Stagioni & Batch Episodi</Text>
@@ -63,7 +65,13 @@ export const BatchBottomSheet: React.FC<BatchBottomSheetProps> = ({
                 return (
                   <Pressable
                     key={season.id}
-                    style={[styles.seasonChip, isSelected && styles.seasonChipActive]}
+                    style={[
+                      styles.seasonChip,
+                      isSelected && [
+                        styles.seasonChipActive,
+                        { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
+                      ],
+                    ]}
                     onPress={() => {
                       Haptics.selectionAsync().catch(() => {});
                       onSelectSeason(season.id);
@@ -97,18 +105,26 @@ export const BatchBottomSheet: React.FC<BatchBottomSheetProps> = ({
               return (
                 <Pressable
                   key={batch.id}
-                  style={[styles.batchItem, isSelected && styles.batchItemActive]}
+                  style={[
+                    styles.batchItem,
+                    isSelected && [styles.batchItemActive, { borderColor: theme.colors.primary }],
+                  ]}
                   onPress={() => {
                     Haptics.selectionAsync().catch(() => {});
                     onSelectBatch(batch.id);
                     onClose();
                   }}
                 >
-                  <Text style={[styles.batchText, isSelected && styles.batchTextActive]}>
+                  <Text
+                    style={[
+                      styles.batchText,
+                      isSelected && [styles.batchTextActive, { color: theme.colors.primary }],
+                    ]}
+                  >
                     {batch.label}
                   </Text>
                   {isSelected && (
-                    <Ionicons name="checkmark-circle" size={16} color={oledTheme.colors.primary} />
+                    <Ionicons name="checkmark-circle" size={16} color={theme.colors.primary} />
                   )}
                 </Pressable>
               );

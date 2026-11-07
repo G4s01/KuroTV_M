@@ -3,14 +3,15 @@ import { Tabs } from 'expo-router';
 import { Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { oledTheme } from '@/theme';
+import { useTheme } from '@/theme';
 
 export default function TabLayout() {
+  const { theme } = useTheme();
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: oledTheme.colors.primary,
+        tabBarActiveTintColor: theme.colors.primary,
         tabBarInactiveTintColor: '#737373',
         tabBarStyle: {
           backgroundColor: '#000000',

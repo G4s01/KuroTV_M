@@ -3,7 +3,7 @@ import { StyleSheet, Text, View, Pressable } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import type { Episode } from '@/types';
-import { oledTheme } from '@/theme';
+import { oledTheme, useTheme } from '@/theme';
 
 interface EpisodeItemProps {
   episode: Episode;
@@ -20,6 +20,7 @@ export const EpisodeItem: React.FC<EpisodeItemProps> = ({
   variant = 'list',
   onPress,
 }) => {
+  const { theme } = useTheme();
   const handlePress = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     onPress();
@@ -32,7 +33,7 @@ export const EpisodeItem: React.FC<EpisodeItemProps> = ({
       <Pressable
         style={({ pressed }) => [
           styles.gridContainer,
-          isCurrent && styles.activeGridContainer,
+          isCurrent && [styles.activeGridContainer, { borderColor: theme.colors.primary, backgroundColor: theme.colors.primary }],
           pressed && styles.pressed,
         ]}
         onPress={handlePress}
@@ -107,7 +108,7 @@ export const EpisodeItem: React.FC<EpisodeItemProps> = ({
       <Ionicons
         name={isCurrent ? 'pause-circle-outline' : 'play-circle-outline'}
         size={24}
-        color={isCurrent ? oledTheme.colors.primary : oledTheme.colors.textMuted}
+        color={isCurrent ? theme.colors.primary : oledTheme.colors.textMuted}
       />
 
       {progressPercent > 0 && (

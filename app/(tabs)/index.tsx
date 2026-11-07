@@ -17,7 +17,7 @@ import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { homeQueryOptions, animeQueryKeys } from '@/services/queries';
 import { AppStorage } from '@/services/storage';
-import { oledTheme } from '@/theme';
+import { oledTheme, useTheme } from '@/theme';
 import { AnimeCard } from '@/components/AnimeCard';
 import type { AnimeItem, ContinueWatchingItem } from '@/types';
 
@@ -27,6 +27,7 @@ export default function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
+  const { theme } = useTheme();
 
   const { data: homeData, isLoading, isError, refetch, isRefetching } = useQuery(homeQueryOptions());
   const [continueWatching, setContinueWatching] = React.useState<ContinueWatchingItem[]>([]);
@@ -98,14 +99,14 @@ export default function HomeScreen() {
           <RefreshControl
             refreshing={isRefetching}
             onRefresh={handleRefresh}
-            tintColor={oledTheme.colors.primary}
-            colors={[oledTheme.colors.primary]}
+            tintColor={theme.colors.primary}
+            colors={[theme.colors.primary]}
           />
         }
       >
         {isLoading && !homeData ? (
           <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={oledTheme.colors.primary} />
+            <ActivityIndicator size="large" color={theme.colors.primary} />
             <Text style={styles.loadingText}>Caricamento catalogo...</Text>
           </View>
         ) : isError && !homeData ? (
@@ -113,7 +114,7 @@ export default function HomeScreen() {
             <Ionicons name="alert-circle-outline" size={48} color={oledTheme.colors.error} />
             <Text style={styles.errorTitle}>Impossibile connettersi ad AnimeWorld</Text>
             <Text style={styles.errorSubtitle}>Verifica la connessione o cambia dominio nelle impostazioni</Text>
-            <Pressable style={styles.retryBtn} onPress={() => refetch()}>
+            <Pressable style={[styles.retryBtn, { backgroundColor: theme.colors.primary }]} onPress={() => refetch()}>
               <Text style={styles.retryBtnText}>Riprova</Text>
             </Pressable>
           </View>
@@ -135,7 +136,7 @@ export default function HomeScreen() {
 
                 <View style={styles.heroContent}>
                   {heroItem.subOrDub && (
-                    <View style={styles.heroBadge}>
+                    <View style={[styles.heroBadge, { backgroundColor: theme.colors.primary }]}>
                       <Text style={styles.heroBadgeText}>{heroItem.subOrDub}</Text>
                     </View>
                   )}
@@ -144,7 +145,7 @@ export default function HomeScreen() {
                   </Text>
 
                   <Pressable
-                    style={styles.heroActionBtn}
+                    style={[styles.heroActionBtn, { backgroundColor: theme.colors.primary }]}
                     onPress={() => navigateToAnime(heroItem.id, heroItem.title)}
                   >
                     <Ionicons name="play" size={16} color="#FFFFFF" />
@@ -159,7 +160,7 @@ export default function HomeScreen() {
               <View style={styles.section}>
                 <View style={styles.sectionHeader}>
                   <Text style={styles.sectionTitle}>Continua a guardare</Text>
-                  <Text style={styles.sectionBadge}>{continueWatching.length}</Text>
+                  <Text style={[styles.sectionBadge, { backgroundColor: theme.colors.primary }]}>{continueWatching.length}</Text>
                 </View>
 
                 <ScrollView
@@ -193,7 +194,10 @@ export default function HomeScreen() {
                           <View
                             style={[
                               styles.progressBarFill,
-                              { width: `${Math.min(100, item.percentage || 0)}%` },
+                              {
+                                width: `${Math.min(100, item.percentage || 0)}%`,
+                                backgroundColor: theme.colors.primary,
+                              },
                             ]}
                           />
                         </View>
@@ -216,7 +220,7 @@ export default function HomeScreen() {
                 <View style={styles.sectionHeader}>
                   <Text style={styles.sectionTitle}>Ultime Uscite</Text>
                   <Pressable onPress={() => router.push('/(tabs)/explore')}>
-                    <Text style={styles.seeAllText}>Vedi tutti</Text>
+                    <Text style={[styles.seeAllText, { color: theme.colors.primary }]}>Vedi tutti</Text>
                   </Pressable>
                 </View>
 

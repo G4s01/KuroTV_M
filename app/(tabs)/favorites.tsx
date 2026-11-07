@@ -13,7 +13,7 @@ import { FlashList } from '@shopify/flash-list';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { AppStorage } from '@/services/storage';
-import { oledTheme } from '@/theme';
+import { oledTheme, useTheme } from '@/theme';
 import { AnimeCard } from '@/components/AnimeCard';
 import type { AnimeItem } from '@/types';
 
@@ -21,6 +21,7 @@ export default function FavoritesScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
+  const { theme } = useTheme();
 
   const cardWidth = (windowWidth - 48) / 2;
   const cardHeight = cardWidth * 1.45;
@@ -69,14 +70,14 @@ export default function FavoritesScreen() {
       {favorites.length === 0 ? (
         <View style={styles.emptyContainer}>
           <View style={styles.emptyIconCircle}>
-            <Ionicons name="heart-outline" size={48} color={oledTheme.colors.primary} />
+            <Ionicons name="heart-outline" size={48} color={theme.colors.primary} />
           </View>
           <Text style={styles.emptyTitle}>Nessun anime nei preferiti</Text>
           <Text style={styles.emptySubtitle}>
             Aggiungi le tue serie e i tuoi film preferiti toccando l&apos;icona del cuore nella pagina di dettaglio.
           </Text>
           <Pressable
-            style={styles.exploreBtn}
+            style={[styles.exploreBtn, { backgroundColor: theme.colors.primary }]}
             onPress={() => router.push('/(tabs)/explore')}
           >
             <Ionicons name="compass-outline" size={18} color="#FFFFFF" />
@@ -102,8 +103,8 @@ export default function FavoritesScreen() {
               <RefreshControl
                 refreshing={isRefreshing}
                 onRefresh={onRefresh}
-                tintColor={oledTheme.colors.primary}
-                colors={[oledTheme.colors.primary]}
+                tintColor={theme.colors.primary}
+                colors={[theme.colors.primary]}
               />
             }
           />

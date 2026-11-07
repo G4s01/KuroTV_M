@@ -4,7 +4,7 @@ import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import type { AnimeItem } from '@/types';
-import { oledTheme } from '@/theme';
+import { oledTheme, useTheme } from '@/theme';
 
 interface AnimeCardProps {
   anime: AnimeItem;
@@ -21,6 +21,7 @@ export const AnimeCard: React.FC<AnimeCardProps> = ({
   height = 190,
   showEpisodeBadge = true,
 }) => {
+  const { theme } = useTheme();
   const handlePress = () => {
     Haptics.selectionAsync().catch(() => {});
     onPress();
@@ -56,7 +57,7 @@ export const AnimeCard: React.FC<AnimeCardProps> = ({
         )}
 
         {showEpisodeBadge && episodeText && (
-          <View style={styles.badge}>
+          <View style={[styles.badge, { backgroundColor: theme.colors.primary }]}>
             <Text style={styles.badgeText} numberOfLines={1}>
               {episodeText}
             </Text>

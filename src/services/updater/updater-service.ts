@@ -423,19 +423,17 @@ export function getCurrentAppVersionCode(): number {
 }
 
 /**
- * Resolve the active update manifest URL with precedence:
- * 1. Stored in AppStorage (settings)
- * 2. EXPO_PUBLIC_UPDATE_MANIFEST_URL from environment
- * 3. Default fallback URL (${OTA_WORKER_URL}/mobile/manifest.json)
+ * Resolve the active mobile update manifest URL.
+ * Manifest URL is fixed from environment and always targets /mobile/manifest.json.
+ * It cannot be modified in-app to prevent security misconfigurations.
  */
 export function getManifestUrl(): string {
-  const storedUrl = AppStorage.getUpdateManifestUrl()?.trim();
-  if (storedUrl && (storedUrl.startsWith('http://') || storedUrl.startsWith('https://'))) {
-    return storedUrl;
-  }
-
   const envUrl = process.env.EXPO_PUBLIC_UPDATE_MANIFEST_URL?.trim();
   if (envUrl && (envUrl.startsWith('http://') || envUrl.startsWith('https://'))) {
+    // Ensure the manifest URL strictly targets the mobile manifest
+    if (envUrl.endsWith('/manifest.json') && !envUrl.endsWith('/mobile/manifest.json')) {
+      return envUrl.replace(/\/manifest\.json$/, '/mobile/manifest.json');
+    }
     return envUrl;
   }
 

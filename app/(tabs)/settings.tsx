@@ -10,35 +10,63 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import {
   oledTheme,
-  applyPikachuTheme,
-  applyOrchidTheme,
-  applyRainbowTheme,
-  resetThemeToDefaults,
+  useTheme,
+  applyThemeFamily,
 } from '@/theme';
 import { AppStorage } from '@/services/storage';
 import { UpdaterService, getManifestUrl, formatBytes } from '@/services/updater';
 import type { UpdateCheckResult, DownloadProgress } from '@/services/updater';
 
+import themeOledSvg from '../../assets/icons/theme-oled.svg';
+import themePikachuSvg from '../../assets/icons/theme-pikachu.svg';
+import themeOrchidSvg from '../../assets/icons/theme-orchid.svg';
+import themeRainbowSvg from '../../assets/icons/theme-rainbow.svg';
+
 const THEMES = [
-  { id: 'oled', name: 'OLED Puro', color: '#000000', border: '#FFFFFF' },
-  { id: 'pikachu', name: 'Pikachu', color: '#FAD61D', border: '#FAD61D' },
-  { id: 'orchid', name: 'Orchidea', color: '#E941FB', border: '#E941FB' },
-  { id: 'rainbow', name: 'Rainbow', color: '#73FEC8', border: '#73FEC8' },
+  {
+    id: 'oled',
+    name: 'OLED Puro',
+    color: '#000000',
+    border: '#FFFFFF',
+    icon: themeOledSvg,
+  },
+  {
+    id: 'pikachu',
+    name: 'Pikachu',
+    color: '#FAD61D',
+    border: '#FAD61D',
+    icon: themePikachuSvg,
+  },
+  {
+    id: 'orchid',
+    name: 'Orchidea',
+    color: '#E941FB',
+    border: '#E941FB',
+    icon: themeOrchidSvg,
+  },
+  {
+    id: 'rainbow',
+    name: 'Rainbow',
+    color: '#73FEC8',
+    border: '#73FEC8',
+    icon: themeRainbowSvg,
+  },
 ];
 
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
+  const { theme } = useTheme();
 
   const [activeTheme, setActiveTheme] = React.useState<string>(
     AppStorage.getThemeFamily() || 'oled'
   );
   const [tld, setTld] = React.useState<string>(AppStorage.getTld());
-  const [manifestUrl, setManifestUrl] = React.useState<string>(getManifestUrl());
-  const [isEditingManifest, setIsEditingManifest] = React.useState(false);
+  const manifestUrl = getManifestUrl();
 
   // OTA state
   const [isCheckingUpdate, setIsCheckingUpdate] = React.useState(false);
@@ -50,16 +78,7 @@ export default function SettingsScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     setActiveTheme(themeId);
     AppStorage.setThemeFamily(themeId as any);
-
-    if (themeId === 'oled') {
-      resetThemeToDefaults('oled');
-    } else if (themeId === 'pikachu') {
-      applyPikachuTheme('oled');
-    } else if (themeId === 'orchid') {
-      applyOrchidTheme('oled');
-    } else if (themeId === 'rainbow') {
-      applyRainbowTheme('oled');
-    }
+    applyThemeFamily(themeId);
   };
 
   const handleSaveTld = () => {
@@ -68,18 +87,6 @@ export default function SettingsScreen() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       AppStorage.setTld(clean);
       Alert.alert('Dominio Aggiornato', `AnimeWorld TLD impostato su: .${clean}`);
-    }
-  };
-
-  const handleSaveManifestUrl = () => {
-    const trimmed = manifestUrl.trim();
-    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-      AppStorage.setUpdateManifestUrl(trimmed);
-      setIsEditingManifest(false);
-      Alert.alert('URL Manifest Salvato', trimmed);
-    } else {
-      Alert.alert('Errore', 'Inserisci un URL valido (http:// o https://)');
     }
   };
 
@@ -114,6 +121,12 @@ export default function SettingsScreen() {
       Alert.alert('Errore Controllo Aggiornamenti', err.message || 'Impossibile scaricare il manifest');
     } finally {
       setIsCheckingUpdate(false);
+    }
+  };
+
+  const handleDownloadAndInstall = () => {
+    if (updateResult) {
+      startDownloadUpdate(updateResult);
     }
   };
 
@@ -176,15 +189,21 @@ export default function SettingsScreen() {
               return (
                 <Pressable
                   key={t.id}
-                  style={[styles.themeChip, active && styles.themeChipActive]}
+                  style={[
+                    styles.themeChip,
+                    active && {
+                      borderColor: theme.colors.primary,
+                      backgroundColor: `${theme.colors.primary}18`,
+                    },
+                  ]}
                   onPress={() => handleSelectTheme(t.id)}
                 >
-                  <View style={[styles.colorPreview, { backgroundColor: t.color, borderColor: t.border }]} />
+                  <Image source={t.icon} style={styles.themeSvgIcon} contentFit="contain" />
                   <Text style={[styles.themeChipText, active && styles.themeChipTextActive]}>
                     {t.name}
                   </Text>
                   {active && (
-                    <Ionicons name="checkmark-circle" size={16} color={oledTheme.colors.primary} />
+                    <Ionicons name="checkmark-circle" size={16} color={theme.colors.primary} />
                   )}
                 </Pressable>
               );
@@ -209,7 +228,15 @@ export default function SettingsScreen() {
                 Scaricamento APK: {downloadProgress?.percentage || 0}%
               </Text>
               <View style={styles.track}>
-                <View style={[styles.bar, { width: `${downloadProgress?.percentage || 0}%` }]} />
+                <View
+                  style={[
+                    styles.bar,
+                    {
+                      width: `${downloadProgress?.percentage || 0}%`,
+                      backgroundColor: theme.colors.primary,
+                    },
+                  ]}
+                />
               </View>
               {downloadProgress && (
                 <Text style={styles.bytesText}>
@@ -217,9 +244,30 @@ export default function SettingsScreen() {
                 </Text>
               )}
             </View>
+          ) : updateResult?.isUpdateAvailable ? (
+            <View style={styles.updateAvailableBanner}>
+              <View style={styles.updateBadgeRow}>
+                <Ionicons name="arrow-up-circle" size={20} color={theme.colors.primary} />
+                <Text style={styles.updateAvailableTitle}>
+                  Nuova versione disponibile: v{updateResult.manifest?.version}
+                </Text>
+              </View>
+              {updateResult.manifest?.releaseNotes ? (
+                <Text style={styles.releaseNotesText}>
+                  {updateResult.manifest.releaseNotes}
+                </Text>
+              ) : null}
+              <Pressable
+                style={[styles.actionBtn, { backgroundColor: theme.colors.primary }]}
+                onPress={handleDownloadAndInstall}
+              >
+                <Ionicons name="download-outline" size={18} color="#FFFFFF" />
+                <Text style={styles.actionBtnText}>Scarica e Installa APK</Text>
+              </Pressable>
+            </View>
           ) : (
             <Pressable
-              style={styles.actionBtn}
+              style={[styles.actionBtn, { backgroundColor: theme.colors.primary }]}
               onPress={handleCheckUpdates}
               disabled={isCheckingUpdate}
             >
@@ -234,38 +282,15 @@ export default function SettingsScreen() {
             </Pressable>
           )}
 
-          {/* Manifest URL Input */}
+          {/* Endpoint Manifest OTA Mobile (Read-Only) */}
           <View style={styles.fieldSection}>
             <View style={styles.fieldHeader}>
-              <Text style={styles.fieldLabel}>URL Manifest OTA</Text>
-              <Pressable
-                onPress={() => setIsEditingManifest(!isEditingManifest)}
-                hitSlop={8}
-              >
-                <Text style={styles.editToggle}>
-                  {isEditingManifest ? 'Chiudi' : 'Modifica'}
-                </Text>
-              </Pressable>
+              <Text style={styles.fieldLabel}>Endpoint OTA Mobile</Text>
+              <Text style={styles.fieldLockBadge}>Predefinito</Text>
             </View>
-
-            {isEditingManifest ? (
-              <View style={styles.editManifestRow}>
-                <TextInput
-                  style={styles.textInput}
-                  value={manifestUrl}
-                  onChangeText={setManifestUrl}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-                <Pressable style={styles.saveMiniBtn} onPress={handleSaveManifestUrl}>
-                  <Text style={styles.saveMiniBtnText}>Salva</Text>
-                </Pressable>
-              </View>
-            ) : (
-              <Text style={styles.fieldValue} numberOfLines={1}>
-                {manifestUrl}
-              </Text>
-            )}
+            <Text style={styles.fieldValue} numberOfLines={1}>
+              {manifestUrl}
+            </Text>
           </View>
         </View>
 
@@ -390,11 +415,9 @@ const styles = StyleSheet.create({
     borderColor: oledTheme.colors.primary,
     backgroundColor: '#1C0D0E',
   },
-  colorPreview: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    borderWidth: 1,
+  themeSvgIcon: {
+    width: 22,
+    height: 22,
   },
   themeChipText: {
     color: oledTheme.colors.textSecondary,
@@ -419,6 +442,30 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '700',
     fontSize: 14,
+  },
+  updateAvailableBanner: {
+    backgroundColor: '#1E1E1E',
+    padding: 12,
+    borderRadius: oledTheme.radius.md,
+    borderWidth: 1,
+    borderColor: '#333333',
+    gap: 8,
+  },
+  updateBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  updateAvailableTitle: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+    flex: 1,
+  },
+  releaseNotesText: {
+    color: oledTheme.colors.textSecondary,
+    fontSize: 12,
+    lineHeight: 16,
   },
   downloadProgressWrapper: {
     marginTop: 8,
@@ -462,10 +509,15 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textTransform: 'uppercase',
   },
-  editToggle: {
-    color: oledTheme.colors.primary,
-    fontSize: 12,
-    fontWeight: '600',
+  fieldLockBadge: {
+    color: '#10B981',
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    backgroundColor: '#0F261F',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
   },
   fieldValue: {
     color: oledTheme.colors.textMuted,

@@ -14,12 +14,13 @@ import { FlashList } from '@shopify/flash-list';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { AppStorage } from '@/services/storage';
-import { oledTheme } from '@/theme';
+import { oledTheme, useTheme } from '@/theme';
 import type { WatchHistoryItem } from '@/types';
 
 export default function HistoryScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { theme } = useTheme();
   const [history, setHistory] = React.useState<WatchHistoryItem[]>([]);
   const [isRefreshing, setIsRefreshing] = React.useState(false);
 
@@ -91,7 +92,7 @@ export default function HistoryScreen() {
           <Text style={styles.title}>Cronologia</Text>
           {history.length > 0 && (
             <View style={styles.countBadge}>
-              <Text style={styles.countBadgeText}>{history.length}</Text>
+              <Text style={[styles.countBadgeText, { color: theme.colors.primary }]}>{history.length}</Text>
             </View>
           )}
         </View>
@@ -151,7 +152,7 @@ export default function HistoryScreen() {
                       <View
                         style={[
                           styles.itemProgressBar,
-                          { width: `${progress}%` },
+                          { width: `${progress}%`, backgroundColor: theme.colors.primary },
                           isDone && styles.itemProgressDone,
                         ]}
                       />
@@ -170,7 +171,7 @@ export default function HistoryScreen() {
                     ) : null}
                   </View>
 
-                  <View style={styles.playBtn}>
+                  <View style={[styles.playBtn, { backgroundColor: theme.colors.primary }]}>
                     <Ionicons name="play" size={16} color="#FFFFFF" />
                   </View>
                 </Pressable>
@@ -181,8 +182,8 @@ export default function HistoryScreen() {
               <RefreshControl
                 refreshing={isRefreshing}
                 onRefresh={onRefresh}
-                tintColor={oledTheme.colors.primary}
-                colors={[oledTheme.colors.primary]}
+                tintColor={theme.colors.primary}
+                colors={[theme.colors.primary]}
               />
             }
           />

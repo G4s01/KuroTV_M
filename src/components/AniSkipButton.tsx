@@ -2,7 +2,7 @@ import React from 'react';
 import { StyleSheet, Text, Pressable, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
-import { oledTheme } from '@/theme';
+import { oledTheme, useTheme } from '@/theme';
 
 interface AniSkipButtonProps {
   skipType: 'intro' | 'outro';
@@ -10,6 +10,8 @@ interface AniSkipButtonProps {
 }
 
 export const AniSkipButton: React.FC<AniSkipButtonProps> = ({ skipType, onSkip }) => {
+  const { theme } = useTheme();
+
   const handlePress = () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     onSkip();
@@ -21,6 +23,7 @@ export const AniSkipButton: React.FC<AniSkipButtonProps> = ({ skipType, onSkip }
     <Pressable
       style={({ pressed }) => [
         styles.button,
+        { backgroundColor: theme.colors.primary },
         pressed && styles.pressed,
       ]}
       onPress={handlePress}

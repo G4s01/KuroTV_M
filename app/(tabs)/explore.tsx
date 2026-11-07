@@ -16,7 +16,7 @@ import { FlashList } from '@shopify/flash-list';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { AnimeWorldScraper } from '@/services/scraper';
-import { oledTheme } from '@/theme';
+import { oledTheme, useTheme } from '@/theme';
 import { AnimeCard } from '@/components/AnimeCard';
 import { FilterBottomSheet, type FilterState } from '@/components/FilterBottomSheet';
 import type { AnimeItem, SearchFilter } from '@/types';
@@ -24,6 +24,7 @@ import type { AnimeItem, SearchFilter } from '@/types';
 export default function ExploreScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { theme } = useTheme();
   const { width: windowWidth } = useWindowDimensions();
 
   const cardWidth = (windowWidth - 48) / 2;
@@ -125,7 +126,7 @@ export default function ExploreScreen() {
             color={activeFilterCount > 0 ? '#FFFFFF' : oledTheme.colors.text}
           />
           {activeFilterCount > 0 && (
-            <View style={styles.filterBadge}>
+            <View style={[styles.filterBadge, { backgroundColor: theme.colors.primary }]}>
               <Text style={styles.filterBadgeText}>{activeFilterCount}</Text>
             </View>
           )}
@@ -137,25 +138,25 @@ export default function ExploreScreen() {
         <View style={styles.chipsContainer}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsScroll}>
             {filterState.genre && (
-              <Pressable style={styles.activeChip} onPress={() => removeFilter('genre')}>
+              <Pressable style={[styles.activeChip, { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary }]} onPress={() => removeFilter('genre')}>
                 <Text style={styles.activeChipText}>{filterState.genre}</Text>
                 <Ionicons name="close" size={14} color="#FFF" />
               </Pressable>
             )}
             {filterState.type && (
-              <Pressable style={styles.activeChip} onPress={() => removeFilter('type')}>
+              <Pressable style={[styles.activeChip, { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary }]} onPress={() => removeFilter('type')}>
                 <Text style={styles.activeChipText}>{filterState.type}</Text>
                 <Ionicons name="close" size={14} color="#FFF" />
               </Pressable>
             )}
             {filterState.status && (
-              <Pressable style={styles.activeChip} onPress={() => removeFilter('status')}>
+              <Pressable style={[styles.activeChip, { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary }]} onPress={() => removeFilter('status')}>
                 <Text style={styles.activeChipText}>{filterState.status}</Text>
                 <Ionicons name="close" size={14} color="#FFF" />
               </Pressable>
             )}
             {filterState.sort && (
-              <Pressable style={styles.activeChip} onPress={() => removeFilter('sort')}>
+              <Pressable style={[styles.activeChip, { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary }]} onPress={() => removeFilter('sort')}>
                 <Text style={styles.activeChipText}>{filterState.sort}</Text>
                 <Ionicons name="close" size={14} color="#FFF" />
               </Pressable>
@@ -167,7 +168,7 @@ export default function ExploreScreen() {
       {/* Content List */}
       {isLoading ? (
         <View style={styles.centerContainer}>
-          <ActivityIndicator size="large" color={oledTheme.colors.primary} />
+          <ActivityIndicator size="large" color={theme.colors.primary} />
           <Text style={styles.loadingText}>Ricerca in corso...</Text>
         </View>
       ) : isError ? (

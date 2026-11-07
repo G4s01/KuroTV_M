@@ -3,7 +3,7 @@ import { StyleSheet, Text, View, Pressable } from 'react-native';
 import { BottomSheet } from '@expo/ui';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
-import { oledTheme } from '@/theme';
+import { oledTheme, useTheme } from '@/theme';
 
 interface ServerOption {
   id: string;
@@ -31,12 +31,14 @@ export const ServerBottomSheet: React.FC<ServerBottomSheetProps> = ({
   currentSpeed = 1.0,
   onSelectSpeed,
 }) => {
+  const { theme } = useTheme();
+
   return (
     <BottomSheet
       isPresented={isVisible}
       onDismiss={onClose}
       showDragIndicator={true}
-      containerColor={oledTheme.colors.card}
+      containerColor={theme.colors.card}
     >
       <View style={styles.container}>
         <Text style={styles.title}>Sorgente Video & Server</Text>
@@ -48,7 +50,10 @@ export const ServerBottomSheet: React.FC<ServerBottomSheetProps> = ({
             return (
               <Pressable
                 key={server.id}
-                style={[styles.serverItem, isSelected && styles.serverItemActive]}
+                style={[
+                  styles.serverItem,
+                  isSelected && [styles.serverItemActive, { borderColor: theme.colors.primary }],
+                ]}
                 onPress={() => {
                   Haptics.selectionAsync().catch(() => {});
                   onSelectServer(server.id);
@@ -59,14 +64,19 @@ export const ServerBottomSheet: React.FC<ServerBottomSheetProps> = ({
                   <Ionicons
                     name="server-outline"
                     size={18}
-                    color={isSelected ? oledTheme.colors.primary : oledTheme.colors.textMuted}
+                    color={isSelected ? theme.colors.primary : oledTheme.colors.textMuted}
                   />
-                  <Text style={[styles.serverName, isSelected && styles.serverNameActive]}>
+                  <Text
+                    style={[
+                      styles.serverName,
+                      isSelected && [styles.serverNameActive, { color: theme.colors.primary }],
+                    ]}
+                  >
                     {server.name}
                   </Text>
                 </View>
                 {isSelected && (
-                  <Ionicons name="checkmark-circle" size={20} color={oledTheme.colors.primary} />
+                  <Ionicons name="checkmark-circle" size={20} color={theme.colors.primary} />
                 )}
               </Pressable>
             );
@@ -82,7 +92,13 @@ export const ServerBottomSheet: React.FC<ServerBottomSheetProps> = ({
                 return (
                   <Pressable
                     key={speed}
-                    style={[styles.speedChip, isSelected && styles.speedChipActive]}
+                    style={[
+                      styles.speedChip,
+                      isSelected && [
+                        styles.speedChipActive,
+                        { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
+                      ],
+                    ]}
                     onPress={() => {
                       Haptics.selectionAsync().catch(() => {});
                       onSelectSpeed(speed);

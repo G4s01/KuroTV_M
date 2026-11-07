@@ -390,7 +390,10 @@ export const UnistylesRuntime = {
       if (updated && updated.colors) {
         Object.assign(appThemes[name].colors, updated.colors);
       }
-      notifyThemeListeners(name, appThemes[name]);
+      notifyThemeListeners(name, {
+        ...appThemes[name],
+        colors: { ...appThemes[name].colors },
+      });
     }
   },
   get colorScheme(): 'dark' | 'light' {
@@ -625,17 +628,30 @@ export const ThemeContext = React.createContext<ThemeContextValue>({
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [themeName, setThemeName] = React.useState<ThemeName>(currentThemeName);
   const [themeVersion, setThemeVersion] = React.useState(0);
+  const [activeTheme, setActiveTheme] = React.useState<AppTheme>(() => ({
+    ...(appThemes[currentThemeName] || oledTheme),
+    colors: { ...(appThemes[currentThemeName]?.colors || oledTheme.colors) },
+  }));
 
   React.useEffect(() => {
     initThemeFromStorage();
-    const unsubscribe = UnistylesRuntime.addListener((name) => {
+    const current = appThemes[currentThemeName] || oledTheme;
+    setActiveTheme({
+      ...current,
+      colors: { ...current.colors },
+    });
+
+    const unsubscribe = UnistylesRuntime.addListener((name, updatedTheme) => {
       setThemeName(name);
+      const target = updatedTheme || appThemes[name] || oledTheme;
+      setActiveTheme({
+        ...target,
+        colors: { ...target.colors },
+      });
       setThemeVersion((v) => v + 1);
     });
     return unsubscribe;
   }, []);
-
-  const activeTheme = appThemes[themeName] || oledTheme;
 
   const value = React.useMemo<ThemeContextValue>(
     () => ({
@@ -654,9 +670,12 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   return React.createElement(ThemeContext.Provider, { value }, children);
 }
 
-export function useTheme(): AppTheme {
+export type UseThemeResult = AppTheme & { theme: AppTheme };
+
+export function useTheme(): UseThemeResult {
   const context = React.useContext(ThemeContext);
-  return context?.theme || appThemes[currentThemeName] || oledTheme;
+  const activeTheme = context?.theme || appThemes[currentThemeName] || oledTheme;
+  return Object.assign(activeTheme, { theme: activeTheme });
 }
 
 export function useUnistyles(): { theme: AppTheme; rt: typeof UnistylesRuntime } {

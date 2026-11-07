@@ -25,7 +25,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { AnimeWorldScraper } from '@/services/scraper';
 import { AniSkipService } from '@/services/aniskip';
 import { AppStorage } from '@/services/storage';
-import { oledTheme } from '@/theme';
+import { oledTheme, useTheme } from '@/theme';
 import { AniSkipButton } from '@/components/AniSkipButton';
 import { ServerBottomSheet } from '@/components/ServerBottomSheet';
 import type { AniSkipResult } from '@/types';
@@ -46,6 +46,7 @@ function formatTime(seconds: number): string {
 export default function VideoPlayerScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { theme } = useTheme();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const isLandscape = windowWidth > windowHeight;
 
@@ -455,7 +456,7 @@ export default function VideoPlayerScreen() {
             <View style={styles.loadingWrapper}>
               {isLoadingSource ? (
                 <>
-                  <ActivityIndicator size="large" color={oledTheme.colors.primary} />
+                  <ActivityIndicator size="large" color={theme.colors.primary} />
                   <Text style={styles.loadingText}>Connessione al server video...</Text>
                 </>
               ) : (
@@ -463,7 +464,7 @@ export default function VideoPlayerScreen() {
                   <Ionicons name="alert-circle-outline" size={48} color={oledTheme.colors.error} />
                   <Text style={styles.errorText}>{sourceError || 'Impossibile riprodurre'}</Text>
                   <Pressable
-                    style={styles.retryBtn}
+                    style={[styles.retryBtn, { backgroundColor: theme.colors.primary }]}
                     onPress={() => setIsServerSheetVisible(true)}
                   >
                     <Text style={styles.retryBtnText}>Scegli un altro server</Text>
@@ -603,6 +604,7 @@ export default function VideoPlayerScreen() {
                       style={[
                         styles.timelineBar,
                         {
+                          backgroundColor: theme.colors.primary,
                           width: `${
                             duration > 0
                               ? Math.min(100, Math.max(0, (currentTime / duration) * 100))

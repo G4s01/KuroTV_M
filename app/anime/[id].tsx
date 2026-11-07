@@ -17,7 +17,7 @@ import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { animeDetailQueryOptions } from '@/services/queries';
 import { AppStorage } from '@/services/storage';
-import { oledTheme } from '@/theme';
+import { oledTheme, useTheme } from '@/theme';
 import { EpisodeItem } from '@/components/EpisodeItem';
 import { ServerBottomSheet } from '@/components/ServerBottomSheet';
 import { BatchBottomSheet, type EpisodeBatch, type RelatedSeason } from '@/components/BatchBottomSheet';
@@ -31,6 +31,7 @@ export default function AnimeDetailScreen() {
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
   const queryClient = useQueryClient();
+  const { theme } = useTheme();
   const { id } = useLocalSearchParams<{ id: string; title?: string }>();
 
   const animeId = Array.isArray(id) ? id[0] : id || '';
@@ -178,7 +179,7 @@ export default function AnimeDetailScreen() {
 
               <View style={styles.badgeRow}>
                 {anime.subOrDub && (
-                  <View style={styles.badge}>
+                  <View style={[styles.badge, { backgroundColor: theme.colors.primary }]}>
                     <Text style={styles.badgeText}>{anime.subOrDub}</Text>
                   </View>
                 )}
@@ -206,7 +207,7 @@ export default function AnimeDetailScreen() {
           {/* Primary Action Button */}
           {firstUnwatched && (
             <Pressable
-              style={styles.playActionBtn}
+              style={[styles.playActionBtn, { backgroundColor: theme.colors.primary }]}
               onPress={() => navigateToEpisode(firstUnwatched)}
             >
               <Ionicons name="play" size={20} color="#FFFFFF" />
@@ -232,7 +233,7 @@ export default function AnimeDetailScreen() {
                 onPress={() => setIsSynopsisExpanded(!isSynopsisExpanded)}
                 hitSlop={8}
               >
-                <Text style={styles.readMore}>
+                <Text style={[styles.readMore, { color: theme.colors.primary }]}>
                   {isSynopsisExpanded ? 'Mostra meno' : 'Leggi tutto'}
                 </Text>
               </Pressable>
@@ -252,8 +253,8 @@ export default function AnimeDetailScreen() {
               style={styles.serverPickerBtn}
               onPress={() => setIsServerSheetVisible(true)}
             >
-              <Ionicons name="server" size={16} color={oledTheme.colors.primary} />
-              <Text style={styles.serverPickerBtnText}>Cambia</Text>
+              <Ionicons name="server" size={16} color={theme.colors.primary} />
+              <Text style={[styles.serverPickerBtnText, { color: theme.colors.primary }]}>Cambia</Text>
             </Pressable>
           </View>
 
@@ -268,15 +269,15 @@ export default function AnimeDetailScreen() {
                   style={styles.batchSelectorBtn}
                   onPress={() => setIsBatchSheetVisible(true)}
                 >
-                  <Text style={styles.batchSelectorBtnText}>{currentBatch?.label || 'Batch'}</Text>
-                  <Ionicons name="chevron-down" size={14} color={oledTheme.colors.primary} />
+                  <Text style={[styles.batchSelectorBtnText, { color: theme.colors.primary }]}>{currentBatch?.label || 'Batch'}</Text>
+                  <Ionicons name="chevron-down" size={14} color={theme.colors.primary} />
                 </Pressable>
               )}
             </View>
 
             <View style={styles.viewModeToggle}>
               <Pressable
-                style={[styles.toggleBtn, viewMode === 'grid' && styles.toggleBtnActive]}
+                style={[styles.toggleBtn, viewMode === 'grid' && { backgroundColor: theme.colors.primary }]}
                 onPress={() => {
                   Haptics.selectionAsync().catch(() => {});
                   setViewMode('grid');
@@ -292,7 +293,7 @@ export default function AnimeDetailScreen() {
               </Pressable>
 
               <Pressable
-                style={[styles.toggleBtn, viewMode === 'list' && styles.toggleBtnActive]}
+                style={[styles.toggleBtn, viewMode === 'list' && { backgroundColor: theme.colors.primary }]}
                 onPress={() => {
                   Haptics.selectionAsync().catch(() => {});
                   setViewMode('list');
@@ -336,7 +337,7 @@ export default function AnimeDetailScreen() {
             <Ionicons
               name={isFavorite ? 'heart' : 'heart-outline'}
               size={22}
-              color={isFavorite ? oledTheme.colors.primary : '#FFFFFF'}
+              color={isFavorite ? theme.colors.primary : '#FFFFFF'}
             />
           </Pressable>
           <Pressable
@@ -352,14 +353,14 @@ export default function AnimeDetailScreen() {
 
       {isLoading ? (
         <View style={styles.centerContainer}>
-          <ActivityIndicator size="large" color={oledTheme.colors.primary} />
+          <ActivityIndicator size="large" color={theme.colors.primary} />
           <Text style={styles.loadingText}>Caricamento dettagli anime...</Text>
         </View>
       ) : isError || !anime ? (
         <View style={styles.centerContainer}>
           <Ionicons name="alert-circle-outline" size={48} color={oledTheme.colors.error} />
           <Text style={styles.errorTitle}>Impossibile caricare l&apos;anime</Text>
-          <Pressable style={styles.retryBtn} onPress={() => refetch()}>
+          <Pressable style={[styles.retryBtn, { backgroundColor: theme.colors.primary }]} onPress={() => refetch()}>
             <Text style={styles.retryBtnText}>Riprova</Text>
           </Pressable>
         </View>

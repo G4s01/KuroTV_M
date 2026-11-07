@@ -149,67 +149,49 @@ export const MATERIAL_YOU_PALETTES: MaterialYouPalette[] = [
     primaryHover: '#60A5FA',
     accent: '#3B82F6',
     focusRing: '#93C5FD',
-    focusCard: '#1E293B',
+    focusCard: '#131D2E',
   },
   {
     id: 'emerald-green',
-    name: 'VERDE SMERALDO',
+    name: 'SMERALDO',
     primary: '#10B981',
     primaryHover: '#34D399',
     accent: '#10B981',
     focusRing: '#6EE7B7',
-    focusCard: '#064E3B',
+    focusCard: '#0F261F',
   },
   {
-    id: 'cyber-purple',
-    name: 'VIOLA CYBER',
+    id: 'amethyst-purple',
+    name: 'AMETISTA',
     primary: '#8B5CF6',
     primaryHover: '#A78BFA',
     accent: '#8B5CF6',
     focusRing: '#C4B5FD',
-    focusCard: '#3B0764',
+    focusCard: '#1E1730',
   },
   {
-    id: 'sunset-amber',
-    name: 'AMBRA TRAMONTO',
+    id: 'amber-sunset',
+    name: 'AMBRA',
     primary: '#F59E0B',
     primaryHover: '#FBBF24',
     accent: '#F59E0B',
-    focusRing: '#FCD34D',
-    focusCard: '#451A03',
+    focusRing: '#FDE68A',
+    focusCard: '#2B200E',
   },
   {
-    id: 'sakura-pink',
-    name: 'ROSA SAKURA',
-    primary: '#EC4899',
-    primaryHover: '#F472B6',
-    accent: '#EC4899',
-    focusRing: '#F9A8D4',
-    focusCard: '#500724',
-  },
-  {
-    id: 'neon-cyan',
-    name: 'CIANO NEON',
-    primary: '#06B6D4',
-    primaryHover: '#22D3EE',
-    accent: '#06B6D4',
-    focusRing: '#67E8F9',
-    focusCard: '#164E63',
-  },
-  {
-    id: 'ruby-crimson',
-    name: 'CREMISI RUBINO',
-    primary: '#E11D48',
-    primaryHover: '#FB7185',
-    accent: '#E11D48',
-    focusRing: '#FDA4AF',
-    focusCard: '#4C0519',
+    id: 'monochrome',
+    name: 'MONOCROMO',
+    primary: '#E5E7EB',
+    primaryHover: '#FFFFFF',
+    accent: '#E5E7EB',
+    focusRing: '#FFFFFF',
+    focusCard: '#262626',
   },
   {
     id: 'pikachu',
     name: 'PIKACHU',
     primary: '#FAD61D',
-    primaryHover: '#FFF275',
+    primaryHover: '#E19720',
     accent: '#FAD61D',
     focusRing: '#FAD61D',
     focusCard: '#241E00',
@@ -219,7 +201,7 @@ export const MATERIAL_YOU_PALETTES: MaterialYouPalette[] = [
     id: 'orchid',
     name: 'ORCHIDEA',
     primary: '#E941FB',
-    primaryHover: '#F28BFE',
+    primaryHover: '#6A26F2',
     accent: '#E941FB',
     focusRing: '#E941FB',
     focusCard: '#1E0F3D',
@@ -239,78 +221,78 @@ export const MATERIAL_YOU_PALETTES: MaterialYouPalette[] = [
 
 export const PIKACHU_DARK_COLORS: Readonly<Partial<ThemeColors>> = Object.freeze({
   primary: '#FAD61D',
-  primaryHover: '#FFF275',
+  primaryHover: '#E19720',
   accent: '#FAD61D',
   focusRing: '#FAD61D',
   focusCard: '#241E00',
-  error: '#FF5A5A',
-  warning: '#FFA834',
+  error: '#F62D14',
+  warning: '#E19720',
   text: '#FFFFFF',
-  textSecondary: '#E8DFB8',
-  textMuted: '#9B9477',
+  textSecondary: '#D4D4D4',
+  textMuted: '#A3A3A3',
   background: '#000000',
   card: '#0D0D0D',
   surface: '#171717',
-  surfaceSubtle: '#262417',
-  border: '#332F1A',
+  surfaceSubtle: '#262626',
+  border: '#333333',
   borderActive: '#FAD61D',
 });
 
 export const PIKACHU_LIGHT_COLORS: Readonly<Partial<ThemeColors>> = Object.freeze({
-  primary: '#C9A100',
-  primaryHover: '#D4AF12',
-  accent: '#C9A100',
-  focusRing: '#C9A100',
-  focusCard: '#FFF8DB',
-  error: '#DC2626',
-  warning: '#D97706',
-  text: '#1C190D',
-  textSecondary: '#4A432A',
-  textMuted: '#787050',
-  background: '#FFFDF5',
-  card: '#FFFFFF',
-  surface: '#FFF9E5',
-  surfaceSubtle: '#FFF3C4',
-  border: '#E8DCB0',
-  borderActive: '#C9A100',
+  primary: '#F62D14',
+  primaryHover: '#811E09',
+  accent: '#F62D14',
+  focusRing: '#811E09',
+  focusCard: '#FEF3C7',
+  error: '#F62D14',
+  warning: '#E19720',
+  text: '#000000',
+  textSecondary: '#374151',
+  textMuted: '#6B7280',
+  background: '#FFFFFF',
+  card: '#FFFBEB',
+  surface: '#FEF3C7',
+  surfaceSubtle: '#FDE68A',
+  border: '#FAD61D',
+  borderActive: '#811E09',
 });
 
 export const ORCHID_DARK_COLORS: Readonly<Partial<ThemeColors>> = Object.freeze({
   primary: '#E941FB',
-  primaryHover: '#F28BFE',
+  primaryHover: '#6A26F2',
   accent: '#E941FB',
   focusRing: '#E941FB',
   focusCard: '#1E0F3D',
-  error: '#FF4E78',
-  warning: '#FFAC42',
-  text: '#FFFFFF',
-  textSecondary: '#E3CBE8',
-  textMuted: '#96819B',
+  error: '#E8114E',
+  warning: '#F59E0B',
+  text: '#F5F1E6',
+  textSecondary: '#D4CEE8',
+  textMuted: '#8B82A8',
   background: '#000000',
   card: '#0D0D0D',
   surface: '#171717',
-  surfaceSubtle: '#27172B',
-  border: '#361F3C',
+  surfaceSubtle: '#331A84',
+  border: '#331A84',
   borderActive: '#E941FB',
 });
 
 export const ORCHID_LIGHT_COLORS: Readonly<Partial<ThemeColors>> = Object.freeze({
-  primary: '#B61CD6',
-  primaryHover: '#C635E4',
-  accent: '#B61CD6',
-  focusRing: '#B61CD6',
-  focusCard: '#FDF0FF',
-  error: '#DC2626',
+  primary: '#9334C2',
+  primaryHover: '#BB55D3',
+  accent: '#DB6ED6',
+  focusRing: '#9334C2',
+  focusCard: '#C1E6EC',
+  error: '#E8114E',
   warning: '#D97706',
-  text: '#200D24',
-  textSecondary: '#542E5E',
-  textMuted: '#835F8E',
-  background: '#FCF7FD',
+  text: '#1A0B2E',
+  textSecondary: '#4A3E56',
+  textMuted: '#766E82',
+  background: '#E9EDF0',
   card: '#FFFFFF',
-  surface: '#F8EAFB',
-  surfaceSubtle: '#F3D6F9',
-  border: '#E3BDEB',
-  borderActive: '#B61CD6',
+  surface: '#F4F8FA',
+  surfaceSubtle: '#C1E6EC',
+  border: '#DB6ED6',
+  borderActive: '#9334C2',
 });
 
 export const RAINBOW_DARK_COLORS: Readonly<Partial<ThemeColors>> = Object.freeze({
@@ -408,7 +390,10 @@ export const UnistylesRuntime = {
       if (updated && updated.colors) {
         Object.assign(appThemes[name].colors, updated.colors);
       }
-      notifyThemeListeners(name, appThemes[name]);
+      notifyThemeListeners(name, {
+        ...appThemes[name],
+        colors: { ...appThemes[name].colors },
+      });
     }
   },
   get colorScheme(): 'dark' | 'light' {
@@ -600,6 +585,7 @@ export function applyThemeFamily(family: string): void {
 
 export function initThemeFromStorage(): void {
   try {
+    // Dynamic require prevents circular dependency issues at early bundle initialization
     const { AppStorage } = require('@/services/storage');
     if (AppStorage && typeof AppStorage.getThemeFamily === 'function') {
       const family = AppStorage.getThemeFamily();
@@ -608,7 +594,7 @@ export function initThemeFromStorage(): void {
       }
     }
   } catch {
-    // Storage might not be available in all runtimes
+    // Safely ignore if storage is not yet initialized or mocked
   }
 }
 
@@ -642,17 +628,30 @@ export const ThemeContext = React.createContext<ThemeContextValue>({
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [themeName, setThemeName] = React.useState<ThemeName>(currentThemeName);
   const [themeVersion, setThemeVersion] = React.useState(0);
+  const [activeTheme, setActiveTheme] = React.useState<AppTheme>(() => ({
+    ...(appThemes[currentThemeName] || oledTheme),
+    colors: { ...(appThemes[currentThemeName]?.colors || oledTheme.colors) },
+  }));
 
   React.useEffect(() => {
     initThemeFromStorage();
-    const unsubscribe = UnistylesRuntime.addListener((name) => {
+    const current = appThemes[currentThemeName] || oledTheme;
+    setActiveTheme({
+      ...current,
+      colors: { ...current.colors },
+    });
+
+    const unsubscribe = UnistylesRuntime.addListener((name, updatedTheme) => {
       setThemeName(name);
+      const target = updatedTheme || appThemes[name] || oledTheme;
+      setActiveTheme({
+        ...target,
+        colors: { ...target.colors },
+      });
       setThemeVersion((v) => v + 1);
     });
     return unsubscribe;
   }, []);
-
-  const activeTheme = appThemes[themeName] || oledTheme;
 
   const value = React.useMemo<ThemeContextValue>(
     () => ({
@@ -671,9 +670,12 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   return React.createElement(ThemeContext.Provider, { value }, children);
 }
 
-export function useTheme(): AppTheme {
+export type UseThemeResult = AppTheme & { theme: AppTheme };
+
+export function useTheme(): UseThemeResult {
   const context = React.useContext(ThemeContext);
-  return context?.theme || appThemes[currentThemeName] || oledTheme;
+  const activeTheme = context?.theme || appThemes[currentThemeName] || oledTheme;
+  return Object.assign(activeTheme, { theme: activeTheme });
 }
 
 export function useUnistyles(): { theme: AppTheme; rt: typeof UnistylesRuntime } {

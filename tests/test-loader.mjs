@@ -1,7 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { createRequire } from 'node:module';
 import ts from 'typescript';
+
+const require = createRequire(import.meta.url);
+globalThis.require = require;
 
 export async function resolve(specifier, context, defaultResolve) {
   if (specifier === 'react-native') {
@@ -93,6 +97,14 @@ export async function resolve(specifier, context, defaultResolve) {
 }
 
 export async function load(url, context, defaultLoad) {
+  if (url.endsWith('.svg') || url.endsWith('.png') || url.endsWith('.jpg') || url.endsWith('.webp')) {
+    return {
+      format: 'module',
+      shortCircuit: true,
+      source: 'export default 1;',
+    };
+  }
+
   if (url.endsWith('.tsx') || url.endsWith('.ts')) {
     const filePath = fileURLToPath(url);
     const source = fs.readFileSync(filePath, 'utf-8');
