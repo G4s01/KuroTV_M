@@ -3,10 +3,8 @@ import {
   StyleSheet,
   Text,
   View,
-  ScrollView,
   Pressable,
-  Image,
-  Dimensions,
+  useWindowDimensions,
   ActivityIndicator,
   Share,
 } from 'react-native';
@@ -14,6 +12,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { FlashList } from '@shopify/flash-list';
+import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { animeDetailQueryOptions } from '@/services/queries';
@@ -21,14 +20,16 @@ import { AppStorage } from '@/services/storage';
 import { oledTheme } from '@/theme';
 import { EpisodeItem } from '@/components/EpisodeItem';
 import { ServerBottomSheet } from '@/components/ServerBottomSheet';
+import { BatchBottomSheet, type EpisodeBatch, type RelatedSeason } from '@/components/BatchBottomSheet';
 import type { Episode, VideoServer } from '@/types';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const BACKDROP_HEIGHT = 260;
+const BATCH_SIZE = 25;
 
 export default function AnimeDetailScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
   const queryClient = useQueryClient();
   const { id } = useLocalSearchParams<{ id: string; title?: string }>();
 
@@ -42,6 +43,9 @@ export default function AnimeDetailScreen() {
   const [isSynopsisExpanded, setIsSynopsisExpanded] = React.useState(false);
   const [selectedServerId, setSelectedServerId] = React.useState('9'); // Default AnimeWorld server
   const [isServerSheetVisible, setIsServerSheetVisible] = React.useState(false);
+  const [isBatchSheetVisible, setIsBatchSheetVisible] = React.useState(false);
+  const [viewMode, setViewMode] = React.useState<'grid' | 'list'>('grid');
+  const [activeBatchId, setActiveBatchId] = React.useState<string>('batch-0');
 
   React.useEffect(() => {
     if (animeId) {
@@ -83,8 +87,50 @@ export default function AnimeDetailScreen() {
     });
   };
 
-  // Find next unwatched episode or episode 1
   const episodes: Episode[] = anime?.episodes || [];
+
+  // Generate batches (e.g. 1-25, 26-50, etc.)
+  const batches: EpisodeBatch[] = React.useMemo(() => {
+    if (episodes.length <= BATCH_SIZE) {
+      return [{ id: 'batch-0', label: `Ep. 1 - ${episodes.length || 1}`, start: 1, end: episodes.length || 1 }];
+    }
+    const list: EpisodeBatch[] = [];
+    for (let i = 0; i < episodes.length; i += BATCH_SIZE) {
+      const startEp = episodes[i]?.number || i + 1;
+      const endIdx = Math.min(i + BATCH_SIZE - 1, episodes.length - 1);
+      const endEp = episodes[endIdx]?.number || endIdx + 1;
+      list.push({
+        id: `batch-${i}`,
+        label: `Ep. ${startEp} - ${endEp}`,
+        start: startEp,
+        end: endEp,
+      });
+    }
+    return list;
+  }, [episodes]);
+
+  // Filter episodes by active batch
+  const currentBatch = batches.find((b) => b.id === activeBatchId) || batches[0];
+  const displayedEpisodes = React.useMemo(() => {
+    if (!currentBatch || batches.length <= 1) return episodes;
+    return episodes.filter(
+      (ep) => ep.number >= currentBatch.start && ep.number <= currentBatch.end
+    );
+  }, [episodes, currentBatch, batches.length]);
+
+  // Related seasons for season selector
+  const relatedSeasons: RelatedSeason[] = React.useMemo(() => {
+    const list: RelatedSeason[] = [];
+    if (anime?.related && Array.isArray(anime.related)) {
+      anime.related.forEach((rel) => {
+        if (rel.id && rel.title) {
+          list.push({ id: rel.id, title: rel.title });
+        }
+      });
+    }
+    return list;
+  }, [anime]);
+
   const currentProgressList = episodes.map((ep) => {
     const prog = AppStorage.getWatchProgress(animeId, ep.number);
     return {
@@ -99,6 +145,173 @@ export default function AnimeDetailScreen() {
   const servers: VideoServer[] = anime?.servers || anime?.serverList || [
     { id: '9', name: 'AnimeWorld Server (Default)' },
   ];
+
+  const renderHeader = () => {
+    if (!anime) return null;
+    return (
+      <View style={styles.headerWrapper}>
+        {/* Backdrop Header */}
+        <View style={[styles.backdropWrapper, { width: windowWidth }]}>
+          <Image
+            source={{ uri: anime.image || anime.thumbnail }}
+            style={styles.backdrop}
+            contentFit="cover"
+            transition={300}
+          />
+          <View style={styles.backdropGradient} />
+        </View>
+
+        {/* Details Section */}
+        <View style={styles.mainInfo}>
+          <View style={styles.posterAndMeta}>
+            <Image
+              source={{ uri: anime.image || anime.thumbnail }}
+              style={styles.poster}
+              contentFit="cover"
+              transition={300}
+            />
+
+            <View style={styles.metaRight}>
+              <Text style={styles.title} numberOfLines={3}>
+                {anime.title}
+              </Text>
+
+              <View style={styles.badgeRow}>
+                {anime.subOrDub && (
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeText}>{anime.subOrDub}</Text>
+                  </View>
+                )}
+                {anime.state && (
+                  <View style={styles.badgeSubtle}>
+                    <Text style={styles.badgeSubtleText}>{anime.state}</Text>
+                  </View>
+                )}
+                {anime.score ? (
+                  <View style={styles.ratingBadge}>
+                    <Ionicons name="star" size={12} color="#FBBF24" />
+                    <Text style={styles.ratingText}>{anime.score}</Text>
+                  </View>
+                ) : null}
+              </View>
+
+              {anime.genres && anime.genres.length > 0 && (
+                <Text style={styles.genresText} numberOfLines={2}>
+                  {anime.genres.join(' • ')}
+                </Text>
+              )}
+            </View>
+          </View>
+
+          {/* Primary Action Button */}
+          {firstUnwatched && (
+            <Pressable
+              style={styles.playActionBtn}
+              onPress={() => navigateToEpisode(firstUnwatched)}
+            >
+              <Ionicons name="play" size={20} color="#FFFFFF" />
+              <Text style={styles.playActionText}>
+                {currentProgressList.some((p) => p.progress > 0 && !p.isCompleted)
+                  ? `Riprendi Ep. ${firstUnwatched.number}`
+                  : `Inizia Ep. ${firstUnwatched.number}`}
+              </Text>
+            </Pressable>
+          )}
+
+          {/* Synopsis */}
+          {(anime.synopsis || anime.description) ? (
+            <View style={styles.synopsisContainer}>
+              <Text style={styles.sectionHeading}>Trama</Text>
+              <Text
+                style={styles.synopsis}
+                numberOfLines={isSynopsisExpanded ? undefined : 3}
+              >
+                {anime.synopsis || anime.description}
+              </Text>
+              <Pressable
+                onPress={() => setIsSynopsisExpanded(!isSynopsisExpanded)}
+                hitSlop={8}
+              >
+                <Text style={styles.readMore}>
+                  {isSynopsisExpanded ? 'Mostra meno' : 'Leggi tutto'}
+                </Text>
+              </Pressable>
+            </View>
+          ) : null}
+
+          {/* Server Selector Bar */}
+          <View style={styles.serverRow}>
+            <View>
+              <Text style={styles.sectionHeading}>Server Video</Text>
+              <Text style={styles.serverCurrentText}>
+                {servers.find((s) => s.id === selectedServerId)?.name || 'AnimeWorld'}
+              </Text>
+            </View>
+
+            <Pressable
+              style={styles.serverPickerBtn}
+              onPress={() => setIsServerSheetVisible(true)}
+            >
+              <Ionicons name="server" size={16} color={oledTheme.colors.primary} />
+              <Text style={styles.serverPickerBtnText}>Cambia</Text>
+            </Pressable>
+          </View>
+
+          {/* Season & Batch / Grid Controls */}
+          <View style={styles.controlsRow}>
+            <View style={styles.controlsLeft}>
+              <Text style={styles.sectionHeading}>
+                Puntate ({episodes.length})
+              </Text>
+              {batches.length > 1 && (
+                <Pressable
+                  style={styles.batchSelectorBtn}
+                  onPress={() => setIsBatchSheetVisible(true)}
+                >
+                  <Text style={styles.batchSelectorBtnText}>{currentBatch?.label || 'Batch'}</Text>
+                  <Ionicons name="chevron-down" size={14} color={oledTheme.colors.primary} />
+                </Pressable>
+              )}
+            </View>
+
+            <View style={styles.viewModeToggle}>
+              <Pressable
+                style={[styles.toggleBtn, viewMode === 'grid' && styles.toggleBtnActive]}
+                onPress={() => {
+                  Haptics.selectionAsync().catch(() => {});
+                  setViewMode('grid');
+                }}
+                hitSlop={6}
+                accessibilityLabel="Vista a griglia"
+              >
+                <Ionicons
+                  name="grid"
+                  size={16}
+                  color={viewMode === 'grid' ? '#FFFFFF' : oledTheme.colors.textMuted}
+                />
+              </Pressable>
+
+              <Pressable
+                style={[styles.toggleBtn, viewMode === 'list' && styles.toggleBtnActive]}
+                onPress={() => {
+                  Haptics.selectionAsync().catch(() => {});
+                  setViewMode('list');
+                }}
+                hitSlop={6}
+                accessibilityLabel="Vista a lista"
+              >
+                <Ionicons
+                  name="list"
+                  size={18}
+                  color={viewMode === 'list' ? '#FFFFFF' : oledTheme.colors.textMuted}
+                />
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </View>
+    );
+  };
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
@@ -151,132 +364,25 @@ export default function AnimeDetailScreen() {
           </Pressable>
         </View>
       ) : (
-        <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
-          {/* Backdrop Header */}
-          <View style={styles.backdropWrapper}>
-            <Image
-              source={{ uri: anime.image || anime.thumbnail }}
-              style={styles.backdrop}
-              resizeMode="cover"
-            />
-            <View style={styles.backdropGradient} />
-          </View>
-
-          {/* Details Section */}
-          <View style={styles.mainInfo}>
-            <View style={styles.posterAndMeta}>
-              <Image
-                source={{ uri: anime.image || anime.thumbnail }}
-                style={styles.poster}
-                resizeMode="cover"
+        <FlashList
+          key={viewMode}
+          data={displayedEpisodes}
+          numColumns={viewMode === 'grid' ? 4 : 1}
+          keyExtractor={(item) => item.id}
+          ListHeaderComponent={renderHeader}
+          contentContainerStyle={styles.listContentContainer}
+          renderItem={({ item }) => {
+            const prog = currentProgressList.find((p) => p.episode.number === item.number);
+            return (
+              <EpisodeItem
+                episode={item}
+                variant={viewMode}
+                progressPercent={prog?.progress || 0}
+                onPress={() => navigateToEpisode(item)}
               />
-
-              <View style={styles.metaRight}>
-                <Text style={styles.title} numberOfLines={3}>
-                  {anime.title}
-                </Text>
-
-                <View style={styles.badgeRow}>
-                  {anime.subOrDub && (
-                    <View style={styles.badge}>
-                      <Text style={styles.badgeText}>{anime.subOrDub}</Text>
-                    </View>
-                  )}
-                  {anime.state && (
-                    <View style={styles.badgeSubtle}>
-                      <Text style={styles.badgeSubtleText}>{anime.state}</Text>
-                    </View>
-                  )}
-                  {anime.score ? (
-                    <View style={styles.ratingBadge}>
-                      <Ionicons name="star" size={12} color="#FBBF24" />
-                      <Text style={styles.ratingText}>{anime.score}</Text>
-                    </View>
-                  ) : null}
-                </View>
-
-                {anime.genres && anime.genres.length > 0 && (
-                  <Text style={styles.genresText} numberOfLines={2}>
-                    {anime.genres.join(' • ')}
-                  </Text>
-                )}
-              </View>
-            </View>
-
-            {/* Primary Action Button */}
-            {firstUnwatched && (
-              <Pressable
-                style={styles.playActionBtn}
-                onPress={() => navigateToEpisode(firstUnwatched)}
-              >
-                <Ionicons name="play" size={20} color="#FFFFFF" />
-                <Text style={styles.playActionText}>
-                  {currentProgressList.some((p) => p.progress > 0 && !p.isCompleted)
-                    ? `Riprendi Ep. ${firstUnwatched.number}`
-                    : `Inizia Ep. ${firstUnwatched.number}`}
-                </Text>
-              </Pressable>
-            )}
-
-            {/* Synopsis */}
-            {(anime.synopsis || anime.description) ? (
-              <View style={styles.synopsisContainer}>
-                <Text style={styles.sectionHeading}>Trama</Text>
-                <Text
-                  style={styles.synopsis}
-                  numberOfLines={isSynopsisExpanded ? undefined : 3}
-                >
-                  {anime.synopsis || anime.description}
-                </Text>
-                <Pressable
-                  onPress={() => setIsSynopsisExpanded(!isSynopsisExpanded)}
-                  hitSlop={8}
-                >
-                  <Text style={styles.readMore}>
-                    {isSynopsisExpanded ? 'Mostra meno' : 'Leggi tutto'}
-                  </Text>
-                </Pressable>
-              </View>
-            ) : null}
-
-            {/* Server Selector Bar */}
-            <View style={styles.serverRow}>
-              <View>
-                <Text style={styles.sectionHeading}>Episodi ({episodes.length})</Text>
-                <Text style={styles.serverCurrentText}>
-                  Server: {servers.find((s) => s.id === selectedServerId)?.name || 'AnimeWorld'}
-                </Text>
-              </View>
-
-              <Pressable
-                style={styles.serverPickerBtn}
-                onPress={() => setIsServerSheetVisible(true)}
-              >
-                <Ionicons name="server" size={16} color={oledTheme.colors.primary} />
-                <Text style={styles.serverPickerBtnText}>Cambia Server</Text>
-              </Pressable>
-            </View>
-
-            {/* Virtualized Episodes List */}
-            <View style={styles.episodesListContainer}>
-              <FlashList
-                data={episodes}
-                keyExtractor={(item) => item.id}
-                scrollEnabled={false}
-                renderItem={({ item }) => {
-                  const prog = currentProgressList.find((p) => p.episode.number === item.number);
-                  return (
-                    <EpisodeItem
-                      episode={item}
-                      progressPercent={prog?.progress || 0}
-                      onPress={() => navigateToEpisode(item)}
-                    />
-                  );
-                }}
-              />
-            </View>
-          </View>
-        </ScrollView>
+            );
+          }}
+        />
       )}
 
       {/* Server Bottom Sheet */}
@@ -286,6 +392,23 @@ export default function AnimeDetailScreen() {
         servers={servers.map((s) => ({ id: s.id, name: s.name }))}
         currentServerId={selectedServerId}
         onSelectServer={(sId) => setSelectedServerId(sId)}
+      />
+
+      {/* Batch & Season Bottom Sheet */}
+      <BatchBottomSheet
+        isVisible={isBatchSheetVisible}
+        onClose={() => setIsBatchSheetVisible(false)}
+        batches={batches}
+        currentBatchId={activeBatchId}
+        onSelectBatch={(bId) => setActiveBatchId(bId)}
+        seasons={relatedSeasons}
+        currentSeasonId={animeId}
+        onSelectSeason={(seasonId) => {
+          router.push({
+            pathname: '/anime/[id]',
+            params: { id: seasonId },
+          });
+        }}
       />
     </View>
   );
@@ -320,11 +443,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.15)',
   },
-  scroll: {
-    flex: 1,
+  headerWrapper: {
+    backgroundColor: '#000000',
   },
   backdropWrapper: {
-    width: SCREEN_WIDTH,
     height: BACKDROP_HEIGHT,
     position: 'relative',
   },
@@ -343,7 +465,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#000000',
     paddingHorizontal: 16,
     paddingTop: 16,
-    paddingBottom: 40,
+    paddingBottom: 16,
   },
   posterAndMeta: {
     flexDirection: 'row',
@@ -355,7 +477,7 @@ const styles = StyleSheet.create({
     borderRadius: oledTheme.radius.md,
     borderWidth: 1,
     borderColor: '#333333',
-    backgroundColor: '#111',
+    backgroundColor: '#111111',
   },
   metaRight: {
     flex: 1,
@@ -440,7 +562,7 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '700',
-    marginBottom: 6,
+    marginBottom: 4,
   },
   synopsis: {
     color: oledTheme.colors.textSecondary,
@@ -457,8 +579,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 20,
-    marginBottom: 12,
+    marginTop: 16,
+    marginBottom: 8,
   },
   serverCurrentText: {
     color: oledTheme.colors.textMuted,
@@ -470,7 +592,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     backgroundColor: '#171717',
-    paddingHorizontal: 12,
+    paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: oledTheme.radius.full,
     borderWidth: 1,
@@ -482,8 +604,58 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
-  episodesListContainer: {
-    marginTop: 4,
+  controlsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 16,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#1A1A1A',
+  },
+  controlsLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  batchSelectorBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#1C1C1C',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: oledTheme.radius.sm,
+    borderWidth: 1,
+    borderColor: '#2E2E2E',
+    minHeight: 36,
+  },
+  batchSelectorBtnText: {
+    color: oledTheme.colors.primary,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  viewModeToggle: {
+    flexDirection: 'row',
+    backgroundColor: '#171717',
+    borderRadius: oledTheme.radius.sm,
+    borderWidth: 1,
+    borderColor: '#262626',
+    padding: 2,
+  },
+  toggleBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  toggleBtnActive: {
+    backgroundColor: oledTheme.colors.primary,
+  },
+  listContentContainer: {
+    paddingHorizontal: 12,
+    paddingBottom: 40,
   },
   centerContainer: {
     flex: 1,

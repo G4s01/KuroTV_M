@@ -4,7 +4,7 @@ import {
   Text,
   View,
   Pressable,
-  Dimensions,
+  useWindowDimensions,
   RefreshControl,
 } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -17,13 +17,14 @@ import { oledTheme } from '@/theme';
 import { AnimeCard } from '@/components/AnimeCard';
 import type { AnimeItem } from '@/types';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const CARD_WIDTH = (SCREEN_WIDTH - 48) / 2;
-const CARD_HEIGHT = CARD_WIDTH * 1.45;
-
 export default function FavoritesScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
+
+  const cardWidth = (windowWidth - 48) / 2;
+  const cardHeight = cardWidth * 1.45;
+
   const [favorites, setFavorites] = React.useState<AnimeItem[]>([]);
   const [isRefreshing, setIsRefreshing] = React.useState(false);
 
@@ -91,8 +92,8 @@ export default function FavoritesScreen() {
             renderItem={({ item }) => (
               <AnimeCard
                 anime={item}
-                width={CARD_WIDTH}
-                height={CARD_HEIGHT}
+                width={cardWidth}
+                height={cardHeight}
                 onPress={() => navigateToAnime(item.id, item.title)}
               />
             )}
@@ -119,11 +120,11 @@ const styles = StyleSheet.create({
   },
   appBar: {
     minHeight: 48,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#141414',
   },
@@ -136,16 +137,63 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 20,
     fontWeight: '800',
+    letterSpacing: -0.5,
   },
   countBadge: {
-    backgroundColor: oledTheme.colors.primary,
+    backgroundColor: '#1E1E1E',
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: oledTheme.radius.full,
+    borderWidth: 1,
+    borderColor: '#333333',
   },
   countBadgeText: {
+    color: oledTheme.colors.primary,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  emptyContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+    gap: 12,
+  },
+  emptyIconCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(229, 9, 20, 0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  emptyTitle: {
     color: '#FFFFFF',
-    fontSize: 11,
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  emptySubtitle: {
+    color: oledTheme.colors.textMuted,
+    fontSize: 13,
+    textAlign: 'center',
+    lineHeight: 18,
+    maxWidth: 280,
+  },
+  exploreBtn: {
+    backgroundColor: oledTheme.colors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: oledTheme.radius.full,
+    marginTop: 12,
+    minHeight: oledTheme.spacing.minTouchTarget,
+  },
+  exploreBtnText: {
+    color: '#FFFFFF',
+    fontSize: 14,
     fontWeight: '700',
   },
   listWrapper: {
@@ -155,50 +203,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 16,
     paddingBottom: 24,
-  },
-  emptyContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 32,
-    gap: 12,
-  },
-  emptyIconCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: 'rgba(229, 9, 20, 0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 8,
-  },
-  emptyTitle: {
-    color: oledTheme.colors.text,
-    fontSize: 18,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-  emptySubtitle: {
-    color: oledTheme.colors.textMuted,
-    fontSize: 13,
-    textAlign: 'center',
-    lineHeight: 19,
-    maxWidth: 280,
-  },
-  exploreBtn: {
-    marginTop: 12,
-    backgroundColor: oledTheme.colors.primary,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: oledTheme.radius.full,
-    minHeight: 44,
-  },
-  exploreBtnText: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-    fontSize: 14,
   },
 });

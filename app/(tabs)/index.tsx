@@ -6,10 +6,10 @@ import {
   ScrollView,
   RefreshControl,
   Pressable,
-  Image,
-  Dimensions,
+  useWindowDimensions,
   ActivityIndicator,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -21,7 +21,6 @@ import { oledTheme } from '@/theme';
 import { AnimeCard } from '@/components/AnimeCard';
 import type { AnimeItem, ContinueWatchingItem } from '@/types';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const HERO_HEIGHT = 280;
 
 export default function HomeScreen() {
@@ -129,7 +128,8 @@ export default function HomeScreen() {
                 <Image
                   source={{ uri: heroItem.image || heroItem.thumbnail }}
                   style={styles.heroImage}
-                  resizeMode="cover"
+                  contentFit="cover"
+                  transition={300}
                 />
                 <View style={styles.heroOverlay} />
 
@@ -178,7 +178,8 @@ export default function HomeScreen() {
                           <Image
                             source={{ uri: item.thumbnail }}
                             style={styles.continueThumb}
-                            resizeMode="cover"
+                            contentFit="cover"
+                            transition={200}
                           />
                         ) : (
                           <View style={[styles.continueThumb, styles.continueFallback]}>
@@ -388,7 +389,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   heroContainer: {
-    width: SCREEN_WIDTH,
+    width: '100%',
     height: HERO_HEIGHT,
     position: 'relative',
     backgroundColor: '#0D0D0D',

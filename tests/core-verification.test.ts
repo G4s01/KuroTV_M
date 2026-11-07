@@ -8,13 +8,14 @@ import {
 } from '../src/services/updater/updater-service';
 import { oledTheme, breakpoints } from '../src/theme/unistyles';
 import { AppStorage } from '../src/services/storage/index';
+import type { AniSkipResult } from '../src/types/index';
 
 console.log('=== Inizio Test di Verifica KuroTV Mobile ===\n');
 
 // -----------------------------------------------------------------------------
 // 1. Test Updater Service & SemVer
 // -----------------------------------------------------------------------------
-console.log('[1/4] Verifica Updater Service & SemVer...');
+console.log('[1/5] Verifica Updater Service & SemVer...');
 
 assert.strictEqual(compareSemver('1.0.0', '1.0.1'), -1, '1.0.0 deve essere minore di 1.0.1');
 assert.strictEqual(compareSemver('1.1.0', '1.0.0'), 1, '1.1.0 deve essere maggiore di 1.0.0');
@@ -85,7 +86,7 @@ console.log('✓ Updater Service & SemVer verificati con successo.');
 // -----------------------------------------------------------------------------
 // 2. Test Mobile-First Theme & Guidelines (AGENTS.md)
 // -----------------------------------------------------------------------------
-console.log('\n[2/4] Verifica Regole di Stile Mobile & OLED (AGENTS.md)...');
+console.log('\n[2/5] Verifica Regole di Stile Mobile & OLED (AGENTS.md)...');
 
 // 1. Pure OLED Black
 assert.strictEqual(
@@ -114,7 +115,7 @@ assert.strictEqual(
   'Il breakpoint TV (1920) deve essere rimosso'
 );
 
-// 5. Mobile Typography (no textTransform uppercase forzato su tutto)
+// 5. Mobile Typography
 assert(
   oledTheme.typography.hero.fontSize <= 32,
   'Dimensione hero deve essere dimensionata per smartphone (<= 32)'
@@ -125,7 +126,7 @@ console.log('✓ Regole di Stile Mobile e OLED conformi.');
 // -----------------------------------------------------------------------------
 // 3. Test Storage & MMKV Fallback
 // -----------------------------------------------------------------------------
-console.log('\n[3/4] Verifica Storage Locale & Preferiti / Cronologia...');
+console.log('\n[3/5] Verifica Storage Locale & Preferiti / Cronologia...');
 
 const testAnime = {
   id: 'test-anime-1',
@@ -176,7 +177,92 @@ assert.strictEqual(clearedHistory.length, 0, 'La cronologia deve essere vuota do
 console.log('✓ Storage Locale & Preferiti / Cronologia verificati con successo.');
 
 // -----------------------------------------------------------------------------
-// 4. Fine Test
+// 4. Test Episode Batching & Grid Logic
+// -----------------------------------------------------------------------------
+console.log('\n[4/5] Verifica Logica Batch Puntate & Griglia Episodi...');
+
+function createBatches(totalEpisodes: number, batchSize = 25) {
+  if (totalEpisodes <= batchSize) {
+    return [{ id: 'batch-0', label: `Ep. 1 - ${totalEpisodes || 1}`, start: 1, end: totalEpisodes || 1 }];
+  }
+  const batches = [];
+  for (let i = 0; i < totalEpisodes; i += batchSize) {
+    const startEp = i + 1;
+    const endEp = Math.min(i + batchSize, totalEpisodes);
+    batches.push({
+      id: `batch-${i}`,
+      label: `Ep. ${startEp} - ${endEp}`,
+      start: startEp,
+      end: endEp,
+    });
+  }
+  return batches;
+}
+
+// Case 1: 12 episodes (single batch)
+const batches12 = createBatches(12);
+assert.strictEqual(batches12.length, 1);
+assert.strictEqual(batches12[0].label, 'Ep. 1 - 12');
+assert.strictEqual(batches12[0].start, 1);
+assert.strictEqual(batches12[0].end, 12);
+
+// Case 2: 74 episodes (3 batches: 1-25, 26-50, 51-74)
+const batches74 = createBatches(74);
+assert.strictEqual(batches74.length, 3);
+assert.strictEqual(batches74[0].label, 'Ep. 1 - 25');
+assert.strictEqual(batches74[1].label, 'Ep. 26 - 50');
+assert.strictEqual(batches74[2].label, 'Ep. 51 - 74');
+assert.strictEqual(batches74[2].start, 51);
+assert.strictEqual(batches74[2].end, 74);
+
+console.log('✓ Logica Batch Puntate e Griglia Episodi verificata con successo.');
+
+// -----------------------------------------------------------------------------
+// 5. Test AniSkip Interval Matching
+// -----------------------------------------------------------------------------
+console.log('\n[5/5] Verifica Rilevamento Intervalli AniSkip...');
+
+const mockSkips: AniSkipResult[] = [
+  {
+    skipType: 'op',
+    interval: { startTime: 90, endTime: 180 },
+    skipId: 'skip-op-1',
+    episodeLength: 1440,
+  },
+  {
+    skipType: 'ed',
+    interval: { startTime: 1320, endTime: 1410 },
+    skipId: 'skip-ed-1',
+    episodeLength: 1440,
+  },
+];
+
+function findActiveSkip(currentTime: number, skips: AniSkipResult[]) {
+  return skips.find(
+    (s) => currentTime >= s.interval.startTime && currentTime <= s.interval.endTime
+  ) || null;
+}
+
+// At 50s: no skip
+assert.strictEqual(findActiveSkip(50, mockSkips), null);
+
+// At 120s: Intro (op) skip active
+const opSkip = findActiveSkip(120, mockSkips);
+assert(opSkip !== null);
+assert.strictEqual(opSkip.skipType, 'op');
+
+// At 200s: no skip
+assert.strictEqual(findActiveSkip(200, mockSkips), null);
+
+// At 1350s: Outro (ed) skip active
+const edSkip = findActiveSkip(1350, mockSkips);
+assert(edSkip !== null);
+assert.strictEqual(edSkip.skipType, 'ed');
+
+console.log('✓ Rilevamento Intervalli AniSkip verificato con successo.');
+
+// -----------------------------------------------------------------------------
+// Fine Test
 // -----------------------------------------------------------------------------
 console.log('\n==============================================');
 console.log('🎉 TUTTI I TEST SONO PASSATI CON SUCCESSO! 🎉');

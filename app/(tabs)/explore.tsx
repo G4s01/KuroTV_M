@@ -6,7 +6,7 @@ import {
   TextInput,
   Pressable,
   ActivityIndicator,
-  Dimensions,
+  useWindowDimensions,
   ScrollView,
 } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -21,13 +21,13 @@ import { AnimeCard } from '@/components/AnimeCard';
 import { FilterBottomSheet, type FilterState } from '@/components/FilterBottomSheet';
 import type { AnimeItem, SearchFilter } from '@/types';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const CARD_WIDTH = (SCREEN_WIDTH - 48) / 2;
-const CARD_HEIGHT = CARD_WIDTH * 1.45;
-
 export default function ExploreScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
+
+  const cardWidth = (windowWidth - 48) / 2;
+  const cardHeight = cardWidth * 1.45;
 
   const [searchQuery, setSearchQuery] = React.useState('');
   const [debouncedQuery, setDebouncedQuery] = React.useState('');
@@ -193,8 +193,8 @@ export default function ExploreScreen() {
             renderItem={({ item }) => (
               <AnimeCard
                 anime={item}
-                width={CARD_WIDTH}
-                height={CARD_HEIGHT}
+                width={cardWidth}
+                height={cardHeight}
                 onPress={() => navigateToAnime(item.id, item.title)}
               />
             )}
@@ -299,23 +299,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: oledTheme.colors.primary,
-    paddingHorizontal: 10,
+    backgroundColor: '#262626',
+    paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: oledTheme.radius.full,
+    borderWidth: 1,
+    borderColor: '#3A3A3A',
   },
   activeChipText: {
     color: '#FFFFFF',
     fontSize: 12,
     fontWeight: '600',
-  },
-  listWrapper: {
-    flex: 1,
-  },
-  listContent: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 24,
   },
   centerContainer: {
     flex: 1,
@@ -331,24 +325,24 @@ const styles = StyleSheet.create({
   errorText: {
     color: oledTheme.colors.error,
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   retryBtn: {
-    marginTop: 8,
     backgroundColor: oledTheme.colors.primary,
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: oledTheme.radius.full,
+    marginTop: 8,
     minHeight: 44,
     justifyContent: 'center',
   },
   retryBtnText: {
     color: '#FFFFFF',
     fontWeight: '700',
-    fontSize: 14,
+    fontSize: 13,
   },
   emptyTitle: {
-    color: oledTheme.colors.text,
+    color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '700',
   },
@@ -356,5 +350,14 @@ const styles = StyleSheet.create({
     color: oledTheme.colors.textMuted,
     fontSize: 13,
     textAlign: 'center',
+    marginTop: 4,
+  },
+  listWrapper: {
+    flex: 1,
+  },
+  listContent: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 24,
   },
 });

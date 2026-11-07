@@ -268,9 +268,8 @@ KEY_PASSWORD=${KEYSTORE_KEY_PASS}
 CERT_SHA256_FINGERPRINT=${KEYSTORE_SHA256}
 
 # Istruzioni di compilazione locale:
-# 1. Copia kurotv-release.keystore in: credentials/kurotv-release.keystore
-# 2. Copia kurotv-release.keystore in: android/app/release.keystore
-# 3. Le password corrispondono a quelle caricate in plugins/withTVOrientation.js
+# 1. Copia kurotv-mobile-release.keystore in: credentials/kurotv-mobile-release.keystore
+# 2. Copia in: android/app/release.keystore
 # ==============================================================================
 EOF
 

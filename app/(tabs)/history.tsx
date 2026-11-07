@@ -4,10 +4,10 @@ import {
   Text,
   View,
   Pressable,
-  Image,
   Alert,
   RefreshControl,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FlashList } from '@shopify/flash-list';
@@ -139,7 +139,8 @@ export default function HistoryScreen() {
                       <Image
                         source={{ uri: item.thumbnail }}
                         style={styles.poster}
-                        resizeMode="cover"
+                        contentFit="cover"
+                        transition={200}
                       />
                     ) : (
                       <View style={[styles.poster, styles.posterFallback]}>
@@ -198,11 +199,11 @@ const styles = StyleSheet.create({
   },
   appBar: {
     minHeight: 48,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#141414',
   },
@@ -215,54 +216,91 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 20,
     fontWeight: '800',
+    letterSpacing: -0.5,
   },
   countBadge: {
-    backgroundColor: '#262626',
+    backgroundColor: '#1E1E1E',
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: oledTheme.radius.full,
+    borderWidth: 1,
+    borderColor: '#333333',
   },
   countBadgeText: {
-    color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: '700',
+    color: oledTheme.colors.primary,
+    fontSize: 12,
+    fontWeight: '800',
   },
   clearBtn: {
-    width: 44,
-    height: 44,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#1C1C1C',
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#333333',
+  },
+  emptyContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+    gap: 12,
+  },
+  emptyIconCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#171717',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  emptyTitle: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  emptySubtitle: {
+    color: oledTheme.colors.textMuted,
+    fontSize: 13,
+    textAlign: 'center',
+    lineHeight: 18,
+    maxWidth: 280,
   },
   listWrapper: {
     flex: 1,
   },
   listContent: {
     paddingHorizontal: 16,
-    paddingTop: 12,
+    paddingTop: 16,
     paddingBottom: 24,
   },
   historyItem: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: oledTheme.colors.surface,
-    padding: 10,
+    padding: 12,
     borderRadius: oledTheme.radius.md,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: oledTheme.colors.border,
-    minHeight: 64,
+    borderColor: '#262626',
+    minHeight: oledTheme.spacing.minTouchTarget,
   },
   itemPressed: {
-    opacity: 0.8,
+    opacity: 0.85,
+    backgroundColor: '#1F1F1F',
   },
   posterWrapper: {
-    width: 90,
-    height: 56,
+    width: 60,
+    height: 60,
     borderRadius: oledTheme.radius.sm,
     overflow: 'hidden',
-    backgroundColor: '#111',
     position: 'relative',
-    marginRight: 12,
+    backgroundColor: '#1E1E1E',
+    borderWidth: 1,
+    borderColor: '#333333',
   },
   poster: {
     width: '100%',
@@ -278,7 +316,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 3,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    backgroundColor: 'rgba(0,0,0,0.5)',
   },
   itemProgressBar: {
     height: '100%',
@@ -289,11 +327,13 @@ const styles = StyleSheet.create({
   },
   info: {
     flex: 1,
+    marginLeft: 12,
+    marginRight: 8,
   },
   animeTitle: {
-    color: oledTheme.colors.text,
+    color: '#FFFFFF',
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   episodeText: {
     color: oledTheme.colors.textSecondary,
@@ -303,44 +343,14 @@ const styles = StyleSheet.create({
   dateText: {
     color: oledTheme.colors.textMuted,
     fontSize: 11,
-    marginTop: 2,
+    marginTop: 4,
   },
   playBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: oledTheme.colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 8,
-  },
-  emptyContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 32,
-    gap: 12,
-  },
-  emptyIconCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#141414',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 8,
-  },
-  emptyTitle: {
-    color: oledTheme.colors.text,
-    fontSize: 18,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-  emptySubtitle: {
-    color: oledTheme.colors.textMuted,
-    fontSize: 13,
-    textAlign: 'center',
-    lineHeight: 19,
-    maxWidth: 280,
   },
 });

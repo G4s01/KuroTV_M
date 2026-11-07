@@ -1,5 +1,6 @@
 import React from 'react';
-import { StyleSheet, Text, View, Pressable, Image } from 'react-native';
+import { StyleSheet, Text, View, Pressable } from 'react-native';
+import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import type { AnimeItem } from '@/types';
@@ -45,7 +46,8 @@ export const AnimeCard: React.FC<AnimeCardProps> = ({
           <Image
             source={{ uri: imageUrl }}
             style={styles.poster}
-            resizeMode="cover"
+            contentFit="cover"
+            transition={250}
           />
         ) : (
           <View style={[styles.poster, styles.fallbackPoster]}>
@@ -100,14 +102,14 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   fallbackPoster: {
-    justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: oledTheme.colors.card,
+    justifyContent: 'center',
+    backgroundColor: '#1E1E1E',
   },
   badge: {
     position: 'absolute',
-    top: 8,
-    left: 8,
+    top: 6,
+    left: 6,
     backgroundColor: oledTheme.colors.primary,
     paddingHorizontal: 6,
     paddingVertical: 2,
@@ -116,20 +118,20 @@ const styles = StyleSheet.create({
   badgeText: {
     color: '#FFFFFF',
     fontSize: 10,
-    fontWeight: '700',
+    fontWeight: '800',
     textTransform: 'uppercase',
   },
   ratingBadge: {
     position: 'absolute',
-    top: 8,
-    right: 8,
-    backgroundColor: 'rgba(0,0,0,0.75)',
-    paddingHorizontal: 5,
-    paddingVertical: 2,
-    borderRadius: oledTheme.radius.xs,
+    bottom: 6,
+    right: 6,
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: oledTheme.radius.xs,
   },
   ratingText: {
     color: '#FFFFFF',
@@ -137,10 +139,10 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   title: {
-    marginTop: 6,
+    color: oledTheme.colors.text,
     fontSize: 13,
     fontWeight: '600',
-    color: oledTheme.colors.text,
-    lineHeight: 17,
+    marginTop: 6,
+    lineHeight: 18,
   },
 });

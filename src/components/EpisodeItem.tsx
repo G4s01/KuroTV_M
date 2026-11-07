@@ -9,6 +9,7 @@ interface EpisodeItemProps {
   episode: Episode;
   isCurrent?: boolean;
   progressPercent?: number;
+  variant?: 'list' | 'grid';
   onPress: () => void;
 }
 
@@ -16,6 +17,7 @@ export const EpisodeItem: React.FC<EpisodeItemProps> = ({
   episode,
   isCurrent = false,
   progressPercent = 0,
+  variant = 'list',
   onPress,
 }) => {
   const handlePress = () => {
@@ -24,6 +26,45 @@ export const EpisodeItem: React.FC<EpisodeItemProps> = ({
   };
 
   const isCompleted = progressPercent >= 90;
+
+  if (variant === 'grid') {
+    return (
+      <Pressable
+        style={({ pressed }) => [
+          styles.gridContainer,
+          isCurrent && styles.activeGridContainer,
+          pressed && styles.pressed,
+        ]}
+        onPress={handlePress}
+        hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+        accessibilityRole="button"
+        accessibilityLabel={`Episodio ${episode.number}`}
+      >
+        <View style={styles.gridContent}>
+          {isCurrent ? (
+            <Ionicons name="play" size={16} color="#FFFFFF" />
+          ) : isCompleted ? (
+            <Ionicons name="checkmark" size={16} color={oledTheme.colors.success} />
+          ) : (
+            <Text style={[styles.gridNumber, isCurrent && styles.activeGridNumber]}>
+              {episode.number}
+            </Text>
+          )}
+        </View>
+
+        {progressPercent > 0 && !isCompleted && (
+          <View style={styles.gridProgressTrack}>
+            <View
+              style={[
+                styles.gridProgressBar,
+                { width: `${Math.min(100, progressPercent)}%` },
+              ]}
+            />
+          </View>
+        )}
+      </Pressable>
+    );
+  }
 
   return (
     <Pressable
@@ -64,7 +105,7 @@ export const EpisodeItem: React.FC<EpisodeItemProps> = ({
       </View>
 
       <Ionicons
-        name={isCurrent ? "pause-circle-outline" : "play-circle-outline"}
+        name={isCurrent ? 'pause-circle-outline' : 'play-circle-outline'}
         size={24}
         color={isCurrent ? oledTheme.colors.primary : oledTheme.colors.textMuted}
       />
@@ -85,6 +126,7 @@ export const EpisodeItem: React.FC<EpisodeItemProps> = ({
 };
 
 const styles = StyleSheet.create({
+  // List styles
   container: {
     minHeight: oledTheme.spacing.minTouchTarget,
     flexDirection: 'row',
@@ -98,14 +140,15 @@ const styles = StyleSheet.create({
     position: 'relative',
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: oledTheme.colors.border,
+    borderColor: '#262626',
   },
   activeContainer: {
     borderColor: oledTheme.colors.primary,
-    backgroundColor: '#1C0D0E',
+    backgroundColor: '#1E1415',
   },
   pressed: {
     opacity: 0.8,
+    transform: [{ scale: 0.98 }],
   },
   left: {
     flexDirection: 'row',
@@ -116,8 +159,8 @@ const styles = StyleSheet.create({
   numberBadge: {
     width: 32,
     height: 32,
-    borderRadius: oledTheme.radius.sm,
-    backgroundColor: oledTheme.colors.surfaceSubtle,
+    borderRadius: 16,
+    backgroundColor: '#262626',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -126,21 +169,20 @@ const styles = StyleSheet.create({
     backgroundColor: oledTheme.colors.primary,
   },
   numberText: {
-    color: oledTheme.colors.text,
-    fontSize: 13,
+    color: '#FFFFFF',
+    fontSize: 12,
     fontWeight: '700',
   },
   info: {
     flex: 1,
   },
   title: {
-    color: oledTheme.colors.text,
+    color: '#FFFFFF',
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: '600',
   },
   activeText: {
     color: oledTheme.colors.primary,
-    fontWeight: '700',
   },
   progressText: {
     color: oledTheme.colors.textMuted,
@@ -153,7 +195,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 3,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
   },
   progressBar: {
     height: '100%',
@@ -161,5 +203,49 @@ const styles = StyleSheet.create({
   },
   completedBar: {
     backgroundColor: oledTheme.colors.success,
+  },
+
+  // Grid styles
+  gridContainer: {
+    flex: 1,
+    minHeight: oledTheme.spacing.minTouchTarget,
+    height: 52,
+    margin: 4,
+    backgroundColor: oledTheme.colors.surface,
+    borderRadius: oledTheme.radius.md,
+    borderWidth: 1,
+    borderColor: '#262626',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  activeGridContainer: {
+    borderColor: oledTheme.colors.primary,
+    backgroundColor: oledTheme.colors.primary,
+  },
+  gridContent: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  gridNumber: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  activeGridNumber: {
+    color: '#FFFFFF',
+  },
+  gridProgressTrack: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 3,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+  },
+  gridProgressBar: {
+    height: '100%',
+    backgroundColor: oledTheme.colors.primary,
   },
 });
