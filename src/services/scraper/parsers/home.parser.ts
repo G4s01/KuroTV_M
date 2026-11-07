@@ -1,4 +1,4 @@
-import * as cheerio from "cheerio";
+import * as cheerio from "cheerio/slim";
 import type { AnimeHomePage, AnimeItem } from "@/types";
 import {
   extractBackgroundUrl,
