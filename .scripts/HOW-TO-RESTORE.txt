@@ -1,0 +1,150 @@
+================================================================================
+KUROTV - CLOUDFLARE R2 SECURE BACKUP & RESTORE GUIDE
+================================================================================
+Data Documento: 30 Ottobre 2026
+Applicazione: KuroTV (Client Android TV Leanback)
+Storage: Cloudflare R2 (Bucket privato)
+Cartella Remota: secure-backups/
+
+Questo file di testo e' conservato IN CHIARO sullo storage R2 come prontuario
+e guida di riferimento rapido per il ripristino delle credenziali, della chiave
+di firma permanente, delle password e della configurazione dell'applicazione.
+
+PRINCIPI DI SICUREZZA & ZERO-KNOWLEDGE:
+1. Questo file NON contiene password, chiavi private o token segreti.
+2. Tutti i file sensibili presenti in secure-backups/ (.enc) sono cifrati
+   lato client con standard AES-256-CBC (OpenSSL PBKDF2, 100.000 iterazioni)
+   protetti dalla tua Passphrase Master.
+3. Il Cloudflare Worker "kuro-tv" implementa una Positive Whitelist Regex
+   (/^[a-zA-Z0-9][a-zA-Z0-9_\-\.]*\.apk$/) e blocca qualsiasi richiesta
+   pubblica a file non-APK (incluso questo .txt e tutti i .enc) restituendo
+   tassativamente HTTP 403 Forbidden.
+   L'accesso a questa cartella e' riservato unicamente al titolare del bucket
+   tramite credenziali autorizzate (Wrangler CLI, AWS CLI S3 API o Dashboard).
+
+================================================================================
+1. MAPPA DEI FILE DI BACKUP DISPONIBILI SU R2 (secure-backups/)
+================================================================================
+- secure-backups/HOW-TO-RESTORE.txt
+    Questa guida di ripristino in formato testo semplice.
+
+- secure-backups/kurotv-release.keystore.enc
+    Copia cifrata (AES-256) della chiave di firma permanente per l'APK Android TV.
+    Fingerprint SHA-256: 61:FD:6C:6B:9F:54:1C:BE:7E:B6:17:57:0E:3F:7C:87:AB:72:37:0E:80:AC:40:1A:5C:CD:BB:02:0A:9A:A4:5A
+    Alias chiave:        kurotv
+
+- secure-backups/signing-credentials.txt.enc
+    Copia cifrata delle credenziali di firma (Store Password, Key Password, Alias).
+
+- secure-backups/.env.enc
+    Copia cifrata dei file di ambiente (.env e .env.local).
+
+- secure-backups/kurotv-secrets-backup-latest.tar.gz.enc
+    Archivio bundle completo cifrato contenente tutti i componenti sopra elencati.
+    Ad ogni nuovo backup, questo archivio e i singoli file vengono sovrascritti
+    in-place per azzerare lo spreco di storage e mantenere sempre e solo l'ultima versione.
+
+================================================================================
+2. COMANDI DI DOWNLOAD DA CLOUDFLARE R2
+================================================================================
+I file possono essere scaricati tramite Wrangler CLI, AWS CLI con S3 endpoint
+oppure tramite la dashboard web di Cloudflare (sezione R2).
+
+Opzione A - Con Cloudflare Wrangler (consigliata nel workspace KuroTV):
+----------------------------------------------------------------------
+# 1. Scaricare la guida in chiaro:
+npm --prefix workers/kuro-tv exec -- wrangler r2 object get "<BUCKET>/secure-backups/HOW-TO-RESTORE.txt" --file=HOW-TO-RESTORE.txt --remote
+
+# 2. Scaricare il bundle completo cifrato:
+npm --prefix workers/kuro-tv exec -- wrangler r2 object get "<BUCKET>/secure-backups/kurotv-secrets-backup-latest.tar.gz.enc" --file=kurotv-backup.tar.gz.enc --remote
+
+# 3. Scaricare la sola chiave di firma cifrata:
+npm --prefix workers/kuro-tv exec -- wrangler r2 object get "<BUCKET>/secure-backups/kurotv-release.keystore.enc" --file=kurotv-release.keystore.enc --remote
+
+# 4. Scaricare le sole credenziali/password di firma cifrate:
+npm --prefix workers/kuro-tv exec -- wrangler r2 object get "<BUCKET>/secure-backups/signing-credentials.txt.enc" --file=signing-credentials.txt.enc --remote
+
+# 5. Scaricare il file di configurazione .env cifrato:
+npm --prefix workers/kuro-tv exec -- wrangler r2 object get "<BUCKET>/secure-backups/.env.enc" --file=env.enc --remote
+
+Nota: Sostituire <BUCKET> con il nome del bucket (es. kuro-tv o kurotv-backups).
+
+Opzione B - Con AWS CLI / S3 API:
+---------------------------------
+# Configurare le variabili d'ambiente (da .env.local):
+export AWS_ACCESS_KEY_ID="<R2_ACCESS_KEY_ID>"
+export AWS_SECRET_ACCESS_KEY="<R2_SECRET_ACCESS_KEY>"
+export R2_ENDPOINT="https://<ACCOUNT_ID>.r2.cloudflarestorage.com"
+
+# Scaricare il bundle:
+aws s3 cp "s3://<BUCKET>/secure-backups/kurotv-secrets-backup-latest.tar.gz.enc" ./kurotv-backup.tar.gz.enc --endpoint-url "$R2_ENDPOINT"
+
+# Scaricare il singolo keystore:
+aws s3 cp "s3://<BUCKET>/secure-backups/kurotv-release.keystore.enc" ./kurotv-release.keystore.enc --endpoint-url "$R2_ENDPOINT"
+
+# Scaricare la password di firma:
+aws s3 cp "s3://<BUCKET>/secure-backups/signing-credentials.txt.enc" ./signing-credentials.txt.enc --endpoint-url "$R2_ENDPOINT"
+
+================================================================================
+3. COMANDI DI DECRITTAZIONE E RIPRISTINO (AES-256-CBC)
+================================================================================
+Quando viene richiesta la passphrase, digitare la Passphrase Master impostata
+al momento della creazione del backup.
+
+A) Ripristino Completo dell'Intero Progetto (Bundle):
+----------------------------------------------------
+openssl enc -d -aes-256-cbc -pbkdf2 -iter 100000 -in kurotv-backup.tar.gz.enc | tar -xz
+
+Questo comando estrae automaticamente la directory `kurotv-backup/` contenente:
+  kurotv-backup/credentials/kurotv-release.keystore
+  kurotv-backup/signing-credentials.txt
+  kurotv-backup/.env.local (o .env)
+  kurotv-backup/README.md
+
+B) Ripristino della Sola Chiave di Firma (Keystore):
+----------------------------------------------------
+openssl enc -d -aes-256-cbc -pbkdf2 -iter 100000 \
+  -in kurotv-release.keystore.enc \
+  -out credentials/kurotv-release.keystore
+
+# Per la compilazione locale con Gradle, sincronizzare anche in:
+cp credentials/kurotv-release.keystore android/app/release.keystore
+
+C) Visualizzazione Rapida a Terminale delle Password di Firma:
+--------------------------------------------------------------
+openssl enc -d -aes-256-cbc -pbkdf2 -iter 100000 -in signing-credentials.txt.enc
+
+D) Ripristino del File di Configurazione (.env):
+------------------------------------------------
+openssl enc -d -aes-256-cbc -pbkdf2 -iter 100000 -in env.enc -out .env.local
+
+================================================================================
+4. COME ESEGUIRE UN NUOVO BACKUP
+================================================================================
+Dal repository principale di KuroTV, e' sufficiente eseguire:
+  ./scripts/backup-secrets-r2.sh
+
+Opzioni disponibili:
+  ./scripts/backup-secrets-r2.sh --dry-run
+      Esegue la verifica e la cifratura locale senza trasmettere dati a R2.
+
+  ./scripts/backup-secrets-r2.sh --passphrase "TuaPassphraseSicura"
+      Fornisce la passphrase direttamente senza prompt interattivo.
+
+  ./scripts/backup-secrets-r2.sh --bucket "nome-bucket-personalizzato"
+      Esegue il backup su un bucket R2 differente.
+
+Inoltre, lo script di compilazione e rilascio:
+  ./scripts/build-release.sh
+include al termine della compilazione la domanda guidata per eseguire il backup.
+
+================================================================================
+5. VERIFICA INTEGRITÀ DELLA CHIAVE DI FIRMA (KEYTOOL)
+================================================================================
+Per verificare che il keystore ripristinato sia integro e corrisponda all'alias:
+  keytool -list -v -keystore credentials/kurotv-release.keystore -alias kurotv
+
+Impronta SHA-256 attesa:
+  61:FD:6C:6B:9F:54:1C:BE:7E:B6:17:57:0E:3F:7C:87:AB:72:37:0E:80:AC:40:1A:5C:CD:BB:02:0A:9A:A4:5A
+================================================================================
+

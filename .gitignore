@@ -1,0 +1,83 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Native & Credentials (MAI committare)
+credentials/
+secure-backups/
+*.enc
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.pfx
+*.key
+*.mobileprovision
+*.keystore
+*.crt
+*.der
+google-services.json
+GoogleService-Info.plist
+
+# Android
+android/
+.gradle/
+.kotlin/
+build/
+local.properties
+*.apk
+*.aab
+
+# iOS
+ios/
+Pods/
+*.xcworkspace
+*.xcuserdatad
+
+# Metro & Bundler
+.metro-health-check*
+
+# Logs
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+*.pem
+
+# Environment files
+.env
+.env.*
+.env*.local
+!.env.example
+
+# Cloudflare Workers & Wrangler
+.wrangler/
+wrangler.log
+.dev.vars
+.dev.vars.*
+
+# TypeScript
+*.tsbuildinfo
+
+# Test & Coverage
+coverage/
+*.lcov
+.nyc_output/
+
+# IDEs
+.idea/
+*.iml
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
