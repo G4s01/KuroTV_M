@@ -1,7 +1,7 @@
 # Old TV Reference Folders & Legacy Symlinks
 .src/
+.scripts
 .scripts/
-scripts
 
 # Dependencies
 node_modules/

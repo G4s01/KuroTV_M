@@ -8,7 +8,8 @@
     "build:android": "expo run:android --variant release",
     "test": "tsc --noEmit && node --experimental-strip-types --loader ./tests/test-loader.mjs tests/core-verification.test.ts",
     "typecheck": "tsc --noEmit",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "release": "./scripts/build-release.sh"
   },
   "dependencies": {
     "@expo/ui": "~58.0.27",
