@@ -87,7 +87,8 @@ export default function TabLayout() {
     return unsubscribe;
   }, []);
 
-  const androidBottomInset = Math.max(0, insets.bottom);
+  // Shift the app router higher up to guarantee generous clearance above fixed Android system navigation buttons
+  const androidBottomInset = Math.max(16, insets.bottom + 8);
   const iosBottomInset = Math.max(20, insets.bottom);
 
   return (

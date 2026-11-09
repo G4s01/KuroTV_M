@@ -176,7 +176,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   searchDebounceMs: 800,
   searchMinChars: 3,
   aniSkipSettings: DEFAULT_ANISKIP_SETTINGS,
-  navBarMode: 'auto-hide',
+  navBarMode: 'visible',
 };
 
 export interface WatchProgressItem {
@@ -633,7 +633,7 @@ export const AppStorage = {
   // System Navigation Bar Settings
   // ----------------------------------------------------
   getNavBarMode: (): NavBarMode => {
-    return AppStorage.getSettings().navBarMode ?? 'auto-hide';
+    return AppStorage.getSettings().navBarMode ?? 'visible';
   },
 
   setNavBarMode: (mode: NavBarMode): void => {

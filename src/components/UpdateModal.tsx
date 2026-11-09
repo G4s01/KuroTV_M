@@ -34,7 +34,10 @@ export const UpdateModal: React.FC = React.memo(() => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     UpdateStore.setAutoDownloadRequested(true);
     UpdateStore.dismissModal();
-    router.push('/(tabs)/settings');
+    router.push({
+      pathname: '/(tabs)/settings',
+      params: { scrollTo: 'update' },
+    });
   };
 
   return (

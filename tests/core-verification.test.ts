@@ -1425,6 +1425,85 @@ assert(settingsSource.includes('SEMPRE VISIBILE'), 'SettingsScreen deve contener
 console.log('✓ System Navigation Bar Compatibility & Auto-Hide Mode verificati con successo.');
 
 // -----------------------------------------------------------------------------
+// [11/11] Verifica Gestures Verticali, PiP No-Pause, Sheets Dimensioni & Update Scroll
+// -----------------------------------------------------------------------------
+console.log('\n[11/11] Verifica Gestures Verticali, PiP No-Pause, Sheets Dimensioni & Update Scroll...');
+
+// 1. Video Player Vertical Gestures & Sensitivity
+const updatedPlayerSource = fs.readFileSync(path.resolve(process.cwd(), 'app/player/[id].tsx'), 'utf-8');
+assert(updatedPlayerSource.includes('activeOffsetY'), 'Player deve configurare activeOffsetY per soglia di attivazione verticale');
+assert(updatedPlayerSource.includes('failOffsetX'), 'Player deve configurare failOffsetX per annullare gesture orizzontali');
+assert(
+  updatedPlayerSource.includes('Math.abs(e.translationX) > Math.abs(e.translationY)'),
+  'Player deve ignorare movimenti prevalentemente orizzontali in onUpdate'
+);
+assert(
+  updatedPlayerSource.includes('startPanTranslationYRef'),
+  'Player deve tracciare startPanTranslationYRef per transizione continua senza scatti'
+);
+
+// 2. Video Player PiP Mode Fullscreen Restore (No Pause)
+assert(
+  updatedPlayerSource.includes('wasPlayingInPiPRef'),
+  'Player deve tracciare wasPlayingInPiPRef per preservare lo stato di riproduzione in uscita PiP'
+);
+assert(
+  updatedPlayerSource.includes('pipStopTimerRef'),
+  'Player deve differire il controllo di chiusura PiP con pipStopTimerRef per non fermare il video al rientro a schermo intero'
+);
+assert(
+  updatedPlayerSource.includes('wasPlayingInPiPRef.current') && updatedPlayerSource.includes('player.play()'),
+  'Player deve ripristinare il play quando si rientra a schermo intero da PiP'
+);
+assert(
+  updatedPlayerSource.includes('wasPlayingInPiPRef.current || player.playing'),
+  'Player deve proteggere wasPlayingInPiPRef da azzeramenti accidentali durante la transizione nativa PiP'
+);
+
+// 3. Sheets Dimensions & Responsive Cut-off Fixes
+const updatedServerSheet = fs.readFileSync(path.resolve(process.cwd(), 'src/components/ServerBottomSheet.tsx'), 'utf-8');
+assert(updatedServerSheet.includes('numberOfLines={1}'), 'ServerBottomSheet header deve avere numberOfLines={1}');
+assert(updatedServerSheet.includes('isLandscape ? 8 : 4'), 'ServerBottomSheet speedRow deve avere gap adattivo 4/8');
+
+const updatedInfoSheet = fs.readFileSync(path.resolve(process.cwd(), 'src/components/player/PlayerInfoSheet.tsx'), 'utf-8');
+assert(updatedInfoSheet.includes('isLandscape ? 84 : 76'), 'PlayerInfoSheet deve adattare la locandina in verticale a 76dp');
+assert(updatedInfoSheet.includes('numberOfLines={1}'), 'PlayerInfoSheet header deve avere numberOfLines={1}');
+
+const updatedCarousel = fs.readFileSync(path.resolve(process.cwd(), 'src/components/player/PlayerEpisodesCarouselSheet.tsx'), 'utf-8');
+assert(updatedCarousel.includes('isLandscape ? CARD_WIDTH : 152'), 'PlayerEpisodesCarouselSheet deve adattare cardWidth a 152 in verticale');
+assert(updatedCarousel.includes('numberOfLines={1}'), 'PlayerEpisodesCarouselSheet sheetTitle deve avere numberOfLines={1}');
+
+// 4. Elevated App Router Bottom Bar
+const updatedTabLayout = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/_layout.tsx'), 'utf-8');
+assert(
+  updatedTabLayout.includes('Math.max(16, insets.bottom + 8)'),
+  'TabLayout deve elevare androidBottomInset con cuscinetto protettivo per la navbar di sistema fissa'
+);
+
+// 5. Update Modal Navigation & Settings Scroll to Bottom
+const updatedUpdateModal = fs.readFileSync(path.resolve(process.cwd(), 'src/components/UpdateModal.tsx'), 'utf-8');
+assert(
+  updatedUpdateModal.includes("params: { scrollTo: 'update' }"),
+  'UpdateModal deve passare il parametro scrollTo: update per far scorrere la vista'
+);
+
+const updatedSettings = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/settings.tsx'), 'utf-8');
+assert(
+  updatedSettings.includes('scrollToUpdateSection'),
+  'SettingsScreen deve implementare scrollToUpdateSection'
+);
+assert(
+  updatedSettings.includes('scrollToEnd'),
+  'SettingsScreen deve invocare scrollToEnd per portare la visuale sul pulsante di installazione e progress bar'
+);
+assert(
+  updatedSettings.includes('onContentSizeChange'),
+  'SettingsScreen deve osservare onContentSizeChange per scorrere reattivamente all\'espansione della sezione'
+);
+
+console.log('✓ Gestures Verticali, PiP No-Pause, Sheets Dimensioni & Update Scroll verificati con successo.');
+
+// -----------------------------------------------------------------------------
 // Fine Test
 // -----------------------------------------------------------------------------
 console.log('\n==============================================');

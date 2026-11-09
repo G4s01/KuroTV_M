@@ -1,5 +1,5 @@
 import React from 'react';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import {
   StyleSheet,
   Text,
@@ -70,6 +70,9 @@ const THEMES = [
 const QUICK_DOMAINS = ['ac', 'so', 'tv'] as const;
 
 export default function SettingsScreen() {
+  const params = useLocalSearchParams<{ scrollTo?: string }>();
+  const scrollViewRef = React.useRef<React.ElementRef<typeof ScrollView>>(null);
+  const shouldScrollToUpdateRef = React.useRef(false);
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
   const primaryContrast = getContrastTextColor(theme.colors.primary);
@@ -308,10 +311,29 @@ export default function SettingsScreen() {
     }
   }, [updateResult]);
 
+  const scrollToUpdateSection = React.useCallback(() => {
+    shouldScrollToUpdateRef.current = true;
+    setTimeout(() => {
+      scrollViewRef.current?.scrollToEnd({ animated: true });
+    }, 100);
+    setTimeout(() => {
+      scrollViewRef.current?.scrollToEnd({ animated: true });
+    }, 300);
+    setTimeout(() => {
+      scrollViewRef.current?.scrollToEnd({ animated: true });
+    }, 600);
+    setTimeout(() => {
+      shouldScrollToUpdateRef.current = false;
+    }, 1500);
+  }, []);
+
   // Handle auto-download from startup modal or pending update synchronization
   useFocusEffect(
     React.useCallback(() => {
-      if (UpdateStore.isAutoDownloadRequested()) {
+      const isAuto = UpdateStore.isAutoDownloadRequested();
+      const shouldScroll = isAuto || params.scrollTo === 'update';
+
+      if (isAuto) {
         UpdateStore.setAutoDownloadRequested(false);
         const pending = UpdateStore.getPendingUpdate();
         if (pending && pending.isUpdateAvailable && pending.manifest) {
@@ -327,7 +349,11 @@ export default function SettingsScreen() {
           setUpdateStatus((prev) => (prev === 'idle' ? 'available' : prev));
         }
       }
-    }, [handleStartDownloadUpdate])
+
+      if (shouldScroll) {
+        scrollToUpdateSection();
+      }
+    }, [handleStartDownloadUpdate, params.scrollTo, scrollToUpdateSection])
   );
 
   const handleCheckUpdates = async () => {
@@ -379,9 +405,15 @@ export default function SettingsScreen() {
       </View>
 
       <ScrollView
+        ref={scrollViewRef}
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        onContentSizeChange={() => {
+          if (shouldScrollToUpdateRef.current) {
+            scrollViewRef.current?.scrollToEnd({ animated: true });
+          }
+        }}
       >
         {/* TEMA (con invertibilità chiaro/scuro al click) */}
         <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>

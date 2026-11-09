@@ -84,6 +84,8 @@ export default function VideoPlayerScreen() {
 
   // Picture-in-picture tracking ref
   const isInPiPRef = React.useRef(false);
+  const wasPlayingInPiPRef = React.useRef(false);
+  const pipStopTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Next episode & total episodes metadata refs
   const totalEpisodesRef = React.useRef<number | undefined>(
@@ -168,6 +170,7 @@ export default function VideoPlayerScreen() {
 
   const startVolumeRef = React.useRef(1.0);
   const startBrightnessRef = React.useRef(0.8);
+  const startPanTranslationYRef = React.useRef(0);
   const hudTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // AniSkip intervals
@@ -280,6 +283,9 @@ export default function VideoPlayerScreen() {
 
   useEventListener(player, 'playingChange', ({ isPlaying: playing }) => {
     setIsPlaying(playing);
+    if (isInPiPRef.current) {
+      wasPlayingInPiPRef.current = playing;
+    }
     if (!playing && animeId) {
       saveProgress(currentTimeRef.current, durationRef.current);
     }
@@ -345,13 +351,25 @@ export default function VideoPlayerScreen() {
           clearTimeout(backgroundTimer);
           backgroundTimer = null;
         }
+        if (pipStopTimerRef.current) {
+          clearTimeout(pipStopTimerRef.current);
+          pipStopTimerRef.current = null;
+        }
         player.showNowPlayingNotification = true;
+        // If returning from PiP and was playing, resume playback smoothly without pausing
+        if (wasPlayingInPiPRef.current) {
+          wasPlayingInPiPRef.current = false;
+          player.play();
+        }
       }
     });
 
     return () => {
       if (backgroundTimer) {
         clearTimeout(backgroundTimer);
+      }
+      if (pipStopTimerRef.current) {
+        clearTimeout(pipStopTimerRef.current);
       }
       sub.remove();
     };
@@ -788,15 +806,24 @@ export default function VideoPlayerScreen() {
   // Exclusive taps: doubleTap takes precedence over singleTap
   const tapGestures = Gesture.Exclusive(doubleTap, singleTap);
 
-  // Pan gesture for volume and brightness: DISABLED while OSD controls are visible
+  // Pan gesture for volume and brightness: vertical only, guarded against horizontal gestures and accidental activation
   const panGesture = Gesture.Pan()
     .enabled(!showControls)
-    .onStart(() => {
+    .activeOffsetY([-18, 18])
+    .failOffsetX([-14, 14])
+    .onStart((e) => {
+      startPanTranslationYRef.current = e.translationY;
       startVolumeRef.current = typeof player.volume === 'number' ? player.volume : 1.0;
       startBrightnessRef.current = screenBrightness === -1 ? 0.08 : screenBrightness;
     })
     .onUpdate((e) => {
-      const delta = -e.translationY / 220;
+      // Strictly ignore horizontal gestures: only adjust if vertical movement dominates
+      if (Math.abs(e.translationX) > Math.abs(e.translationY)) {
+        return;
+      }
+      const effectiveTranslationY = e.translationY - startPanTranslationYRef.current;
+      const travelRange = Math.max(260, windowHeight * 0.7);
+      const delta = -effectiveTranslationY / travelRange;
       if (e.x > windowWidth / 2) {
         // Volume adjustment (right side)
         const newVol = Math.max(0, Math.min(1, startVolumeRef.current + delta));
@@ -858,28 +885,54 @@ export default function VideoPlayerScreen() {
             }}
             onPictureInPictureStart={() => {
               isInPiPRef.current = true;
+              wasPlayingInPiPRef.current = player.playing;
               player.showNowPlayingNotification = true;
             }}
             onPictureInPictureStop={() => {
               isInPiPRef.current = false;
-              // If user pressed 'X' to close PiP, Android stops the window while app is in background.
-              // Immediately check and pause playback, plus schedule a fallback check.
-              if (AppState.currentState !== 'active') {
-                player.pause();
-                player.showNowPlayingNotification = false;
-                if (animeId && episodeId) {
-                  saveProgress(currentTimeRef.current, durationRef.current);
-                }
+              // Preserve playback status: if player was active in PiP, keep flag true so expanding
+              // to fullscreen will resume playback smoothly without pausing
+              wasPlayingInPiPRef.current = wasPlayingInPiPRef.current || player.playing;
+              // If user pressed 'X' to close PiP, Android stops the window while app remains in background.
+              // Wait for activity transition: only pause if app is STILL in background after 500ms.
+              // If user restored fullscreen with the Android button, the app becomes 'active' and playback continues without pausing.
+              if (pipStopTimerRef.current) {
+                clearTimeout(pipStopTimerRef.current);
               }
-              setTimeout(() => {
+              pipStopTimerRef.current = setTimeout(() => {
                 if (AppState.currentState !== 'active') {
+                  wasPlayingInPiPRef.current = false;
                   player.pause();
                   player.showNowPlayingNotification = false;
                   if (animeId && episodeId) {
                     saveProgress(currentTimeRef.current, durationRef.current);
                   }
                 }
-              }, 200);
+              }, 500);
+              // Immediate check and staggered fallbacks for returning to active fullscreen
+              if (AppState.currentState === 'active' && wasPlayingInPiPRef.current) {
+                wasPlayingInPiPRef.current = false;
+                if (!player.playing) {
+                  player.play();
+                }
+              } else {
+                setTimeout(() => {
+                  if (AppState.currentState === 'active' && wasPlayingInPiPRef.current) {
+                    wasPlayingInPiPRef.current = false;
+                    if (!player.playing) {
+                      player.play();
+                    }
+                  }
+                }, 150);
+                setTimeout(() => {
+                  if (AppState.currentState === 'active' && wasPlayingInPiPRef.current) {
+                    wasPlayingInPiPRef.current = false;
+                    if (!player.playing) {
+                      player.play();
+                    }
+                  }
+                }, 300);
+              }
             }}
           />
         ) : isLoadingSource ? (

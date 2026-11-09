@@ -85,7 +85,11 @@ export const ServerBottomSheet: React.FC<ServerBottomSheetProps> = ({
           <View style={styles.headerRow}>
             <View style={styles.headerTitleGroup}>
               <Ionicons name="options" size={18} color={theme.colors.primary} />
-              <Text style={[styles.headerTitle, { color: theme.colors.text }]}>
+              <Text
+                style={[styles.headerTitle, { color: theme.colors.text }]}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
                 OPZIONI DI RIPRODUZIONE
               </Text>
             </View>
@@ -116,7 +120,7 @@ export const ServerBottomSheet: React.FC<ServerBottomSheetProps> = ({
                   </Text>
                 </View>
 
-                <View style={styles.speedRow}>
+                <View style={[styles.speedRow, { gap: isLandscape ? 8 : 4 }]}>
                   {SPEED_OPTIONS.map((speed) => {
                     const isSelected = Math.abs(currentSpeed - speed) < 0.05;
                     const contrastColor = isSelected
@@ -213,6 +217,8 @@ export const ServerBottomSheet: React.FC<ServerBottomSheetProps> = ({
                                 { color: theme.colors.primary },
                               ],
                             ]}
+                            numberOfLines={1}
+                            ellipsizeMode="tail"
                           >
                             {server.name.toUpperCase()}
                           </Text>
@@ -275,16 +281,19 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   headerTitleGroup: {
+    flex: 1,
+    minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
   headerTitle: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '800',
     fontFamily: oledTheme.typography.title.fontFamily,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
+    flexShrink: 1,
   },
   closeBtn: {
     width: 32,
@@ -292,6 +301,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
   },
   section: {
     marginBottom: 10,
@@ -350,6 +360,8 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
   },
   serverInfo: {
+    flex: 1,
+    minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
@@ -358,6 +370,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     fontFamily: oledTheme.typography.body.fontFamily,
+    flexShrink: 1,
   },
   serverNameActive: {
     fontWeight: '900',

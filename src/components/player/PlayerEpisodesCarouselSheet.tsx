@@ -99,6 +99,8 @@ export const PlayerEpisodesCarouselSheet: React.FC<PlayerEpisodesCarouselSheetPr
     }
   }, [isVisible, episodes.length, handleScrollToActive]);
 
+  const cardWidth = isLandscape ? CARD_WIDTH : 152;
+
   const renderEpisodeCard = React.useCallback(
     ({ item }: { item: Episode }) => {
       if (!item) return null;
@@ -117,6 +119,7 @@ export const PlayerEpisodesCarouselSheet: React.FC<PlayerEpisodesCarouselSheetPr
           style={[
             styles.card,
             {
+              width: cardWidth,
               backgroundColor: theme.colors.surface,
               borderColor: isCurrent ? theme.colors.primary : theme.colors.border,
             },
@@ -273,7 +276,11 @@ export const PlayerEpisodesCarouselSheet: React.FC<PlayerEpisodesCarouselSheetPr
           >
             <View style={styles.headerTitleGroup}>
               <Ionicons name="list-outline" size={18} color={theme.colors.primary} />
-              <Text style={[styles.sheetTitle, { color: theme.colors.text }]}>
+              <Text
+                style={[styles.sheetTitle, { color: theme.colors.text }]}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
                 CAROSELLO EPISODI
               </Text>
             </View>
@@ -358,14 +365,17 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   headerTitleGroup: {
+    flex: 1,
+    minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
   headerRightActions: {
+    flexShrink: 0,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 8,
   },
   closeBtn: {
     width: 32,
@@ -373,16 +383,18 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
   },
   sheetTitle: {
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: '800',
     fontFamily: oledTheme.typography.title.fontFamily,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
+    flexShrink: 1,
   },
   sheetSubtitle: {
-    fontSize: 11,
+    fontSize: 10,
     fontFamily: oledTheme.typography.caption.fontFamily,
     textTransform: 'uppercase',
     fontWeight: '700',

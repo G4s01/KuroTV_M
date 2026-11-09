@@ -86,7 +86,11 @@ export const PlayerInfoSheet: React.FC<PlayerInfoSheetProps> = React.memo(({
           <View style={styles.headerRow}>
             <View style={styles.headerTitleGroup}>
               <Ionicons name="information-circle-outline" size={18} color={theme.colors.primary} />
-              <Text style={[styles.headerTitle, { color: theme.colors.text }]}>
+              <Text
+                style={[styles.headerTitle, { color: theme.colors.text }]}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
                 SCHEDA INFORMAZIONI
               </Text>
             </View>
@@ -108,18 +112,30 @@ export const PlayerInfoSheet: React.FC<PlayerInfoSheetProps> = React.memo(({
             nestedScrollEnabled={true}
             keyboardShouldPersistTaps="handled"
           >
-            <View style={styles.topRow}>
+            <View style={[styles.topRow, { gap: isLandscape ? 14 : 10 }]}>
               {animeImage ? (
                 <Image
                   source={{ uri: animeImage }}
-                  style={[styles.poster, { borderColor: theme.colors.border }]}
+                  style={[
+                    styles.poster,
+                    {
+                      width: isLandscape ? 84 : 76,
+                      height: isLandscape ? 120 : 108,
+                      borderColor: theme.colors.border,
+                    },
+                  ]}
                   contentFit="cover"
                 />
               ) : (
                 <View
                   style={[
                     styles.posterPlaceholder,
-                    { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+                    {
+                      width: isLandscape ? 84 : 76,
+                      height: isLandscape ? 120 : 108,
+                      backgroundColor: theme.colors.surface,
+                      borderColor: theme.colors.border,
+                    },
                   ]}
                 >
                   <Ionicons name="film-outline" size={32} color={theme.colors.textMuted} />
@@ -149,7 +165,11 @@ export const PlayerInfoSheet: React.FC<PlayerInfoSheetProps> = React.memo(({
                 </View>
 
                 {(releaseYear || status) && (
-                  <Text style={[styles.metaText, { color: theme.colors.textMuted }]}>
+                  <Text
+                    style={[styles.metaText, { color: theme.colors.textMuted }]}
+                    numberOfLines={1}
+                    ellipsizeMode="tail"
+                  >
                     {[releaseYear, status].filter(Boolean).map(String).join(' • ').toUpperCase()}
                   </Text>
                 )}
@@ -164,7 +184,10 @@ export const PlayerInfoSheet: React.FC<PlayerInfoSheetProps> = React.memo(({
                           { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
                         ]}
                       >
-                        <Text style={[styles.genreText, { color: theme.colors.textSecondary }]}>
+                        <Text
+                          style={[styles.genreText, { color: theme.colors.textSecondary }]}
+                          numberOfLines={1}
+                        >
                           {String(g).toUpperCase()}
                         </Text>
                       </View>
@@ -249,16 +272,19 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   headerTitleGroup: {
+    flex: 1,
+    minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
   headerTitle: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '800',
     fontFamily: oledTheme.typography.title.fontFamily,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
+    flexShrink: 1,
   },
   closeBtn: {
     width: 32,
@@ -266,6 +292,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
   },
   scrollContent: {
     gap: 14,
