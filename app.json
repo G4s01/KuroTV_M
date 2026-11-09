@@ -7,10 +7,9 @@
     "icon": "./assets/images/icon.png",
     "scheme": "kurotv",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "android": {
       "package": "com.kurotv.mobile",
-      "versionCode": 3,
+      "versionCode": 4,
       "adaptiveIcon": {
         "backgroundColor": "#000000",
         "foregroundImage": "./assets/images/android-icon-foreground.png"
@@ -40,7 +39,8 @@
           "supportsBackgroundPlayback": true,
           "supportsPictureInPicture": true
         }
-      ]
+      ],
+      "expo-font"
     ],
     "experiments": {
       "typedRoutes": true
