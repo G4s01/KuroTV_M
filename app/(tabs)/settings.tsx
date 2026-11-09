@@ -1,4 +1,5 @@
 import React from 'react';
+import { useFocusEffect } from 'expo-router';
 import {
   StyleSheet,
   Text,
@@ -18,11 +19,21 @@ import {
   applyThemeFamily,
   getContrastTextColor,
 } from '@/theme';
-import { AppStorage, type HistoryRetentionDays } from '@/services/storage';
+import {
+  AppStorage,
+  type HistoryRetentionDays,
+  type AniSkipSettings,
+  type AniSkipMode,
+} from '@/services/storage';
 import { HistorySlider } from '@/components/HistorySlider';
 import { ConfirmModal } from '@/components/ConfirmModal';
 import { scraperConfig } from '@/services/scraper/config';
-import { UpdaterService, formatBytes, getDeviceSupportedAbis } from '@/services/updater';
+import {
+  UpdaterService,
+  UpdateStore,
+  formatBytes,
+  getDeviceSupportedAbis,
+} from '@/services/updater';
 import type { UpdateCheckResult, DownloadProgress } from '@/services/updater';
 import { CURRENT_CHANGELOG, formatChangelog } from '@/constants/changelog';
 
@@ -110,6 +121,23 @@ export default function SettingsScreen() {
   });
   const [isClearHistoryConfirmOpen, setIsClearHistoryConfirmOpen] = React.useState(false);
   const [historyNotice, setHistoryNotice] = React.useState<string | null>(null);
+
+  // AniSkip settings state
+  const [aniSkipSettings, setAniSkipSettings] = React.useState<AniSkipSettings>(() => {
+    return AppStorage.getAniSkipSettings();
+  });
+
+  const handleUpdateAniSkipMode = (mode: AniSkipMode) => {
+    Haptics.selectionAsync().catch(() => {});
+    const updated = AppStorage.saveAniSkipSettings({ mode });
+    setAniSkipSettings(updated);
+  };
+
+  const handleToggleAniSkipType = (key: 'enableOpening' | 'enableEnding' | 'enableRecap') => {
+    Haptics.selectionAsync().catch(() => {});
+    const updated = AppStorage.saveAniSkipSettings({ [key]: !aniSkipSettings[key] });
+    setAniSkipSettings(updated);
+  };
 
   const showHistoryNotice = (msg: string) => {
     setHistoryNotice(msg);
@@ -240,6 +268,55 @@ export default function SettingsScreen() {
     showSourceNotice(`URL SORGENTE IMPOSTATO: ${fullUrl.toUpperCase()}`);
   };
 
+  const handleStartDownloadUpdate = React.useCallback(async (manifestOverride?: any) => {
+    const targetManifest = manifestOverride || updateResult?.manifest;
+    if (!targetManifest) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    setUpdateStatus('downloading');
+    setDownloadProgress(null);
+    setUpdateError(null);
+
+    try {
+      const apkUri = await UpdaterService.downloadApk(
+        targetManifest,
+        (progress: DownloadProgress) => {
+          setDownloadProgress(progress);
+        }
+      );
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      setDownloadedApkUri(apkUri);
+      setUpdateStatus('downloaded');
+      UpdateStore.clearUpdate();
+    } catch (err: any) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+      setUpdateStatus('error');
+      setUpdateError((err.message || 'DOWNLOAD INTERROTTO').toUpperCase());
+    }
+  }, [updateResult]);
+
+  // Handle auto-download from startup modal or pending update synchronization
+  useFocusEffect(
+    React.useCallback(() => {
+      if (UpdateStore.isAutoDownloadRequested()) {
+        UpdateStore.setAutoDownloadRequested(false);
+        const pending = UpdateStore.getPendingUpdate();
+        if (pending && pending.isUpdateAvailable && pending.manifest) {
+          setUpdateResult(pending);
+          setUpdateStatus('available');
+          setChangelogTab('new');
+          handleStartDownloadUpdate(pending.manifest);
+        }
+      } else {
+        const pending = UpdateStore.getPendingUpdate();
+        if (pending && pending.isUpdateAvailable && pending.manifest) {
+          setUpdateResult((prev) => prev || pending);
+          setUpdateStatus((prev) => (prev === 'idle' ? 'available' : prev));
+        }
+      }
+    }, [handleStartDownloadUpdate])
+  );
+
   const handleCheckUpdates = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     setUpdateStatus('checking');
@@ -251,10 +328,13 @@ export default function SettingsScreen() {
       setUpdateResult(result);
 
       if (result.isUpdateAvailable) {
+        UpdateStore.setPendingUpdate(result);
+        UpdateStore.dismissModal(); // User is already in Settings, avoid redundant popup
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
         setUpdateStatus('available');
         setChangelogTab('new'); // Automatically switch changelog tab to preview new version
       } else {
+        UpdateStore.clearUpdate();
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
         setUpdateStatus('up-to-date');
         setChangelogTab('current');
@@ -266,34 +346,10 @@ export default function SettingsScreen() {
     }
   };
 
-  const handleStartDownloadUpdate = async () => {
-    if (!updateResult?.manifest) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-    setUpdateStatus('downloading');
-    setDownloadProgress(null);
-    setUpdateError(null);
-
-    try {
-      const apkUri = await UpdaterService.downloadApk(
-        updateResult.manifest,
-        (progress: DownloadProgress) => {
-          setDownloadProgress(progress);
-        }
-      );
-
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-      setDownloadedApkUri(apkUri);
-      setUpdateStatus('downloaded');
-    } catch (err: any) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
-      setUpdateStatus('error');
-      setUpdateError((err.message || 'DOWNLOAD INTERROTTO').toUpperCase());
-    }
-  };
-
   const handleInstallApk = () => {
     if (!downloadedApkUri) return;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    UpdateStore.clearUpdate();
     UpdaterService.installApk(downloadedApkUri);
   };
 
@@ -401,6 +457,94 @@ export default function SettingsScreen() {
               </Text>
             </View>
           ) : null}
+        </View>
+
+        {/* ANISKIP (Salto automatico o manuale, selezione sezioni) */}
+        <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+          <Text style={[styles.cardTitle, { color: theme.colors.text }]}>ANISKIP</Text>
+
+          <Text style={[styles.aniskipSubTitle, { color: theme.colors.textSecondary }]}>
+            MODALITÀ DI SALTO
+          </Text>
+          <View style={styles.aniskipRow}>
+            {[
+              { mode: 'manual' as AniSkipMode, label: 'MANUALE' },
+              { mode: 'auto' as AniSkipMode, label: 'AUTOMATICO' },
+              { mode: 'disabled' as AniSkipMode, label: 'DISATTIVATO' },
+            ].map((item) => {
+              const active = aniSkipSettings.mode === item.mode;
+              const contrastColor = active ? getContrastTextColor(theme.colors.primary) : theme.colors.text;
+              return (
+                <Pressable
+                  key={item.mode}
+                  style={[
+                    styles.aniskipChip,
+                    {
+                      backgroundColor: active ? theme.colors.primary : theme.colors.card,
+                      borderColor: active ? theme.colors.primary : theme.colors.border,
+                    },
+                  ]}
+                  onPress={() => handleUpdateAniSkipMode(item.mode)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`MODALITÀ ANISKIP ${item.label}${active ? ' ATTIVA' : ''}`}
+                >
+                  <Text
+                    style={[
+                      styles.aniskipChipText,
+                      { color: contrastColor },
+                      active && styles.aniskipChipTextActive,
+                    ]}
+                  >
+                    {item.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <Text style={[styles.aniskipSubTitle, { color: theme.colors.textSecondary, marginTop: 14 }]}>
+            COSA SALTARE
+          </Text>
+          <View style={styles.aniskipRow}>
+            {[
+              { key: 'enableOpening' as const, label: 'INTRO' },
+              { key: 'enableRecap' as const, label: 'RECAP' },
+              { key: 'enableEnding' as const, label: 'OUTRO' },
+            ].map((item) => {
+              const active = aniSkipSettings[item.key];
+              const contrastColor = active ? getContrastTextColor(theme.colors.primary) : theme.colors.text;
+              return (
+                <Pressable
+                  key={item.key}
+                  style={[
+                    styles.aniskipChip,
+                    {
+                      backgroundColor: active ? theme.colors.primary : theme.colors.card,
+                      borderColor: active ? theme.colors.primary : theme.colors.border,
+                    },
+                  ]}
+                  onPress={() => handleToggleAniSkipType(item.key)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`SALTA ${item.label}: ${active ? 'ATTIVO' : 'DISATTIVATO'}`}
+                >
+                  <Ionicons
+                    name={active ? 'checkmark-circle' : 'ellipse-outline'}
+                    size={14}
+                    color={contrastColor}
+                  />
+                  <Text
+                    style={[
+                      styles.aniskipChipText,
+                      { color: contrastColor },
+                      active && styles.aniskipChipTextActive,
+                    ]}
+                  >
+                    {item.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
         </View>
 
         {/* SORGENTE (.ac, .so, .tv o scrivibile a mano) */}
@@ -846,6 +990,39 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontFamily: 'monospace',
     textTransform: 'uppercase',
+  },
+  aniskipSubTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
+    marginBottom: 8,
+    letterSpacing: 0.5,
+  },
+  aniskipRow: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+  },
+  aniskipChip: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: oledTheme.radius.md,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 6,
+    paddingHorizontal: 4,
+  },
+  aniskipChipText: {
+    fontSize: 11,
+    fontWeight: '700',
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
+  },
+  aniskipChipTextActive: {
+    fontWeight: '900',
   },
   customUrlRow: {
     flexDirection: 'row',

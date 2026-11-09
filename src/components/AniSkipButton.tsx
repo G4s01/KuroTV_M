@@ -7,13 +7,16 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { oledTheme, useTheme } from '@/theme';
 
 export interface AniSkipButtonProps {
-  skipType: 'intro' | 'outro' | 'recap';
+  skipType?: 'intro' | 'outro' | 'recap';
   onSkip: () => void;
   player?: any;
   startTime?: number;
   endTime?: number;
   currentTime?: number;
+  onTimeout?: () => void;
 }
+
+const BUTTON_DURATION = 10;
 
 export const AniSkipButton: React.FC<AniSkipButtonProps> = ({
   skipType,
@@ -22,11 +25,17 @@ export const AniSkipButton: React.FC<AniSkipButtonProps> = ({
   startTime,
   endTime,
   currentTime: controlledTime,
+  onTimeout,
 }) => {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const isLandscape = windowWidth > windowHeight;
+
+  const maxDuration =
+    endTime && startTime && endTime > startTime
+      ? Math.min(BUTTON_DURATION, Math.max(1, endTime - startTime))
+      : BUTTON_DURATION;
 
   const getInitialProgress = React.useCallback(() => {
     const time =
@@ -35,30 +44,30 @@ export const AniSkipButton: React.FC<AniSkipButtonProps> = ({
         : typeof player?.currentTime === 'number'
         ? player.currentTime
         : startTime ?? 0;
-    if (startTime !== undefined && endTime !== undefined && endTime > startTime) {
-      const totalDuration = endTime - startTime;
-      const remaining = Math.max(0, endTime - time);
-      return Math.max(0, Math.min(1, remaining / totalDuration));
-    }
-    return 1;
-  }, [controlledTime, player?.currentTime, startTime, endTime]);
+    const start = startTime ?? time;
+    const elapsed = Math.max(0, time - start);
+    const remaining = Math.max(0, maxDuration - elapsed);
+    return Math.max(0, Math.min(1, remaining / maxDuration));
+  }, [controlledTime, player?.currentTime, startTime, maxDuration]);
 
   const progressAnim = React.useRef(new Animated.Value(getInitialProgress())).current;
 
   const updateProgress = React.useCallback(
     (time: number) => {
-      if (startTime !== undefined && endTime !== undefined && endTime > startTime) {
-        const totalDuration = endTime - startTime;
-        const remaining = Math.max(0, endTime - time);
-        const ratio = Math.max(0, Math.min(1, remaining / totalDuration));
-        Animated.timing(progressAnim, {
-          toValue: ratio,
-          duration: 350,
-          useNativeDriver: false,
-        }).start();
+      const start = startTime ?? time;
+      const elapsed = Math.max(0, time - start);
+      if (elapsed >= maxDuration && onTimeout) {
+        onTimeout();
       }
+      const remaining = Math.max(0, maxDuration - elapsed);
+      const ratio = Math.max(0, Math.min(1, remaining / maxDuration));
+      Animated.timing(progressAnim, {
+        toValue: ratio,
+        duration: 350,
+        useNativeDriver: false,
+      }).start();
     },
-    [startTime, endTime, progressAnim]
+    [startTime, maxDuration, progressAnim, onTimeout]
   );
 
   React.useEffect(() => {
@@ -80,12 +89,7 @@ export const AniSkipButton: React.FC<AniSkipButtonProps> = ({
     onSkip();
   };
 
-  const label =
-    skipType === 'intro'
-      ? 'SALTA INTRO'
-      : skipType === 'recap'
-      ? 'SALTA RECAP'
-      : 'SALTA OUTRO';
+  const label = 'SALTA';
 
   const progressWidth = progressAnim.interpolate({
     inputRange: [0, 1],

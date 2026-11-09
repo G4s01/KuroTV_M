@@ -1,14 +1,78 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
-import { Platform } from 'react-native';
+import { Platform, View, StyleSheet, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { useTheme } from '@/theme';
+import { useTheme, getContrastTextColor } from '@/theme';
 import { AppStorage } from '@/services/storage';
+import { usePendingUpdate } from '@/services/updater';
+
+function SettingsTabIcon({ color, focused }: { color: string; focused: boolean }) {
+  const { theme } = useTheme();
+  const { update, isDismissed } = usePendingUpdate();
+  const hasPendingUpdate = Boolean(update?.isUpdateAvailable && update?.manifest && isDismissed);
+
+  const bounceAnim = React.useRef(new Animated.Value(0)).current;
+
+  React.useEffect(() => {
+    if (!hasPendingUpdate) {
+      bounceAnim.setValue(0);
+      return;
+    }
+
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(bounceAnim, {
+          toValue: -4,
+          duration: 550,
+          useNativeDriver: true,
+        }),
+        Animated.timing(bounceAnim, {
+          toValue: 0,
+          duration: 550,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    loop.start();
+
+    return () => {
+      loop.stop();
+      bounceAnim.setValue(0);
+    };
+  }, [hasPendingUpdate, bounceAnim]);
+
+  return (
+    <View style={styles.tabIconWrapper}>
+      <Ionicons
+        name={focused ? 'settings' : 'settings-outline'}
+        size={24}
+        color={color}
+      />
+      {hasPendingUpdate && (
+        <Animated.View
+          style={[
+            styles.arrowBadge,
+            {
+              backgroundColor: theme.colors.primary,
+              borderColor: theme.colors.background,
+              transform: [{ translateY: bounceAnim }],
+            },
+          ]}
+        >
+          <Ionicons
+            name="arrow-up"
+            size={10}
+            color={getContrastTextColor(theme.colors.primary)}
+          />
+        </Animated.View>
+      )}
+    </View>
+  );
+}
 
 export default function TabLayout() {
   const { theme } = useTheme();
-  const isLight = theme.name === 'light';
 
   const [isHistoryEnabled, setIsHistoryEnabled] = React.useState<boolean>(() => {
     return AppStorage.isHistoryEnabled();
@@ -20,6 +84,7 @@ export default function TabLayout() {
     });
     return unsubscribe;
   }, []);
+
   return (
     <Tabs
       screenOptions={{
@@ -65,16 +130,11 @@ export default function TabLayout() {
       <Tabs.Screen
         name="explore"
         options={{
-          title: 'ESPLORA',
+          href: null,
+          tabBarItemStyle: { display: 'none' },
           tabBarShowLabel: false,
           tabBarLabel: () => null,
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons
-              name={focused ? 'compass' : 'compass-outline'}
-              size={24}
-              color={color as string}
-            />
-          ),
+          tabBarIcon: () => null,
         }}
       />
       <Tabs.Screen
@@ -115,14 +175,31 @@ export default function TabLayout() {
           tabBarShowLabel: false,
           tabBarLabel: () => null,
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons
-              name={focused ? 'settings' : 'settings-outline'}
-              size={24}
-              color={color as string}
-            />
+            <SettingsTabIcon color={color as string} focused={focused} />
           ),
         }}
       />
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  tabIconWrapper: {
+    width: 32,
+    height: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+  },
+  arrowBadge: {
+    position: 'absolute',
+    top: -3,
+    right: -7,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+});

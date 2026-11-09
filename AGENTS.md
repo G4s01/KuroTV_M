@@ -175,6 +175,9 @@ Kuro Mobile è un'applicazione concepita **esclusivamente per smartphone Android
      - L'inserimento manuale di una versione (`1.2.0`, `1.0.0`, `v1.0.0`) **incrementa sempre automaticamente** il `versionCode` (`CURRENT_VERSION_CODE + 1`), garantendo l'accettazione del pacchetto dall'installer Android.
      - Per preservare la build numerica esistente occorre selezionare l'opzione `0` (*"Mantieni vX.Y.Z"*).
      - Supporto per build esplicita con sintassi `X.Y.Z:B` (es. `1.2.0:5`) e flag CLI non-interattive `-v, --version <ver>` e `-b, --build-number <num>`.
+   - **Pubblicazione GitHub Release & Sincronizzazione Repository Git**:
+     - La fase di pubblicazione GitHub sincronizza l'intero repository locale (`git add -A` e `git push origin <branch>`), garantendo l'allineamento perfetto del repo remoto con tutti i file e componenti modificati o aggiunti.
+     - In caso di build consecutive con lo stesso numero di versione ma diversi build code, la release GitHub viene sovrascritta/aggiornata ripulendo automaticamente i vecchi asset APK (`kurotv-v*.apk` con build number differente), lasciando unicamente l'APK e il pacchetto versionato della build attiva.
 
 ---
 

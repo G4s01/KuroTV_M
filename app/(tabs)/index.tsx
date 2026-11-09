@@ -6,21 +6,27 @@ import {
   ScrollView,
   RefreshControl,
   Pressable,
+  TextInput,
+  Keyboard,
+  BackHandler,
   useWindowDimensions,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { FlashList } from '@shopify/flash-list';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { homeQueryOptions, animeQueryKeys } from '@/services/queries';
 import { AppStorage } from '@/services/storage';
+import { AnimeWorldScraper } from '@/services/scraper';
 import { oledTheme, useTheme, getContrastTextColor } from '@/theme';
 import { AnimeCard } from '@/components/AnimeCard';
 import { ConfirmModal } from '@/components/ConfirmModal';
-import { HomeScreenSkeleton } from '@/components/skeleton';
-import type { AnimeItem, ContinueWatchingItem } from '@/types';
+import { FilterBottomSheet, type FilterState } from '@/components/FilterBottomSheet';
+import { HomeScreenSkeleton, ExploreScreenSkeleton } from '@/components/skeleton';
+import type { AnimeItem, ContinueWatchingItem, SearchFilter } from '@/types';
 
 const HERO_HEIGHT = 280;
 
@@ -29,10 +35,95 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const { theme } = useTheme();
+  const { width: windowWidth } = useWindowDimensions();
+
+  const cardWidth = (windowWidth - 48) / 2;
+  const cardHeight = cardWidth * 1.45;
 
   const { data: homeData, isLoading, isError, refetch, isRefetching } = useQuery(homeQueryOptions());
   const [continueWatching, setContinueWatching] = React.useState<ContinueWatchingItem[]>([]);
   const [itemToRemove, setItemToRemove] = React.useState<ContinueWatchingItem | null>(null);
+
+  // Search in Home state
+  const [isSearchActive, setIsSearchActive] = React.useState(false);
+  const [searchQuery, setSearchQuery] = React.useState('');
+  const [debouncedQuery, setDebouncedQuery] = React.useState('');
+  const [filterState, setFilterState] = React.useState<FilterState>({});
+  const [isFilterSheetVisible, setIsFilterSheetVisible] = React.useState(false);
+
+  React.useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedQuery(searchQuery.trim());
+    }, 450);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Handle hardware back button to dismiss search mode cleanly
+  React.useEffect(() => {
+    if (!isSearchActive) return;
+    const backSub = BackHandler.addEventListener('hardwareBackPress', () => {
+      Keyboard.dismiss();
+      setIsSearchActive(false);
+      setSearchQuery('');
+      setFilterState({});
+      return true;
+    });
+    return () => backSub.remove();
+  }, [isSearchActive]);
+
+  const activeFilterCount = [
+    filterState.genre,
+    filterState.type,
+    filterState.status,
+    filterState.sort,
+  ].filter(Boolean).length;
+
+  const hasSearchInput = Boolean(debouncedQuery || activeFilterCount > 0);
+
+  const {
+    data: searchResults,
+    isLoading: isSearchLoading,
+    isError: isSearchError,
+    refetch: refetchSearch,
+  } = useQuery({
+    queryKey: ['home-search', debouncedQuery, filterState],
+    queryFn: async () => {
+      if (debouncedQuery) {
+        return AnimeWorldScraper.searchAnime(debouncedQuery);
+      }
+      const filter: SearchFilter = {
+        genre: filterState.genre,
+        type: filterState.type,
+        status: filterState.status,
+        order: filterState.sort,
+      };
+      return AnimeWorldScraper.searchAnime(filter);
+    },
+    enabled: isSearchActive && hasSearchInput,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Pre-fetching of top 4 search result images
+  React.useEffect(() => {
+    if (searchResults?.items && searchResults.items.length > 0) {
+      const urls = searchResults.items
+        .slice(0, 4)
+        .map((item) => item.image || item.thumbnail || '')
+        .filter(Boolean);
+      if (urls.length > 0) {
+        Image.prefetch(urls).catch(() => {});
+      }
+    }
+  }, [searchResults]);
+
+  const removeFilter = (key: keyof FilterState) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    setFilterState((prev) => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  };
 
   // Proactive pre-fetching of top images to eliminate visual loading latency on scroll
   React.useEffect(() => {
@@ -115,39 +206,233 @@ export default function HomeScreen() {
 
   return (
     <View style={[styles.root, { paddingTop: insets.top, backgroundColor: theme.colors.background }]}>
-      {/* App Bar */}
-      <View style={[styles.appBar, { backgroundColor: theme.colors.background, borderBottomColor: theme.colors.border }]}>
-        <View style={styles.brandRow}>
-          <Text style={[styles.brandPrefix, { color: theme.colors.text }]}>KURO</Text>
-          <Text style={[styles.brandSuffix, { color: theme.colors.primary }]}>TV</Text>
-          <View style={[styles.mobileBadge, { backgroundColor: theme.colors.surface }]}>
-            <Text style={[styles.mobileBadgeText, { color: theme.colors.textSecondary }]}>MOBILE</Text>
+      {/* App Bar / Search Header */}
+      {isSearchActive ? (
+        <View style={[styles.searchHeader, { backgroundColor: theme.colors.background, borderBottomColor: theme.colors.border }]}>
+          <Pressable
+            style={styles.searchBackBtn}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+              setIsSearchActive(false);
+              setSearchQuery('');
+              setFilterState({});
+            }}
+            hitSlop={12}
+            accessibilityRole="button"
+            accessibilityLabel="CHIUDI RICERCA"
+          >
+            <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
+          </Pressable>
+
+          <View style={[styles.searchBar, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
+            <Ionicons name="search" size={18} color={theme.colors.textMuted} />
+            <TextInput
+              style={[styles.searchInput, { color: theme.colors.text }]}
+              placeholder="CERCA ANIME, SERIE, FILM..."
+              placeholderTextColor={theme.colors.textMuted}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              returnKeyType="search"
+              autoFocus={true}
+              autoCorrect={false}
+            />
+            {searchQuery.length > 0 && (
+              <Pressable
+                onPress={() => setSearchQuery('')}
+                hitSlop={12}
+                style={styles.clearBtn}
+                accessibilityRole="button"
+                accessibilityLabel="CANCELLA TESTO"
+              >
+                <Ionicons name="close-circle" size={18} color={theme.colors.textMuted} />
+              </Pressable>
+            )}
           </View>
+
+          <Pressable
+            style={[
+              styles.filterBtn,
+              { backgroundColor: theme.colors.card, borderColor: theme.colors.border },
+              activeFilterCount > 0 && {
+                backgroundColor: theme.colors.primary,
+                borderColor: theme.colors.primary,
+              },
+            ]}
+            onPress={() => {
+              Haptics.selectionAsync().catch(() => {});
+              Keyboard.dismiss();
+              setIsFilterSheetVisible(true);
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="FILTRI DI RICERCA"
+          >
+            <Ionicons
+              name="options-outline"
+              size={20}
+              color={activeFilterCount > 0 ? getContrastTextColor(theme.colors.primary) : theme.colors.text}
+            />
+            {activeFilterCount > 0 && (
+              <View style={[styles.filterBadge, { backgroundColor: getContrastTextColor(theme.colors.primary) }]}>
+                <Text style={[styles.filterBadgeText, { color: theme.colors.primary }]}>{activeFilterCount}</Text>
+              </View>
+            )}
+          </Pressable>
         </View>
+      ) : (
+        <View style={[styles.appBar, { backgroundColor: theme.colors.background, borderBottomColor: theme.colors.border }]}>
+          <View style={styles.brandRow}>
+            <Text style={[styles.brandPrefix, { color: theme.colors.text }]}>KURO</Text>
+            <Text style={[styles.brandSuffix, { color: theme.colors.primary }]}>TV</Text>
+            <View style={[styles.mobileBadge, { backgroundColor: theme.colors.surface }]}>
+              <Text style={[styles.mobileBadgeText, { color: theme.colors.textSecondary }]}>MOBILE</Text>
+            </View>
+          </View>
 
-        <Pressable
-          style={[styles.searchButton, { backgroundColor: theme.colors.card, borderColor: theme.colors.border, borderWidth: 1 }]}
-          onPress={() => router.push('/(tabs)/explore')}
-          hitSlop={8}
-          accessibilityLabel="CERCA ANIME"
+          <Pressable
+            style={[styles.searchButton, { backgroundColor: theme.colors.card, borderColor: theme.colors.border, borderWidth: 1 }]}
+            onPress={() => {
+              Haptics.selectionAsync().catch(() => {});
+              setIsSearchActive(true);
+            }}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="CERCA ANIME"
+          >
+            <Ionicons name="search" size={20} color={theme.colors.text} />
+          </Pressable>
+        </View>
+      )}
+
+      {isSearchActive ? (
+        <View style={styles.searchContainer}>
+          {/* Active Filter Chips */}
+          {activeFilterCount > 0 && (
+            <View style={styles.activeFiltersRow}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.activeFiltersScroll}>
+                {filterState.type && (
+                  <Pressable
+                    style={[styles.activeFilterChip, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
+                    onPress={() => removeFilter('type')}
+                  >
+                    <Text style={[styles.activeFilterText, { color: theme.colors.text }]}>TIPO: {filterState.type.toUpperCase()}</Text>
+                    <Ionicons name="close-circle" size={14} color={theme.colors.textMuted} />
+                  </Pressable>
+                )}
+                {filterState.status && (
+                  <Pressable
+                    style={[styles.activeFilterChip, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
+                    onPress={() => removeFilter('status')}
+                  >
+                    <Text style={[styles.activeFilterText, { color: theme.colors.text }]}>STATO: {filterState.status.toUpperCase()}</Text>
+                    <Ionicons name="close-circle" size={14} color={theme.colors.textMuted} />
+                  </Pressable>
+                )}
+                {filterState.sort && (
+                  <Pressable
+                    style={[styles.activeFilterChip, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
+                    onPress={() => removeFilter('sort')}
+                  >
+                    <Text style={[styles.activeFilterText, { color: theme.colors.text }]}>ORDINA: {filterState.sort.toUpperCase()}</Text>
+                    <Ionicons name="close-circle" size={14} color={theme.colors.textMuted} />
+                  </Pressable>
+                )}
+                {filterState.genre && (
+                  <Pressable
+                    style={[styles.activeFilterChip, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
+                    onPress={() => removeFilter('genre')}
+                  >
+                    <Text style={[styles.activeFilterText, { color: theme.colors.text }]}>GENERE: {filterState.genre.toUpperCase()}</Text>
+                    <Ionicons name="close-circle" size={14} color={theme.colors.textMuted} />
+                  </Pressable>
+                )}
+              </ScrollView>
+            </View>
+          )}
+
+          {isSearchLoading ? (
+            <ExploreScreenSkeleton cardWidth={cardWidth} cardHeight={cardHeight} />
+          ) : isSearchError ? (
+            <View style={styles.centerBox}>
+              <Ionicons name="alert-circle-outline" size={48} color={theme.colors.textMuted} />
+              <Text style={[styles.emptyText, { color: theme.colors.textMuted }]}>
+                ERRORE DURANTE LA RICERCA
+              </Text>
+              <Pressable
+                style={[styles.retryBtn, { backgroundColor: theme.colors.primary }]}
+                onPress={() => refetchSearch()}
+              >
+                <Text style={[styles.retryBtnText, { color: getContrastTextColor(theme.colors.primary) }]}>
+                  RIPROVA
+                </Text>
+              </Pressable>
+            </View>
+          ) : hasSearchInput ? (
+            (searchResults?.items || []).length > 0 ? (
+              <FlashList
+                data={searchResults?.items || []}
+                keyExtractor={(item, index) => item.id || `search-${index}`}
+                numColumns={2}
+                contentContainerStyle={styles.searchListContent}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode="on-drag"
+                renderItem={({ item }) => (
+                  <View style={styles.searchCardWrapper}>
+                    <AnimeCard
+                      anime={item}
+                      width={cardWidth}
+                      height={cardHeight}
+                      onPress={() => navigateToAnime(item.id, item.title)}
+                    />
+                  </View>
+                )}
+              />
+            ) : (
+              <View style={styles.centerBox}>
+                <Ionicons name="search-outline" size={48} color={theme.colors.textMuted} />
+                <Text style={[styles.emptyText, { color: theme.colors.textMuted }]}>
+                  NESSUN ANIME TROVATO CON I CRITERI INDICATI
+                </Text>
+              </View>
+            )
+          ) : (
+            <View style={styles.searchSuggestionsBox}>
+              <Text style={[styles.suggestionTitle, { color: theme.colors.textSecondary }]}>
+                SUGGERIMENTI RAPIDI
+              </Text>
+              <View style={styles.suggestionChips}>
+                {['Azione', 'Avventura', 'Fantasy', 'Commedia', 'Romantico', 'Fantascienza', 'Sport', 'Horror'].map((g) => (
+                  <Pressable
+                    key={g}
+                    style={[styles.suggestionChip, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
+                    onPress={() => {
+                      Haptics.selectionAsync().catch(() => {});
+                      setFilterState((prev) => ({ ...prev, genre: g }));
+                    }}
+                  >
+                    <Text style={[styles.suggestionChipText, { color: theme.colors.text }]}>
+                      {g.toUpperCase()}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          )}
+        </View>
+      ) : (
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefetching}
+              onRefresh={handleRefresh}
+              tintColor={theme.colors.primary}
+              colors={[theme.colors.primary]}
+            />
+          }
         >
-          <Ionicons name="search" size={20} color={theme.colors.text} />
-        </Pressable>
-      </View>
-
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefetching}
-            onRefresh={handleRefresh}
-            tintColor={theme.colors.primary}
-            colors={[theme.colors.primary]}
-          />
-        }
-      >
         {isLoading && !homeData ? (
           <HomeScreenSkeleton hasContinueWatching={continueWatching.length > 0} />
         ) : isError && !homeData ? (
@@ -277,7 +562,15 @@ export default function HomeScreen() {
               <View style={styles.section}>
                 <View style={styles.sectionHeader}>
                   <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>ULTIME USCITE</Text>
-                  <Pressable onPress={() => router.push('/(tabs)/explore')}>
+                  <Pressable
+                    onPress={() => {
+                      Haptics.selectionAsync().catch(() => {});
+                      setIsSearchActive(true);
+                    }}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel="VEDI TUTTI GLI ANIME"
+                  >
                     <Text style={[styles.seeAllText, { color: theme.colors.primary }]}>VEDI TUTTI</Text>
                   </Pressable>
                 </View>
@@ -346,6 +639,7 @@ export default function HomeScreen() {
           </>
         )}
       </ScrollView>
+      )}
 
       {/* Modal di Conferma Rimozione In-App (Zero Alert nativo Android) */}
       <ConfirmModal
@@ -360,6 +654,15 @@ export default function HomeScreen() {
         confirmText="RIMUOVI"
         onConfirm={handleConfirmRemoveContinue}
         onCancel={() => setItemToRemove(null)}
+      />
+
+      {/* Filter Bottom Sheet */}
+      <FilterBottomSheet
+        isVisible={isFilterSheetVisible}
+        onClose={() => setIsFilterSheetVisible(false)}
+        filters={filterState}
+        onApply={(f) => setFilterState(f)}
+        onReset={() => setFilterState({})}
       />
     </View>
   );
@@ -423,6 +726,149 @@ const styles = StyleSheet.create({
     backgroundColor: '#141414',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  searchHeader: {
+    minHeight: 56,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 8,
+    borderBottomWidth: 1,
+  },
+  searchBackBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  searchBar: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: oledTheme.radius.full,
+    paddingHorizontal: 12,
+    height: 44,
+    borderWidth: 1,
+    gap: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 13,
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
+    paddingVertical: 0,
+  },
+  clearBtn: {
+    padding: 4,
+  },
+  filterBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    position: 'relative',
+  },
+  filterBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+  },
+  filterBadgeText: {
+    fontSize: 9,
+    fontWeight: '900',
+    fontFamily: 'monospace',
+  },
+  searchContainer: {
+    flex: 1,
+  },
+  activeFiltersRow: {
+    paddingVertical: 8,
+  },
+  activeFiltersScroll: {
+    paddingHorizontal: 16,
+    gap: 8,
+  },
+  activeFilterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: oledTheme.radius.full,
+    borderWidth: 1,
+    minHeight: 32,
+  },
+  activeFilterText: {
+    fontSize: 11,
+    fontWeight: '700',
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
+  },
+  searchListContent: {
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    paddingBottom: 32,
+  },
+  searchCardWrapper: {
+    flex: 1,
+    padding: 4,
+    alignItems: 'center',
+  },
+  centerBox: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
+    gap: 12,
+    minHeight: 320,
+  },
+  emptyText: {
+    fontSize: 13,
+    fontWeight: '700',
+    textAlign: 'center',
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
+  },
+  searchSuggestionsBox: {
+    padding: 20,
+  },
+  suggestionTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 12,
+  },
+  suggestionChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  suggestionChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: oledTheme.radius.full,
+    borderWidth: 1,
+    minHeight: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  suggestionChipText: {
+    fontSize: 12,
+    fontWeight: '700',
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
   },
   scroll: {
     flex: 1,

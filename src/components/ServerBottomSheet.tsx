@@ -1,10 +1,18 @@
 import React from 'react';
-import { StyleSheet, Text, View, Pressable, ScrollView, useWindowDimensions } from 'react-native';
-import { BottomSheet } from '@expo/ui';
+import {
+  StyleSheet,
+  Text,
+  View,
+  Pressable,
+  ScrollView,
+  Modal,
+  TouchableWithoutFeedback,
+  useWindowDimensions,
+} from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useTheme, getContrastTextColor } from '@/theme';
+import { useTheme, getContrastTextColor, oledTheme } from '@/theme';
 
 export interface ServerOption {
   id: string;
@@ -43,230 +51,315 @@ export const ServerBottomSheet: React.FC<ServerBottomSheetProps> = ({
   const horizontalPadding = Math.max(16, safeHorizontalInset);
 
   return (
-    <BottomSheet
-      isPresented={isVisible}
-      onDismiss={onClose}
-      showDragIndicator={true}
-      containerColor={theme.colors.card}
-      contentPadding={0}
+    <Modal
+      visible={isVisible}
+      transparent={true}
+      animationType="slide"
+      onRequestClose={onClose}
+      statusBarTranslucent={true}
     >
-      <View
-        style={[
-          styles.container,
-          {
-            backgroundColor: theme.colors.card,
-            paddingLeft: horizontalPadding,
-            paddingRight: horizontalPadding,
-            paddingBottom: Math.max(28, insets.bottom + 12),
-          },
-        ]}
-      >
-        <ScrollView
-          style={{ maxHeight: isLandscape ? 280 : 480 }}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-          nestedScrollEnabled={true}
-          keyboardShouldPersistTaps="handled"
-        >
-          <Text style={[styles.title, { color: theme.colors.text }]}>
-            {showServerSelection ? 'SORGENTE VIDEO & SERVER' : 'OPZIONI RIPRODUZIONE'}
-          </Text>
+      <View style={styles.modalOverlay}>
+        <TouchableWithoutFeedback onPress={onClose}>
+          <View style={styles.backdrop} />
+        </TouchableWithoutFeedback>
 
-          {showServerSelection && servers.length > 0 && onSelectServer && (
-            <>
-              <Text style={[styles.sectionHeader, { color: theme.colors.textSecondary }]}>
-                SELEZIONA SERVER
+        <View
+          style={[
+            styles.container,
+            {
+              backgroundColor: theme.colors.card,
+              borderColor: theme.colors.border,
+              paddingLeft: horizontalPadding,
+              paddingRight: horizontalPadding,
+              paddingBottom: Math.max(24, insets.bottom + 12),
+            },
+          ]}
+          /* contentPadding={0} */
+        >
+          {/* Drag Handle Indicator */}
+          <View style={styles.dragIndicatorWrapper}>
+            <View style={styles.dragIndicator} />
+          </View>
+
+          {/* Header Row */}
+          <View style={styles.headerRow}>
+            <View style={styles.headerTitleGroup}>
+              <Ionicons name="options" size={18} color={theme.colors.primary} />
+              <Text style={[styles.headerTitle, { color: theme.colors.text }]}>
+                OPZIONI DI RIPRODUZIONE
               </Text>
-              <View style={styles.serverList}>
-                {servers.map((server) => {
-                  const isSelected = server.id === currentServerId;
-                  return (
-                    <Pressable
-                      key={server.id}
-                      style={[
-                        styles.serverItem,
-                        { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
-                        isSelected && [
-                          styles.serverItemActive,
+            </View>
+            <Pressable
+              onPress={onClose}
+              hitSlop={12}
+              style={styles.closeBtn}
+              accessibilityRole="button"
+              accessibilityLabel="CHIUDI OPZIONI RIPRODUZIONE"
+            >
+              <Ionicons name="close" size={20} color={theme.colors.textMuted} />
+            </Pressable>
+          </View>
+
+          <ScrollView
+            style={{ maxHeight: isLandscape ? 240 : Math.min(380, windowHeight * 0.55) }}
+            showsVerticalScrollIndicator={false}
+            nestedScrollEnabled={true}
+            keyboardShouldPersistTaps="handled"
+          >
+            {/* Playback Speed Section */}
+            {onSelectSpeed && (
+              <View style={styles.section}>
+                <View style={styles.sectionHeader}>
+                  <Ionicons name="speedometer-outline" size={16} color={theme.colors.textSecondary} />
+                  <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>
+                    VELOCITÀ DI RIPRODUZIONE
+                  </Text>
+                </View>
+
+                <View style={styles.speedRow}>
+                  {SPEED_OPTIONS.map((speed) => {
+                    const isSelected = Math.abs(currentSpeed - speed) < 0.05;
+                    const contrastColor = isSelected
+                      ? getContrastTextColor(theme.colors.primary)
+                      : theme.colors.text;
+
+                    return (
+                      <Pressable
+                        key={speed}
+                        style={[
+                          styles.speedChip,
                           {
-                            borderColor: theme.colors.primary,
-                            backgroundColor: `${theme.colors.primary}15`,
+                            backgroundColor: isSelected ? theme.colors.primary : theme.colors.surface,
+                            borderColor: isSelected ? theme.colors.primary : theme.colors.border,
                           },
-                        ],
-                      ]}
-                      onPress={() => {
-                        Haptics.selectionAsync().catch(() => {});
-                        onSelectServer(server.id);
-                        onClose();
-                      }}
-                    >
-                      <View style={styles.serverLeft}>
-                        <Ionicons
-                          name="server-outline"
-                          size={18}
-                          color={isSelected ? theme.colors.primary : theme.colors.textMuted}
-                        />
+                        ]}
+                        onPress={() => {
+                          Haptics.selectionAsync().catch(() => {});
+                          onSelectSpeed(speed);
+                          onClose();
+                        }}
+                        hitSlop={4}
+                        accessibilityRole="button"
+                        accessibilityLabel={`VELOCITÀ ${speed}X${isSelected ? ' ATTIVA' : ''}`}
+                      >
                         <Text
                           style={[
-                            styles.serverName,
-                            { color: theme.colors.text },
-                            isSelected && [styles.serverNameActive, { color: theme.colors.primary }],
+                            styles.speedText,
+                            { color: contrastColor },
+                            isSelected && styles.speedTextActive,
                           ]}
+                          numberOfLines={1}
+                          adjustsFontSizeToFit={true}
                         >
-                          {server.name}
+                          {speed}X
                         </Text>
-                      </View>
-                      {isSelected && (
-                        <Ionicons name="checkmark-circle" size={20} color={theme.colors.primary} />
-                      )}
-                    </Pressable>
-                  );
-                })}
+                      </Pressable>
+                    );
+                  })}
+                </View>
               </View>
-            </>
-          )}
+            )}
 
-          {onSelectSpeed && (
-            <View style={styles.speedSection}>
-              <Text style={[styles.sectionHeader, { color: theme.colors.textSecondary }]}>
-                VELOCITÀ DI RIPRODUZIONE
-              </Text>
-              <View style={styles.speedRow}>
-                {SPEED_OPTIONS.map((speed) => {
-                  const isSelected = Math.abs(currentSpeed - speed) < 0.01;
-                  return (
-                    <Pressable
-                      key={speed}
-                      style={[
-                        styles.speedChip,
-                        { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
-                        isSelected && [
-                          styles.speedChipActive,
-                          { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
-                        ],
-                      ]}
-                      onPress={() => {
-                        Haptics.selectionAsync().catch(() => {});
-                        onSelectSpeed(speed);
-                        onClose();
-                      }}
-                    >
-                      <Text
+            {/* Server Selection Section */}
+            {showServerSelection && servers.length > 0 && onSelectServer && (
+              <View style={[styles.section, { marginTop: 12 }]}>
+                <View style={styles.sectionHeader}>
+                  <Ionicons name="server-outline" size={16} color={theme.colors.textSecondary} />
+                  <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>
+                    SERVER SORGENTE VIDEO
+                  </Text>
+                </View>
+
+                <View style={styles.serverList}>
+                  {servers.map((server) => {
+                    const isSelected = server.id === currentServerId;
+                    return (
+                      <Pressable
+                        key={server.id}
                         style={[
-                          styles.speedText,
+                          styles.serverItem,
                           {
-                            color: isSelected
-                              ? getContrastTextColor(theme.colors.primary)
-                              : theme.colors.textSecondary,
+                            backgroundColor: theme.colors.surface,
+                            borderColor: theme.colors.border,
                           },
-                          isSelected && styles.speedTextActive,
+                          isSelected && [
+                            styles.serverItemActive,
+                            {
+                              borderColor: theme.colors.primary,
+                              backgroundColor: `${theme.colors.primary}18`,
+                            },
+                          ],
                         ]}
-                        numberOfLines={1}
-                        adjustsFontSizeToFit={true}
+                        onPress={() => {
+                          Haptics.selectionAsync().catch(() => {});
+                          onSelectServer(server.id);
+                          onClose();
+                        }}
+                        accessibilityRole="button"
+                        accessibilityLabel={`SERVER ${server.name}${isSelected ? ' ATTIVO' : ''}`}
                       >
-                        {speed}X
-                      </Text>
-                    </Pressable>
-                  );
-                })}
+                        <View style={styles.serverInfo}>
+                          <Ionicons
+                            name="hardware-chip-outline"
+                            size={18}
+                            color={isSelected ? theme.colors.primary : theme.colors.textSecondary}
+                          />
+                          <Text
+                            style={[
+                              styles.serverName,
+                              { color: theme.colors.text },
+                              isSelected && [
+                                styles.serverNameActive,
+                                { color: theme.colors.primary },
+                              ],
+                            ]}
+                          >
+                            {server.name.toUpperCase()}
+                          </Text>
+                        </View>
+                        {isSelected && (
+                          <Ionicons
+                            name="checkmark-circle"
+                            size={20}
+                            color={theme.colors.primary}
+                          />
+                        )}
+                      </Pressable>
+                    );
+                  })}
+                </View>
               </View>
-            </View>
-          )}
-        </ScrollView>
+            )}
+          </ScrollView>
+        </View>
       </View>
-    </BottomSheet>
+    </Modal>
   );
 };
 
 const styles = StyleSheet.create({
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+  },
+  backdrop: {
+    ...StyleSheet.absoluteFill,
+  },
   container: {
-    paddingTop: 12,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    borderTopWidth: 1,
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    paddingTop: 8,
     width: '100%',
-    maxWidth: 560,
+    maxWidth: 680,
     alignSelf: 'center',
   },
-  scrollContent: {
-    paddingBottom: 8,
+  dragIndicatorWrapper: {
+    alignItems: 'center',
+    paddingVertical: 4,
+    marginBottom: 6,
   },
-  title: {
-    fontSize: 16,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+  dragIndicator: {
+    width: 38,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+  },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  headerTitleGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  headerTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    fontFamily: oledTheme.typography.title.fontFamily,
     textTransform: 'uppercase',
-    marginBottom: 16,
+    letterSpacing: 0.5,
+  },
+  closeBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  section: {
+    marginBottom: 10,
   },
   sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 10,
+  },
+  sectionTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    fontFamily: oledTheme.typography.caption.fontFamily,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  speedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  speedChip: {
+    flex: 1,
+    minHeight: 44,
+    paddingHorizontal: 4,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  speedText: {
     fontSize: 12,
     fontWeight: '700',
-    marginBottom: 10,
-    marginTop: 8,
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
+    fontFamily: oledTheme.typography.body.fontFamily,
+  },
+  speedTextActive: {
+    fontWeight: '900',
   },
   serverList: {
     gap: 8,
-    marginBottom: 16,
   },
   serverItem: {
-    minHeight: 44,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    borderRadius: 12,
+    borderRadius: 10,
     borderWidth: 1,
+    minHeight: 48,
   },
   serverItemActive: {
     borderWidth: 1.5,
   },
-  serverLeft: {
+  serverInfo: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
   },
   serverName: {
     fontSize: 13,
-    fontWeight: '500',
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
+    fontWeight: '700',
+    fontFamily: oledTheme.typography.body.fontFamily,
   },
   serverNameActive: {
-    fontWeight: '700',
-  },
-  speedSection: {
-    width: '100%',
-    marginTop: 4,
-  },
-  speedRow: {
-    flexDirection: 'row',
-    gap: 6,
-    justifyContent: 'center',
-    alignItems: 'center',
-    width: '100%',
-  },
-  speedChip: {
-    flex: 1,
-    minHeight: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 8,
-    borderWidth: 1,
-    paddingHorizontal: 2,
-  },
-  speedChipActive: {
-    borderWidth: 1.5,
-  },
-  speedText: {
-    fontSize: 12,
-    fontWeight: '600',
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
-    textAlign: 'center',
-    textAlignVertical: 'center',
-    includeFontPadding: false,
-  },
-  speedTextActive: {
-    fontWeight: '800',
+    fontWeight: '900',
   },
 });

@@ -765,13 +765,11 @@ cat "${MANIFEST_FILE}"
 echo ""
 log_info "Creazione commit e tag Git..."
 
-git add package.json app.json CHANGELOG.md
-if [ -f "./package-lock.json" ]; then
-  git add package-lock.json
-fi
+# Assicura che l'intero repository locale (codice, risorse, configurazioni e metadati) sia aggiunto all'area di staging
+git add -A
 
 if git diff --staged --quiet; then
-  log_info "Nessuna modifica ai metadati da committare per v${APP_JSON_VERSION}."
+  log_info "Nessuna modifica da committare nel repository locale per v${APP_JSON_VERSION}."
 else
   git commit -m "chore(release): v${APP_JSON_VERSION} [build ${APP_JSON_VERSION_CODE}]"
   log_success "Commit creato: chore(release): v${APP_JSON_VERSION} [build ${APP_JSON_VERSION_CODE}]"
@@ -797,33 +795,76 @@ fi
 # 9. Pubblicazione GitHub (Push commit/tag e GitHub Release)
 # ------------------------------------------------------------------------------
 echo ""
-echo -e "${BOLD}1. Pubblicazione GitHub:${NC}"
+echo -e "${BOLD}1. Pubblicazione GitHub & Sincronizzazione Repository:${NC}"
 GH_CONFIRM="y"
-read -rp "Desideri pubblicare la release oltre al commit su GitHub? [Y/n]: " GH_CONFIRM || true
+read -rp "Desideri aggiornare il repository locale su GitHub e pubblicare la release? [Y/n]: " GH_CONFIRM || true
 GH_CONFIRM="${GH_CONFIRM:-y}"
 
 if [[ "${GH_CONFIRM}" =~ ^[Yy]$ ]]; then
-  log_info "Push del commit e del tag su GitHub (indicatore di progresso)..."
-  git push origin HEAD --progress || true
-  git push origin "refs/tags/${TAG_NAME}:refs/tags/${TAG_NAME}" --force --progress || true
-  log_success "Push completato."
+  # 1. Verifica che ogni modifica residua del repository locale sia inclusa prima del push
+  if [ -n "$(git status --porcelain)" ]; then
+    log_info "Rilevate modifiche non committate nel repository locale. Commit prima del push..."
+    git add -A
+    git commit -m "chore(release): v${APP_JSON_VERSION} [build ${APP_JSON_VERSION_CODE}]" || true
+    git tag -f -a "${TAG_NAME}" -m "Release ${TAG_NAME}"
+  fi
 
-  log_info "Creazione release su GitHub ${TAG_NAME}..."
+  # 2. Identificazione branch corrente e push repository locale
+  CURRENT_BRANCH=$(git branch --show-current 2>/dev/null || git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+  if [ -z "${CURRENT_BRANCH}" ] || [ "${CURRENT_BRANCH}" = "HEAD" ]; then
+    CURRENT_BRANCH="master"
+  fi
+
+  log_info "Push del repository locale (${CURRENT_BRANCH}) su origin per aggiornare git..."
+  if ! git push origin "${CURRENT_BRANCH}" --progress; then
+    log_warn "Push diretto di '${CURRENT_BRANCH}' fallito. Tentativo push HEAD:${CURRENT_BRANCH}..."
+    if ! git push origin "HEAD:${CURRENT_BRANCH}" --progress; then
+      log_error "Errore critico durante il push del repository locale su origin/${CURRENT_BRANCH}!"
+      exit 1
+    fi
+  fi
+
+  log_info "Push del tag '${TAG_NAME}' su origin (aggiornamento forzato)..."
+  if ! git push origin "refs/tags/${TAG_NAME}:refs/tags/${TAG_NAME}" --force --progress; then
+    log_error "Errore critico durante il push del tag ${TAG_NAME} su origin!"
+    exit 1
+  fi
+  log_success "Push completato: repository locale (${CURRENT_BRANCH}) e tag ${TAG_NAME} sincronizzati su GitHub."
+
+  # 3. Creazione o aggiornamento della GitHub Release
+  log_info "Creazione o aggiornamento della release ${TAG_NAME} su GitHub..."
   if ! gh release view "${TAG_NAME}" &>/dev/null; then
     gh release create "${TAG_NAME}" \
       --title "KuroTV ${TAG_NAME}" \
       --notes-file "${TMP_NOTES}"
-    log_success "Release GitHub creata."
+    log_success "Release GitHub ${TAG_NAME} creata."
   else
-    log_info "Release ${TAG_NAME} già presente su GitHub."
+    log_info "Release ${TAG_NAME} già presente su GitHub. Sovrascrittura/aggiornamento note e titolo..."
+    gh release edit "${TAG_NAME}" \
+      --title "KuroTV ${TAG_NAME}" \
+      --notes-file "${TMP_NOTES}"
+    log_success "Release GitHub ${TAG_NAME} aggiornata con successo."
   fi
 
-  log_info "Caricamento APK arm64-v8a (${APK_SIZE}) su GitHub Release con barra di progresso in tempo reale..."
   VERSIONED_ARM64_NAME="kurotv-v${APP_JSON_VERSION}-${APP_JSON_VERSION_CODE}-arm64-v8a.apk"
+
+  # 4. Pulizia vecchi asset APK con build code differenti per prevenire accumulo di file multipli
+  log_info "Verifica e pulizia vecchi asset APK con build code precedenti per ${TAG_NAME}..."
+  EXISTING_ASSETS=$(gh release view "${TAG_NAME}" --json assets -q '.assets[].name' 2>/dev/null || echo "")
+  for OLD_ASSET in ${EXISTING_ASSETS}; do
+    # Se è un asset APK con build code diverso dalla build corrente o non è app-release.apk, rimuovilo
+    if [[ "${OLD_ASSET}" =~ \.apk$ ]] && [ "${OLD_ASSET}" != "${VERSIONED_ARM64_NAME}" ] && [ "${OLD_ASSET}" != "app-release.apk" ]; then
+      log_warn "Rimozione vecchio asset APK con build code differente: ${OLD_ASSET}..."
+      gh release delete-asset "${TAG_NAME}" "${OLD_ASSET}" --yes 2>/dev/null || true
+    fi
+  done
+
+  # 5. Caricamento binari aggiornati
+  log_info "Caricamento APK arm64-v8a (${APK_SIZE}) su GitHub Release ${TAG_NAME} con barra di progresso in tempo reale..."
   if [ -f "${SCRIPTS_DIR}/upload-github-release.mjs" ]; then
     node "${SCRIPTS_DIR}/upload-github-release.mjs" "${TAG_NAME}" "${APK_PATH}" "app-release.apk" "application/vnd.android.package-archive"
     node "${SCRIPTS_DIR}/upload-github-release.mjs" "${TAG_NAME}" "${APK_PATH}" "${VERSIONED_ARM64_NAME}" "application/vnd.android.package-archive"
-    log_success "GitHub Release pubblicata e APK arm64-v8a caricato con successo!"
+    log_success "GitHub Release ${TAG_NAME} pubblicata e APK arm64-v8a caricato con successo (vecchie build sovrascritte)!"
   else
     log_info "Upload fallback tramite gh release upload..."
     TEMP_VERSIONED_APK="${APK_OUTPUT_DIR}/${VERSIONED_ARM64_NAME}"
@@ -831,7 +872,7 @@ if [[ "${GH_CONFIRM}" =~ ^[Yy]$ ]]; then
     gh release upload "${TAG_NAME}" "${APK_PATH}" --clobber
     gh release upload "${TAG_NAME}" "${TEMP_VERSIONED_APK}" --clobber
     rm -f "${TEMP_VERSIONED_APK}"
-    log_success "GitHub Release pubblicata con successo!"
+    log_success "GitHub Release ${TAG_NAME} pubblicata con successo (vecchie build sovrascritte)!"
   fi
 else
   log_info "Pubblicazione su GitHub ignorata."

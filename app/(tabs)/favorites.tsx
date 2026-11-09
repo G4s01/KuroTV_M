@@ -80,7 +80,7 @@ export default function FavoritesScreen() {
           </Text>
           <Pressable
             style={[styles.exploreBtn, { backgroundColor: theme.colors.primary }]}
-            onPress={() => router.push('/(tabs)/explore')}
+            onPress={() => router.push('/(tabs)')}
           >
             <Ionicons name="compass-outline" size={18} color={getContrastTextColor(theme.colors.primary)} />
             <Text style={[styles.exploreBtnText, { color: getContrastTextColor(theme.colors.primary) }]}>ESPLORA CATALOGO</Text>

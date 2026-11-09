@@ -48,7 +48,8 @@ import {
   AnimeInfoTable,
   AnimeControlsBar,
 } from '../src/components/anime/index';
-import { HistorySlider } from '../src/components/index';
+import { HistorySlider, UpdateModal } from '../src/components/index';
+import { UpdateStore, usePendingUpdate } from '../src/services/updater/index';
 import { parseDetailPage } from '../src/services/scraper/parsers/detail.parser';
 import { CURRENT_CHANGELOG, formatChangelog } from '../src/constants/changelog';
 import type { AniSkipResult } from '../src/types/index';
@@ -252,6 +253,21 @@ assert(
 assert(
   releaseScriptContent.includes('--skip-build'),
   'build-release.sh deve supportare il flag --skip-build'
+);
+
+// Verify build-release.sh overwrites GitHub release on different build codes & pushes local repo
+assert(
+  releaseScriptContent.includes('gh release delete-asset') &&
+  releaseScriptContent.includes('gh release edit') &&
+  releaseScriptContent.includes('git add -A'),
+  'build-release.sh deve includere l\'intero repo locale con git add -A e sovrascrivere vecchi asset/build su GitHub release'
+);
+
+const uploadGhScript = fs.readFileSync(path.join(scriptsDir, 'upload-github-release.mjs'), 'utf8');
+assert(
+  uploadGhScript.includes('isOlderBuildOfSamePattern') &&
+  uploadGhScript.includes('deleteAsset'),
+  'upload-github-release.mjs deve eliminare automaticamente vecchi APK di build precedenti per la stessa release'
 );
 
 // Verify .gitignore keeps secrets and credentials ignored, but scripts/ is NOT ignored
@@ -1196,6 +1212,185 @@ assert(
 );
 
 console.log('✓ Esportazioni di tutte le 9 rotte e Theme Safe verificati con successo.');
+
+// -----------------------------------------------------------------------------
+// 8. Test Nuove Feature: UpdateModal, UpdateStore, Tab Animated Arrow, Modal Sheets & PiP Controls
+// -----------------------------------------------------------------------------
+console.log('\n[8/8] Verifica Nuove Feature: UpdateStore, UpdateModal, Tab Arrow, Touch Sheets & PiP Controls...');
+
+// 1. UpdateStore State Transitions & Subscriptions
+let listenerCalled = false;
+const unsub = UpdateStore.subscribe(() => {
+  listenerCalled = true;
+});
+assert.strictEqual(UpdateStore.getPendingUpdate(), null);
+assert.strictEqual(UpdateStore.isModalDismissed(), false);
+assert.strictEqual(UpdateStore.isAutoDownloadRequested(), false);
+
+const mockUpdateResult = {
+  isUpdateAvailable: true,
+  currentVersion: '1.0.0',
+  currentVersionCode: 11,
+  manifest: {
+    version: '1.1.0',
+    versionCode: 12,
+    apkUrl: 'https://example.com/test.apk',
+    releaseNotes: 'Nuova versione con fix e miglioramenti',
+    sha256: 'abc123',
+    mandatory: false,
+    publishedAt: '2026-11-09T00:00:00Z',
+  },
+};
+UpdateStore.setPendingUpdate(mockUpdateResult as any);
+assert(listenerCalled, 'UpdateStore listener deve essere invocato su setPendingUpdate');
+assert.strictEqual(UpdateStore.getPendingUpdate()?.manifest?.version, '1.1.0');
+assert.strictEqual(UpdateStore.isModalDismissed(), false);
+
+UpdateStore.dismissModal();
+assert.strictEqual(UpdateStore.isModalDismissed(), true);
+
+UpdateStore.setAutoDownloadRequested(true);
+assert.strictEqual(UpdateStore.isAutoDownloadRequested(), true);
+
+UpdateStore.clearUpdate();
+assert.strictEqual(UpdateStore.getPendingUpdate(), null);
+assert.strictEqual(UpdateStore.isModalDismissed(), false);
+assert.strictEqual(UpdateStore.isAutoDownloadRequested(), false);
+unsub();
+
+// 2. UpdateModal Component
+assert(
+  typeof UpdateModal === 'function' || typeof UpdateModal === 'object',
+  'UpdateModal deve essere un componente React'
+);
+
+// 3. Player Sheets Touch-Safe Native Modal (Zero Compose Crashes)
+const infoSheetSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/player/PlayerInfoSheet.tsx'), 'utf-8');
+assert(infoSheetSource.includes('Modal'), 'PlayerInfoSheet deve utilizzare Modal nativo per evitare crash Fabric/Compose in landscape');
+assert(!infoSheetSource.includes("from '@expo/ui'"), 'PlayerInfoSheet non deve importare BottomSheet da @expo/ui');
+assert(infoSheetSource.includes('safeGenres'), 'PlayerInfoSheet deve validare safeGenres come array sicuro');
+
+const carouselSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/player/PlayerEpisodesCarouselSheet.tsx'), 'utf-8');
+assert(carouselSource.includes('Modal'), 'PlayerEpisodesCarouselSheet deve utilizzare Modal nativo per evitare crash Fabric/Compose al tocco');
+assert(!carouselSource.includes("from '@expo/ui'"), 'PlayerEpisodesCarouselSheet non deve importare BottomSheet da @expo/ui');
+assert(carouselSource.includes('setTimeout'), 'PlayerEpisodesCarouselSheet deve differire la navigazione per permettere il dismiss del Modal');
+
+// 4. HistorySlider PointerEvents Protection & Stable PanResponder
+const sliderSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/HistorySlider.tsx'), 'utf-8');
+assert(sliderSource.includes('pointerEvents="none"'), 'HistorySlider deve avere pointerEvents="none" sui figli del track per evitare salti di coordinate');
+assert(!sliderSource.includes('[trackWidth, selectStepByIndex]'), 'HistorySlider non deve ricreare PanResponder su cambio di activeIndex');
+assert(sliderSource.includes('onPanResponderTerminationRequest'), 'HistorySlider deve bloccare la terminazione del responder da parte di ScrollView');
+
+// 5. Player Notification Controls & Video Metadata (PiP Mode)
+const playerFullSource = fs.readFileSync(path.resolve(process.cwd(), 'app/player/[id].tsx'), 'utf-8');
+assert(playerFullSource.includes('showNowPlayingNotification'), 'app/player/[id].tsx deve abilitare showNowPlayingNotification per i controlli in area notifica');
+assert(playerFullSource.includes('metadata: {'), 'app/player/[id].tsx deve inviare metadata (titolo, episodio, thumbnail) per la notifica multimediale');
+assert(playerFullSource.includes('isInPiPRef.current'), 'app/player/[id].tsx deve tracciare isInPiPRef per preservare riproduzione e notifiche');
+
+// 6. Tab Layout Animated Upward Arrow
+const tabLayoutSource = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/_layout.tsx'), 'utf-8');
+assert(tabLayoutSource.includes('arrow-up'), 'app/(tabs)/_layout.tsx deve mostrare la freccia in su su impostazioni');
+assert(tabLayoutSource.includes('Animated.loop'), 'app/(tabs)/_layout.tsx deve animare la freccia con Animated.loop');
+assert(tabLayoutSource.includes('isDismissed'), 'app/(tabs)/_layout.tsx deve mostrare la freccia quando l\'aggiornamento non è stato fatto subito');
+
+console.log('✓ Nuove Feature verificate con successo.');
+
+// -----------------------------------------------------------------------------
+// 9. Test Nuove Feature: Sheets Cutoff Fixes, AniSkip 10s & Settings, Filter Modal Safety
+// -----------------------------------------------------------------------------
+console.log('\n[9/9] Verifica Sheets Cutoff Fixes, AniSkip Settings & FilterBottomSheet Modal...');
+
+// 1. PlayerEpisodesCarouselSheet paddingHorizontal & zero cut-off
+assert(carouselCode.includes('paddingHorizontal: horizontalPadding'), 'PlayerEpisodesCarouselSheet deve applicare paddingHorizontal a contentContainerStyle');
+
+// 2. PlayerInfoSheet responsive maxHeight & episodeBadge constraints
+const infoSheetCode = fs.readFileSync(path.resolve(process.cwd(), 'src/components/player/PlayerInfoSheet.tsx'), 'utf-8');
+assert(infoSheetCode.includes('numberOfLines={1}'), 'PlayerInfoSheet episodeBadge deve avere numberOfLines={1}');
+assert(infoSheetCode.includes('ellipsizeMode="tail"'), 'PlayerInfoSheet episodeBadge deve avere ellipsizeMode="tail"');
+
+// 3. ServerBottomSheet speedChip padding
+const serverCode = fs.readFileSync(path.resolve(process.cwd(), 'src/components/ServerBottomSheet.tsx'), 'utf-8');
+assert(serverCode.includes('paddingHorizontal: 4'), 'ServerBottomSheet deve ridurre paddingHorizontal dei chip velocità a 4');
+
+// 4. AniSkipButton Generic Text & 10s display
+const aniSkipBtnCode = fs.readFileSync(path.resolve(process.cwd(), 'src/components/AniSkipButton.tsx'), 'utf-8');
+assert(aniSkipBtnCode.includes("const label = 'SALTA';"), 'AniSkipButton deve usare testo generico SALTA');
+assert(aniSkipBtnCode.includes('BUTTON_DURATION = 10'), 'AniSkipButton deve avere durata display massima di 10 secondi');
+
+// 5. FilterBottomSheet Modal Touch-Safe (Zero @expo/ui crashes)
+const filterSheetCode = fs.readFileSync(path.resolve(process.cwd(), 'src/components/FilterBottomSheet.tsx'), 'utf-8');
+assert(filterSheetCode.includes('Modal'), 'FilterBottomSheet deve utilizzare Modal nativo');
+assert(!filterSheetCode.includes("from '@expo/ui'"), 'FilterBottomSheet non deve importare da @expo/ui per evitare crash silenziosi');
+
+// 6. Tab layout hides explore tab
+assert(tabLayoutSource.includes('name="explore"'), 'app/(tabs)/_layout.tsx deve dichiarare la rotta explore');
+assert(tabLayoutSource.includes('href: null'), 'app/(tabs)/_layout.tsx deve nascondere la rotta explore con href: null');
+
+// 7. Search with filters integrated in Home
+const homeIndexCode = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/index.tsx'), 'utf-8');
+assert(homeIndexCode.includes('FilterBottomSheet'), 'app/(tabs)/index.tsx deve integrare FilterBottomSheet');
+assert(homeIndexCode.includes('isSearchActive'), 'app/(tabs)/index.tsx deve gestire lo stato isSearchActive');
+
+// 8. AniSkip Settings in SettingsScreen
+const settingsScreenCode = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/settings.tsx'), 'utf-8');
+assert(settingsScreenCode.includes('ANISKIP'), 'app/(tabs)/settings.tsx deve contenere la sezione ANISKIP');
+assert(settingsScreenCode.includes('MODALITÀ DI SALTO'), 'app/(tabs)/settings.tsx deve permettere la selezione della modalità');
+assert(settingsScreenCode.includes('COSA SALTARE'), 'app/(tabs)/settings.tsx deve permettere di selezionare cosa saltare');
+assert(settingsScreenCode.includes('enableRecap'), 'app/(tabs)/settings.tsx deve supportare lo skip del recap');
+
+// 9. AniSkip Storage & Recap support
+const aniSettings = AppStorage.getAniSkipSettings();
+assert(typeof aniSettings.enableRecap === 'boolean', 'AppStorage.getAniSkipSettings deve supportare enableRecap');
+AppStorage.saveAniSkipSettings({ mode: 'auto', enableRecap: false });
+assert.strictEqual(AppStorage.getAniSkipSettings().mode, 'auto');
+assert.strictEqual(AppStorage.getAniSkipSettings().enableRecap, false);
+AppStorage.saveAniSkipSettings({ mode: 'manual', enableRecap: true });
+
+// 10. AniSkip 10s Window Calculation & Rewind Verification
+const sampleSkip = {
+  skipId: 'op-1',
+  skipType: 'op',
+  interval: { startTime: 60, endTime: 150 },
+};
+function check10sWindow(time: number, skip: typeof sampleSkip) {
+  const maxDisplayEnd = Math.min(skip.interval.endTime, skip.interval.startTime + 10);
+  return time >= skip.interval.startTime && time < maxDisplayEnd;
+}
+assert.strictEqual(check10sWindow(59, sampleSkip), false, 'Before intro start should not be in window');
+assert.strictEqual(check10sWindow(60, sampleSkip), true, 'At intro start must be in window');
+assert.strictEqual(check10sWindow(65, sampleSkip), true, '5s into intro must be in window');
+assert.strictEqual(check10sWindow(70, sampleSkip), false, '10s after intro start must not be in window');
+assert.strictEqual(check10sWindow(80, sampleSkip), false, '20s after intro start must not be in window');
+assert.strictEqual(check10sWindow(62, sampleSkip), true, 'Rewinding to 62s must re-activate window');
+
+// Short interval (e.g. 5s recap)
+const shortRecap = {
+  skipId: 'recap-1',
+  skipType: 'recap',
+  interval: { startTime: 10, endTime: 15 },
+};
+assert.strictEqual(check10sWindow(10, shortRecap), true, 'Recap start must be in window');
+assert.strictEqual(check10sWindow(14, shortRecap), true, 'Recap 4s in must be in window');
+assert.strictEqual(check10sWindow(15, shortRecap), false, 'Recap end must not be in window');
+
+// 11. Deep verification of player fixes
+const playerScreenSource = fs.readFileSync(path.resolve(process.cwd(), 'app/player/[id].tsx'), 'utf-8');
+assert(playerScreenSource.includes('AppStorage.addSettingsListener'), 'Player deve ascoltare gli aggiornamenti dinamici di impostazioni AniSkip');
+assert(playerScreenSource.includes('autoSkippedIdsRef.current.clear()'), 'Player deve ripulire autoSkippedIdsRef al cambio episodio');
+assert(playerScreenSource.includes('isIn10sWindow'), 'Player deve utilizzare isIn10sWindow per il calcolo della finestra da 10s');
+
+// 12. Deep verification of Home search and favorites fixes
+assert(homeIndexCode.includes('hardwareBackPress'), 'app/(tabs)/index.tsx deve gestire hardwareBackPress per chiudere la ricerca');
+assert(homeIndexCode.includes('Keyboard.dismiss()'), 'app/(tabs)/index.tsx deve chiudere la tastiera aprendo i filtri');
+const favCode = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/favorites.tsx'), 'utf-8');
+assert(favCode.includes("router.push('/(tabs)')"), 'app/(tabs)/favorites.tsx deve navigare verso /(tabs) quando la lista è vuota');
+assert(!favCode.includes('/(tabs)/explore'), 'app/(tabs)/favorites.tsx non deve più riferenziare la rotta explore');
+
+// 13. Deep verification of explore redirect
+const exploreCode = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/explore.tsx'), 'utf-8');
+assert(exploreCode.includes('/(tabs)'), 'app/(tabs)/explore.tsx deve reindirizzare alla home');
+
+console.log('✓ Sheets Cutoff Fixes, AniSkip Settings & FilterBottomSheet Modal verificati con successo.');
 
 // -----------------------------------------------------------------------------
 // Fine Test

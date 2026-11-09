@@ -175,16 +175,29 @@ export default function VideoPlayerScreen() {
   const aniSkipResultsRef = React.useRef<AniSkipResult[]>([]);
   const [activeSkip, setActiveSkip] = React.useState<AniSkipResult | null>(null);
   const activeSkipRef = React.useRef<AniSkipResult | null>(null);
+  const skipTriggeredTimeRef = React.useRef<number>(0);
+  const autoSkippedIdsRef = React.useRef<Set<string>>(new Set());
+  const aniSkipSettingsRef = React.useRef(AppStorage.getAniSkipSettings());
+
+  // Subscribe to live AniSkip settings changes
+  React.useEffect(() => {
+    const unsub = AppStorage.addSettingsListener(() => {
+      aniSkipSettingsRef.current = AppStorage.getAniSkipSettings();
+    });
+    return unsub;
+  }, []);
 
   const videoViewRef = React.useRef<VideoView>(null);
   const controlsTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Initialize video player with expo-video
   // staysActiveInBackground: false prevents persistent background playback when app or PiP is dismissed
+  // showNowPlayingNotification: true provides notification shade playback controls on Android MediaSession
   const player = useVideoPlayer(videoUrl || '', (p) => {
     p.loop = false;
     p.volume = 1.0;
     p.staysActiveInBackground = false;
+    p.showNowPlayingNotification = true;
     p.timeUpdateEventInterval = 0.5; // Starts Android IntervalUpdateClock for timeUpdate
     p.play();
   });
@@ -202,17 +215,62 @@ export default function VideoPlayerScreen() {
       saveProgress(time, player.duration || durationRef.current);
     }
 
-    // Isolated AniSkip check: only triggers state update when entering or exiting an interval
+    // Isolated AniSkip check: handles manual 10s button & auto skipping based on user settings
     if (aniSkipResultsRef.current.length > 0) {
+      const settings = aniSkipSettingsRef.current;
       const matchingSkip =
-        aniSkipResultsRef.current.find(
-          (res) => time >= res.interval.startTime && time <= res.interval.endTime
-        ) || null;
-      const currentId = activeSkipRef.current?.skipId;
-      const nextId = matchingSkip?.skipId;
-      if (currentId !== nextId) {
-        activeSkipRef.current = matchingSkip;
-        setActiveSkip(matchingSkip);
+        settings.mode !== 'disabled'
+          ? aniSkipResultsRef.current.find((res) => {
+              if (time < res.interval.startTime || time > res.interval.endTime) return false;
+              if ((res.skipType === 'op' || res.skipType === 'mixed-op') && !settings.enableOpening) return false;
+              if ((res.skipType === 'ed' || res.skipType === 'mixed-ed') && !settings.enableEnding) return false;
+              if (res.skipType === 'recap' && !settings.enableRecap) return false;
+              return true;
+            }) || null
+          : null;
+
+      // Allow auto-skipped interval to be re-skipped if user seeks back before the interval start
+      for (const res of aniSkipResultsRef.current) {
+        if (time < res.interval.startTime - 2) {
+          autoSkippedIdsRef.current.delete(res.skipId);
+        }
+      }
+
+      if (matchingSkip) {
+        if (settings.mode === 'auto') {
+          if (!autoSkippedIdsRef.current.has(matchingSkip.skipId)) {
+            autoSkippedIdsRef.current.add(matchingSkip.skipId);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+            const target = matchingSkip.interval.endTime + 0.5;
+            player.currentTime = target;
+            currentTimeRef.current = target;
+            saveProgress(target, durationRef.current);
+            activeSkipRef.current = null;
+            setActiveSkip(null);
+          }
+        } else {
+          // Manual mode: show button for max 10 seconds from interval start
+          const maxDisplayEnd = Math.min(
+            matchingSkip.interval.endTime,
+            matchingSkip.interval.startTime + 10
+          );
+          const isIn10sWindow = time >= matchingSkip.interval.startTime && time < maxDisplayEnd;
+
+          if (isIn10sWindow) {
+            if (activeSkipRef.current?.skipId !== matchingSkip.skipId) {
+              activeSkipRef.current = matchingSkip;
+              setActiveSkip(matchingSkip);
+            }
+          } else {
+            if (activeSkipRef.current !== null) {
+              activeSkipRef.current = null;
+              setActiveSkip(null);
+            }
+          }
+        }
+      } else if (activeSkipRef.current !== null) {
+        activeSkipRef.current = null;
+        setActiveSkip(null);
       }
     } else if (activeSkipRef.current !== null) {
       activeSkipRef.current = null;
@@ -259,31 +317,56 @@ export default function VideoPlayerScreen() {
     }
   });
 
+  const currentAnimeIdRef = React.useRef(animeId);
+  currentAnimeIdRef.current = animeId;
+  const currentEpisodeIdRef = React.useRef(episodeId);
+  currentEpisodeIdRef.current = episodeId;
+  const saveProgressRef = React.useRef(saveProgress);
+  saveProgressRef.current = saveProgress;
+
   // AppState listener: if app goes to background without PiP, pause playback and save progress
   React.useEffect(() => {
+    let backgroundTimer: ReturnType<typeof setTimeout> | null = null;
+
     const sub = AppState.addEventListener('change', (nextAppState) => {
-      if (nextAppState === 'background' && !isInPiPRef.current) {
-        player.pause();
-        if (animeId && episodeId) {
-          saveProgress(currentTimeRef.current, durationRef.current);
+      if (nextAppState === 'background') {
+        // Give Android PiP transition time to activate and fire onPictureInPictureStart
+        backgroundTimer = setTimeout(() => {
+          if (!isInPiPRef.current && AppState.currentState === 'background') {
+            player.pause();
+            player.showNowPlayingNotification = false;
+            if (currentAnimeIdRef.current && currentEpisodeIdRef.current) {
+              saveProgressRef.current(currentTimeRef.current, durationRef.current);
+            }
+          }
+        }, 600);
+      } else if (nextAppState === 'active') {
+        if (backgroundTimer) {
+          clearTimeout(backgroundTimer);
+          backgroundTimer = null;
         }
+        player.showNowPlayingNotification = true;
       }
     });
 
     return () => {
+      if (backgroundTimer) {
+        clearTimeout(backgroundTimer);
+      }
       sub.remove();
     };
-  }, [player, animeId, episodeId, saveProgress]);
+  }, [player]);
 
-  // Save latest progress on exit / screen unmount
+  // Save latest progress on exit / screen unmount (only when leaving the screen)
   React.useEffect(() => {
     return () => {
       player.pause();
-      if (animeId && episodeId) {
-        saveProgress(currentTimeRef.current, durationRef.current);
+      player.showNowPlayingNotification = false;
+      if (currentAnimeIdRef.current && currentEpisodeIdRef.current) {
+        saveProgressRef.current(currentTimeRef.current, durationRef.current);
       }
     };
-  }, [player, animeId, episodeId, saveProgress]);
+  }, [player]);
 
   // Open in full horizontal screen (landscape) on start & respond to device rotation
   React.useEffect(() => {
@@ -354,14 +437,23 @@ export default function VideoPlayerScreen() {
 
       if (directUrl) {
         setVideoUrl(directUrl);
+        const videoSource = {
+          uri: directUrl,
+          metadata: {
+            title: animeTitle || 'KURO MOBILE',
+            artist: `EPISODIO ${episodeNumber}`,
+            artwork: thumbnail || undefined,
+          },
+        };
         if (typeof player.replaceAsync === 'function') {
-          await player.replaceAsync(directUrl).catch((err) => {
+          await player.replaceAsync(videoSource).catch((err) => {
             console.warn('[VideoPlayer] replaceAsync error:', err);
           });
         } else {
-          player.replace(directUrl);
+          player.replace(videoSource);
         }
         player.playbackRate = playbackSpeedRef.current;
+        player.showNowPlayingNotification = true;
         player.play();
 
         if (initialResumePosition > 0) {
@@ -395,6 +487,8 @@ export default function VideoPlayerScreen() {
     aniSkipResultsRef.current = [];
     setActiveSkip(null);
     activeSkipRef.current = null;
+    autoSkippedIdsRef.current.clear();
+    skipTriggeredTimeRef.current = 0;
   }, [episodeId, episodeNumber]);
 
   // Fetch AniSkip timestamps & episode batch metadata for advancing next episode
@@ -619,10 +713,13 @@ export default function VideoPlayerScreen() {
   const handleStartPiP = async () => {
     Haptics.selectionAsync().catch(() => {});
     try {
+      isInPiPRef.current = true;
+      player.showNowPlayingNotification = true;
       if (videoViewRef.current) {
         await videoViewRef.current.startPictureInPicture();
       }
     } catch (e: any) {
+      isInPiPRef.current = false;
       console.warn('PiP error:', e);
     }
   };
@@ -646,9 +743,10 @@ export default function VideoPlayerScreen() {
   };
 
   const handleAniSkip = () => {
-    if (!activeSkip) return;
+    const skip = activeSkip || activeSkipRef.current;
+    if (!skip) return;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-    const target = activeSkip.interval.endTime + 0.5;
+    const target = skip.interval.endTime + 0.5;
     player.currentTime = target;
     currentTimeRef.current = target;
     saveProgress(target, durationRef.current);
@@ -763,6 +861,7 @@ export default function VideoPlayerScreen() {
             }}
             onPictureInPictureStart={() => {
               isInPiPRef.current = true;
+              player.showNowPlayingNotification = true;
             }}
             onPictureInPictureStop={() => {
               isInPiPRef.current = false;
@@ -770,6 +869,7 @@ export default function VideoPlayerScreen() {
               // Immediately check and pause playback, plus schedule a fallback check.
               if (AppState.currentState !== 'active') {
                 player.pause();
+                player.showNowPlayingNotification = false;
                 if (animeId && episodeId) {
                   saveProgress(currentTimeRef.current, durationRef.current);
                 }
@@ -777,6 +877,7 @@ export default function VideoPlayerScreen() {
               setTimeout(() => {
                 if (AppState.currentState !== 'active') {
                   player.pause();
+                  player.showNowPlayingNotification = false;
                   if (animeId && episodeId) {
                     saveProgress(currentTimeRef.current, durationRef.current);
                   }
@@ -979,6 +1080,10 @@ export default function VideoPlayerScreen() {
                 : 'intro'
             }
             onSkip={handleAniSkip}
+            onTimeout={() => {
+              activeSkipRef.current = null;
+              setActiveSkip(null);
+            }}
             player={player}
             startTime={activeSkip.interval.startTime}
             endTime={activeSkip.interval.endTime}

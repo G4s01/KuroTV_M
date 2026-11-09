@@ -1,6 +1,14 @@
 import React from 'react';
-import { StyleSheet, Text, View, Pressable, ScrollView, useWindowDimensions } from 'react-native';
-import { BottomSheet } from '@expo/ui';
+import {
+  StyleSheet,
+  Text,
+  View,
+  Pressable,
+  ScrollView,
+  Modal,
+  TouchableWithoutFeedback,
+  useWindowDimensions,
+} from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -38,144 +46,229 @@ export const PlayerInfoSheet: React.FC<PlayerInfoSheetProps> = React.memo(({
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const isLandscape = windowWidth > windowHeight;
 
+  const safeGenres = Array.isArray(genres) ? genres : [];
   const activeDescription = episodeDescription || description;
 
   const safeHorizontalInset = Math.max(insets.left, insets.right);
   const horizontalPadding = Math.max(16, safeHorizontalInset);
 
   return (
-    <BottomSheet
-      isPresented={isVisible}
-      onDismiss={onClose}
-      showDragIndicator={true}
-      containerColor={theme.colors.card}
-      contentPadding={0}
+    <Modal
+      visible={isVisible}
+      transparent={true}
+      animationType="slide"
+      onRequestClose={onClose}
+      statusBarTranslucent={true}
     >
-      <View
-        style={[
-          styles.container,
-          {
-            backgroundColor: theme.colors.card,
-            paddingLeft: horizontalPadding,
-            paddingRight: horizontalPadding,
-            paddingBottom: Math.max(24, insets.bottom + 12),
-          },
-        ]}
-      >
-        <ScrollView
-          style={{ maxHeight: isLandscape ? 280 : 520 }}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-          nestedScrollEnabled={true}
-          keyboardShouldPersistTaps="handled"
+      <View style={styles.modalOverlay}>
+        <TouchableWithoutFeedback onPress={onClose}>
+          <View style={styles.backdrop} />
+        </TouchableWithoutFeedback>
+
+        <View
+          style={[
+            styles.container,
+            {
+              backgroundColor: theme.colors.card,
+              borderColor: theme.colors.border,
+              paddingLeft: horizontalPadding,
+              paddingRight: horizontalPadding,
+              paddingBottom: Math.max(24, insets.bottom + 12),
+            },
+          ]}
         >
-          <View style={styles.topRow}>
-            {animeImage ? (
-              <Image
-                source={{ uri: animeImage }}
-                style={[styles.poster, { borderColor: theme.colors.border }]}
-                contentFit="cover"
-              />
-            ) : (
-              <View
-                style={[
-                  styles.posterPlaceholder,
-                  { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
-                ]}
-              >
-                <Ionicons name="film-outline" size={32} color={theme.colors.textMuted} />
-              </View>
-            )}
+          {/* Drag Handle Indicator */}
+          <View style={styles.dragIndicatorWrapper}>
+            <View style={styles.dragIndicator} />
+          </View>
 
-            <View style={styles.mainInfo}>
-              <Text style={[styles.animeTitle, { color: theme.colors.text }]} numberOfLines={2}>
-                {animeTitle.toUpperCase()}
+          {/* Header Row */}
+          <View style={styles.headerRow}>
+            <View style={styles.headerTitleGroup}>
+              <Ionicons name="information-circle-outline" size={18} color={theme.colors.primary} />
+              <Text style={[styles.headerTitle, { color: theme.colors.text }]}>
+                SCHEDA INFORMAZIONI
               </Text>
+            </View>
+            <Pressable
+              onPress={onClose}
+              hitSlop={12}
+              style={styles.closeBtn}
+              accessibilityRole="button"
+              accessibilityLabel="CHIUDI SCHEDA INFORMAZIONI"
+            >
+              <Ionicons name="close" size={20} color={theme.colors.textMuted} />
+            </Pressable>
+          </View>
 
-              <View
-                style={[
-                  styles.episodeBadge,
-                  { backgroundColor: `${theme.colors.primary}25`, borderColor: theme.colors.primary },
-                ]}
-              >
-                <Ionicons name="play-circle" size={14} color={theme.colors.primary} />
-                <Text style={[styles.episodeBadgeText, { color: theme.colors.primary }]}>
-                  EPISODIO {episodeNumber}
-                  {episodeTitle ? `: ${episodeTitle.toUpperCase()}` : ''}
-                </Text>
-              </View>
-
-              {(releaseYear || status) && (
-                <Text style={[styles.metaText, { color: theme.colors.textMuted }]}>
-                  {[releaseYear, status].filter(Boolean).join(' • ').toUpperCase()}
-                </Text>
-              )}
-
-              {genres.length > 0 && (
-                <View style={styles.genresRow}>
-                  {genres.slice(0, 4).map((g) => (
-                    <View
-                      key={g}
-                      style={[
-                        styles.genreChip,
-                        { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
-                      ]}
-                    >
-                      <Text style={[styles.genreText, { color: theme.colors.textSecondary }]}>
-                        {g.toUpperCase()}
-                      </Text>
-                    </View>
-                  ))}
+          <ScrollView
+            style={{ maxHeight: isLandscape ? 260 : Math.min(480, windowHeight * 0.65) }}
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+            nestedScrollEnabled={true}
+            keyboardShouldPersistTaps="handled"
+          >
+            <View style={styles.topRow}>
+              {animeImage ? (
+                <Image
+                  source={{ uri: animeImage }}
+                  style={[styles.poster, { borderColor: theme.colors.border }]}
+                  contentFit="cover"
+                />
+              ) : (
+                <View
+                  style={[
+                    styles.posterPlaceholder,
+                    { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+                  ]}
+                >
+                  <Ionicons name="film-outline" size={32} color={theme.colors.textMuted} />
                 </View>
               )}
-            </View>
-          </View>
 
-          <View style={styles.synopsisSection}>
-            <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>
-              {episodeDescription ? 'TRAMA EPISODIO' : 'TRAMA'}
-            </Text>
-            <View
-              style={[
-                styles.synopsisBox,
-                { backgroundColor: theme.colors.background, borderColor: theme.colors.border },
-              ]}
-            >
-              <Text style={[styles.synopsisText, { color: theme.colors.text }]}>
-                {activeDescription
-                  ? activeDescription.toUpperCase()
-                  : 'NESSUNA DESCRIZIONE DISPONIBILE PER QUESTO TITOLO.'}
+              <View style={styles.mainInfo}>
+                <Text style={[styles.animeTitle, { color: theme.colors.text }]} numberOfLines={2}>
+                  {animeTitle ? String(animeTitle).toUpperCase() : 'ANIME'}
+                </Text>
+
+                <View
+                  style={[
+                    styles.episodeBadge,
+                    { backgroundColor: `${theme.colors.primary}25`, borderColor: theme.colors.primary },
+                  ]}
+                >
+                  <Ionicons name="play-circle" size={14} color={theme.colors.primary} />
+                  <Text
+                    style={[styles.episodeBadgeText, { color: theme.colors.primary }]}
+                    numberOfLines={1}
+                    ellipsizeMode="tail"
+                  >
+                    EPISODIO {episodeNumber}
+                    {episodeTitle ? `: ${String(episodeTitle).toUpperCase()}` : ''}
+                  </Text>
+                </View>
+
+                {(releaseYear || status) && (
+                  <Text style={[styles.metaText, { color: theme.colors.textMuted }]}>
+                    {[releaseYear, status].filter(Boolean).map(String).join(' • ').toUpperCase()}
+                  </Text>
+                )}
+
+                {safeGenres.length > 0 && (
+                  <View style={styles.genresRow}>
+                    {safeGenres.slice(0, 4).map((g) => (
+                      <View
+                        key={String(g)}
+                        style={[
+                          styles.genreChip,
+                          { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+                        ]}
+                      >
+                        <Text style={[styles.genreText, { color: theme.colors.textSecondary }]}>
+                          {String(g).toUpperCase()}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </View>
+            </View>
+
+            <View style={styles.synopsisSection}>
+              <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>
+                {episodeDescription ? 'TRAMA EPISODIO' : 'TRAMA'}
               </Text>
+              <View
+                style={[
+                  styles.synopsisBox,
+                  { backgroundColor: theme.colors.background, borderColor: theme.colors.border },
+                ]}
+              >
+                <Text style={[styles.synopsisText, { color: theme.colors.text }]}>
+                  {activeDescription
+                    ? String(activeDescription).toUpperCase()
+                    : 'NESSUNA DESCRIZIONE DISPONIBILE PER QUESTO TITOLO.'}
+                </Text>
+              </View>
             </View>
-          </View>
 
-          <Pressable
-            style={[
-              styles.closeBtn,
-              { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
-            ]}
-            onPress={onClose}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel="CHIUDI SCHEDA INFORMAZIONI"
-          >
-            <Text style={[styles.closeBtnText, { color: theme.colors.text }]}>CHIUDI</Text>
-          </Pressable>
-        </ScrollView>
+            <Pressable
+              style={[
+                styles.bottomCloseBtn,
+                { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+              ]}
+              onPress={onClose}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="CHIUDI SCHEDA INFORMAZIONI"
+            >
+              <Text style={[styles.bottomCloseBtnText, { color: theme.colors.text }]}>CHIUDI</Text>
+            </Pressable>
+          </ScrollView>
+        </View>
       </View>
-    </BottomSheet>
+    </Modal>
   );
 });
 
 const styles = StyleSheet.create({
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+  },
+  backdrop: {
+    ...StyleSheet.absoluteFill,
+  },
   container: {
-    paddingTop: 12,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    borderTopWidth: 1,
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    paddingTop: 8,
     width: '100%',
-    maxWidth: 640,
+    maxWidth: 680,
     alignSelf: 'center',
   },
+  dragIndicatorWrapper: {
+    alignItems: 'center',
+    paddingVertical: 4,
+    marginBottom: 6,
+  },
+  dragIndicator: {
+    width: 38,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+  },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  headerTitleGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  headerTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    fontFamily: oledTheme.typography.title.fontFamily,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  closeBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   scrollContent: {
-    gap: 16,
+    gap: 14,
     paddingBottom: 8,
   },
   topRow: {
@@ -187,6 +280,7 @@ const styles = StyleSheet.create({
     height: 120,
     borderRadius: 8,
     borderWidth: 1,
+    flexShrink: 0,
   },
   posterPlaceholder: {
     width: 84,
@@ -195,14 +289,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
   },
   mainInfo: {
     flex: 1,
     gap: 6,
     justifyContent: 'center',
+    minWidth: 0,
   },
   animeTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '800',
     fontFamily: oledTheme.typography.title.fontFamily,
   },
@@ -215,11 +311,13 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     borderWidth: 1,
     alignSelf: 'flex-start',
+    maxWidth: '100%',
   },
   episodeBadgeText: {
     fontSize: 11,
     fontWeight: '700',
     fontFamily: oledTheme.typography.caption.fontFamily,
+    flexShrink: 1,
   },
   metaText: {
     fontSize: 11,
@@ -262,15 +360,15 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     fontFamily: oledTheme.typography.body.fontFamily,
   },
-  closeBtn: {
-    height: 44,
+  bottomCloseBtn: {
+    minHeight: 44,
     borderRadius: 10,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 4,
   },
-  closeBtnText: {
+  bottomCloseBtnText: {
     fontSize: 13,
     fontWeight: '700',
     fontFamily: oledTheme.typography.title.fontFamily,

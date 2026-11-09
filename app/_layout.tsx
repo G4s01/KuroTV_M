@@ -6,6 +6,8 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider, useTheme } from '@/theme';
 import { AppStorage } from '@/services/storage';
+import { UpdaterService, UpdateStore } from '@/services/updater';
+import { UpdateModal } from '@/components';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -46,6 +48,7 @@ function RootNavigation() {
           }}
         />
       </Stack>
+      <UpdateModal />
     </GestureHandlerRootView>
   );
 }
@@ -61,7 +64,22 @@ export default function RootLayout() {
         // Safe fallback
       }
     }, 2000);
-    return () => clearTimeout(timer);
+
+    // Automatic update check on app launch
+    const updateTimer = setTimeout(() => {
+      UpdaterService.checkForUpdates()
+        .then((result) => {
+          if (result.isUpdateAvailable && result.manifest) {
+            UpdateStore.setPendingUpdate(result);
+          }
+        })
+        .catch(() => {});
+    }, 1200);
+
+    return () => {
+      clearTimeout(timer);
+      clearTimeout(updateTimer);
+    };
   }, []);
 
   return (

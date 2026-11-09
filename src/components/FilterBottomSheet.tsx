@@ -1,6 +1,15 @@
 import React from 'react';
-import { StyleSheet, Text, View, Pressable, ScrollView } from 'react-native';
-import { BottomSheet } from '@expo/ui';
+import {
+  StyleSheet,
+  Text,
+  View,
+  Pressable,
+  ScrollView,
+  Modal,
+  TouchableWithoutFeedback,
+  useWindowDimensions,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { oledTheme, useTheme, getContrastTextColor } from '@/theme';
@@ -13,7 +22,7 @@ export interface FilterState {
   sort?: string;
 }
 
-interface FilterBottomSheetProps {
+export interface FilterBottomSheetProps {
   isVisible: boolean;
   onClose: () => void;
   filters: FilterState;
@@ -64,6 +73,13 @@ export const FilterBottomSheet: React.FC<FilterBottomSheetProps> = ({
   onReset,
 }) => {
   const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const isLandscape = windowWidth > windowHeight;
+
+  const safeHorizontalInset = Math.max(insets.left, insets.right);
+  const horizontalPadding = Math.max(16, safeHorizontalInset);
+
   const [selectedGenre, setSelectedGenre] = React.useState<string | undefined>(filters.genre);
   const [selectedType, setSelectedType] = React.useState<string | undefined>(filters.type);
   const [selectedStatus, setSelectedStatus] = React.useState<string | undefined>(filters.status);
@@ -97,197 +113,300 @@ export const FilterBottomSheet: React.FC<FilterBottomSheetProps> = ({
     onClose();
   };
 
+  const primaryContrast = getContrastTextColor(theme.colors.primary);
+
   return (
-    <BottomSheet
-      isPresented={isVisible}
-      onDismiss={onClose}
-      showDragIndicator={true}
-      containerColor={theme.colors.card}
+    <Modal
+      visible={isVisible}
+      transparent={true}
+      animationType="slide"
+      onRequestClose={onClose}
+      statusBarTranslucent={true}
     >
-      <View style={[styles.content, { backgroundColor: theme.colors.card }]}>
-        <View style={styles.header}>
-          <Text style={[styles.title, { color: theme.colors.text }]}>FILTRI DI RICERCA</Text>
-          <Pressable onPress={handleReset} hitSlop={12} style={styles.resetBtn}>
-            <Text style={[styles.resetText, { color: theme.colors.textMuted }]}>REIMPOSTA</Text>
-          </Pressable>
-        </View>
+      <View style={styles.modalOverlay}>
+        <TouchableWithoutFeedback onPress={onClose}>
+          <View style={styles.backdrop} />
+        </TouchableWithoutFeedback>
 
-        <ScrollView style={styles.scrollArea} showsVerticalScrollIndicator={false}>
-          {/* Tipo */}
-          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>FORMATO</Text>
-          <View style={styles.chipRow}>
-            {TYPES.map((item) => {
-              const active = selectedType === item.value || (!selectedType && !item.value);
-              return (
-                <Pressable
-                  key={item.label}
-                  style={[
-                    styles.chip,
-                    { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
-                    active && [
-                      styles.chipActive,
-                      { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
-                    ],
-                  ]}
-                  onPress={() => {
-                    Haptics.selectionAsync().catch(() => {});
-                    setSelectedType(item.value || undefined);
-                  }}
-                >
-                  <Text
-                    style={[
-                      styles.chipText,
-                      { color: active ? getContrastTextColor(theme.colors.primary) : theme.colors.textSecondary },
-                      active && styles.chipTextActive,
-                    ]}
-                  >
-                    {item.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
+        <View
+          style={[
+            styles.container,
+            {
+              backgroundColor: theme.colors.card,
+              borderColor: theme.colors.border,
+              paddingLeft: horizontalPadding,
+              paddingRight: horizontalPadding,
+              paddingBottom: Math.max(24, insets.bottom + 12),
+            },
+          ]}
+        >
+          {/* Drag Handle Indicator */}
+          <View style={styles.dragIndicatorWrapper}>
+            <View style={styles.dragIndicator} />
           </View>
 
-          {/* Stato */}
-          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>STATO DI USCITA</Text>
-          <View style={styles.chipRow}>
-            {STATUSES.map((item) => {
-              const active = selectedStatus === item.value || (!selectedStatus && !item.value);
-              return (
-                <Pressable
-                  key={item.label}
-                  style={[
-                    styles.chip,
-                    { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
-                    active && [
-                      styles.chipActive,
-                      { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
-                    ],
-                  ]}
-                  onPress={() => {
-                    Haptics.selectionAsync().catch(() => {});
-                    setSelectedStatus(item.value || undefined);
-                  }}
-                >
-                  <Text
-                    style={[
-                      styles.chipText,
-                      { color: active ? getContrastTextColor(theme.colors.primary) : theme.colors.textSecondary },
-                      active && styles.chipTextActive,
-                    ]}
-                  >
-                    {item.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
+          {/* Header Row */}
+          <View style={styles.header}>
+            <View style={styles.headerTitleGroup}>
+              <Ionicons name="filter-outline" size={18} color={theme.colors.primary} />
+              <Text style={[styles.title, { color: theme.colors.text }]}>FILTRI DI RICERCA</Text>
+            </View>
+            <View style={styles.headerRightActions}>
+              <Pressable
+                onPress={handleReset}
+                hitSlop={12}
+                style={styles.resetBtn}
+                accessibilityRole="button"
+                accessibilityLabel="REIMPOSTA TUTTI I FILTRI"
+              >
+                <Text style={[styles.resetText, { color: theme.colors.textMuted }]}>REIMPOSTA</Text>
+              </Pressable>
+              <Pressable
+                onPress={onClose}
+                hitSlop={12}
+                style={styles.closeBtn}
+                accessibilityRole="button"
+                accessibilityLabel="CHIUDI FILTRI"
+              >
+                <Ionicons name="close" size={20} color={theme.colors.textMuted} />
+              </Pressable>
+            </View>
           </View>
 
-          {/* Ordinamento */}
-          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>ORDINA PER</Text>
-          <View style={styles.chipRow}>
-            {SORTS.map((item) => {
-              const active = selectedSort === item.value;
-              return (
-                <Pressable
-                  key={item.label}
-                  style={[
-                    styles.chip,
-                    { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
-                    active && [
-                      styles.chipActive,
-                      { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
-                    ],
-                  ]}
-                  onPress={() => {
-                    Haptics.selectionAsync().catch(() => {});
-                    setSelectedSort(item.value);
-                  }}
-                >
-                  <Text
-                    style={[
-                      styles.chipText,
-                      { color: active ? getContrastTextColor(theme.colors.primary) : theme.colors.textSecondary },
-                      active && styles.chipTextActive,
-                    ]}
-                  >
-                    {item.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-
-          {/* Generi */}
-          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>GENERI</Text>
-          <View style={styles.chipRow}>
-            {GENRES.map((g) => {
-              const active = selectedGenre === g;
-              return (
-                <Pressable
-                  key={g}
-                  style={[
-                    styles.chip,
-                    { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
-                    active && [
-                      styles.chipActive,
-                      { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
-                    ],
-                  ]}
-                  onPress={() => {
-                    Haptics.selectionAsync().catch(() => {});
-                    setSelectedGenre(active ? undefined : g);
-                  }}
-                >
-                  <Text
-                    style={[
-                      styles.chipText,
-                      { color: active ? getContrastTextColor(theme.colors.primary) : theme.colors.textSecondary },
-                      active && styles.chipTextActive,
-                    ]}
-                  >
-                    {g}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </ScrollView>
-
-        <View style={styles.footer}>
-          <Pressable
-            style={[styles.applyBtn, { backgroundColor: theme.colors.primary }]}
-            onPress={handleApply}
+          <ScrollView
+            style={{ maxHeight: isLandscape ? 260 : Math.min(460, windowHeight * 0.62) }}
+            showsVerticalScrollIndicator={false}
+            nestedScrollEnabled={true}
+            keyboardShouldPersistTaps="handled"
           >
-            <Ionicons name="checkmark-sharp" size={18} color={getContrastTextColor(theme.colors.primary)} />
-            <Text style={[styles.applyBtnText, { color: getContrastTextColor(theme.colors.primary) }]}>APPLICA FILTRI</Text>
-          </Pressable>
+            {/* Formato / Tipo */}
+            <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>FORMATO</Text>
+            <View style={styles.chipRow}>
+              {TYPES.map((item) => {
+                const active = selectedType === item.value || (!selectedType && !item.value);
+                const contrastColor = active ? primaryContrast : theme.colors.textSecondary;
+                return (
+                  <Pressable
+                    key={item.label}
+                    style={[
+                      styles.chip,
+                      { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+                      active && [
+                        styles.chipActive,
+                        { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
+                      ],
+                    ]}
+                    onPress={() => {
+                      Haptics.selectionAsync().catch(() => {});
+                      setSelectedType(item.value || undefined);
+                    }}
+                    hitSlop={4}
+                    accessibilityRole="button"
+                    accessibilityLabel={`FORMATO ${item.label}${active ? ' ATTIVO' : ''}`}
+                  >
+                    <Text
+                      style={[
+                        styles.chipText,
+                        { color: contrastColor },
+                        active && styles.chipTextActive,
+                      ]}
+                    >
+                      {item.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            {/* Stato */}
+            <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>STATO DI USCITA</Text>
+            <View style={styles.chipRow}>
+              {STATUSES.map((item) => {
+                const active = selectedStatus === item.value || (!selectedStatus && !item.value);
+                const contrastColor = active ? primaryContrast : theme.colors.textSecondary;
+                return (
+                  <Pressable
+                    key={item.label}
+                    style={[
+                      styles.chip,
+                      { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+                      active && [
+                        styles.chipActive,
+                        { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
+                      ],
+                    ]}
+                    onPress={() => {
+                      Haptics.selectionAsync().catch(() => {});
+                      setSelectedStatus(item.value || undefined);
+                    }}
+                    hitSlop={4}
+                    accessibilityRole="button"
+                    accessibilityLabel={`STATO ${item.label}${active ? ' ATTIVO' : ''}`}
+                  >
+                    <Text
+                      style={[
+                        styles.chipText,
+                        { color: contrastColor },
+                        active && styles.chipTextActive,
+                      ]}
+                    >
+                      {item.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            {/* Ordinamento */}
+            <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>ORDINA PER</Text>
+            <View style={styles.chipRow}>
+              {SORTS.map((item) => {
+                const active = selectedSort === item.value;
+                const contrastColor = active ? primaryContrast : theme.colors.textSecondary;
+                return (
+                  <Pressable
+                    key={item.label}
+                    style={[
+                      styles.chip,
+                      { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+                      active && [
+                        styles.chipActive,
+                        { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
+                      ],
+                    ]}
+                    onPress={() => {
+                      Haptics.selectionAsync().catch(() => {});
+                      setSelectedSort(item.value);
+                    }}
+                    hitSlop={4}
+                    accessibilityRole="button"
+                    accessibilityLabel={`ORDINA PER ${item.label}${active ? ' ATTIVO' : ''}`}
+                  >
+                    <Text
+                      style={[
+                        styles.chipText,
+                        { color: contrastColor },
+                        active && styles.chipTextActive,
+                      ]}
+                    >
+                      {item.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            {/* Generi */}
+            <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>GENERI</Text>
+            <View style={styles.chipRow}>
+              {GENRES.map((g) => {
+                const active = selectedGenre === g;
+                const contrastColor = active ? primaryContrast : theme.colors.textSecondary;
+                return (
+                  <Pressable
+                    key={g}
+                    style={[
+                      styles.chip,
+                      { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+                      active && [
+                        styles.chipActive,
+                        { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
+                      ],
+                    ]}
+                    onPress={() => {
+                      Haptics.selectionAsync().catch(() => {});
+                      setSelectedGenre(active ? undefined : g);
+                    }}
+                    hitSlop={4}
+                    accessibilityRole="button"
+                    accessibilityLabel={`GENERE ${g}${active ? ' SELEZIONATO' : ''}`}
+                  >
+                    <Text
+                      style={[
+                        styles.chipText,
+                        { color: contrastColor },
+                        active && styles.chipTextActive,
+                      ]}
+                    >
+                      {g}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </ScrollView>
+
+          {/* Action Footer */}
+          <View style={styles.footer}>
+            <Pressable
+              style={[styles.applyBtn, { backgroundColor: theme.colors.primary }]}
+              onPress={handleApply}
+              accessibilityRole="button"
+              accessibilityLabel="APPLICA FILTRI SELEZIONATI"
+            >
+              <Ionicons name="checkmark-sharp" size={18} color={primaryContrast} />
+              <Text style={[styles.applyBtnText, { color: primaryContrast }]}>APPLICA FILTRI</Text>
+            </Pressable>
+          </View>
         </View>
       </View>
-    </BottomSheet>
+    </Modal>
   );
 };
 
 const styles = StyleSheet.create({
-  content: {
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 24,
-    maxHeight: 520,
-    backgroundColor: oledTheme.colors.card,
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+  },
+  backdrop: {
+    ...StyleSheet.absoluteFill,
+  },
+  container: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    borderTopWidth: 1,
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    paddingTop: 8,
+    width: '100%',
+    maxWidth: 680,
+    alignSelf: 'center',
+  },
+  dragIndicatorWrapper: {
+    alignItems: 'center',
+    paddingVertical: 4,
+    marginBottom: 6,
+  },
+  dragIndicator: {
+    width: 38,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
+  },
+  headerTitleGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  headerRightActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
   },
   title: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: oledTheme.colors.text,
-    fontFamily: 'monospace',
+    fontSize: 15,
+    fontWeight: '800',
+    fontFamily: oledTheme.typography.title.fontFamily,
     textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   resetBtn: {
     minHeight: 44,
@@ -296,23 +415,25 @@ const styles = StyleSheet.create({
   },
   resetText: {
     fontSize: 12,
-    color: oledTheme.colors.textMuted,
-    fontWeight: '600',
-    fontFamily: 'monospace',
+    fontWeight: '700',
+    fontFamily: oledTheme.typography.caption.fontFamily,
     textTransform: 'uppercase',
   },
-  scrollArea: {
-    maxHeight: 380,
+  closeBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   sectionTitle: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
-    color: oledTheme.colors.textSecondary,
-    marginTop: 14,
-    marginBottom: 8,
-    fontFamily: 'monospace',
+    fontFamily: oledTheme.typography.caption.fontFamily,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
+    marginTop: 12,
+    marginBottom: 8,
   },
   chipRow: {
     flexDirection: 'row',
@@ -320,39 +441,29 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   chip: {
-    minHeight: 36,
+    minHeight: 40,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: oledTheme.radius.full,
-    backgroundColor: oledTheme.colors.surface,
     borderWidth: 1,
-    borderColor: oledTheme.colors.border,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  chipActive: {
-    backgroundColor: oledTheme.colors.primary,
-    borderColor: oledTheme.colors.primary,
-  },
+  chipActive: {},
   chipText: {
     fontSize: 12,
-    color: oledTheme.colors.textSecondary,
-    fontWeight: '500',
-    fontFamily: 'monospace',
+    fontWeight: '600',
+    fontFamily: oledTheme.typography.caption.fontFamily,
     textTransform: 'uppercase',
   },
   chipTextActive: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
+    fontWeight: '800',
   },
   footer: {
-    marginTop: 16,
+    marginTop: 14,
   },
   applyBtn: {
     minHeight: oledTheme.spacing.minTouchTarget,
-    backgroundColor: oledTheme.colors.primary,
     borderRadius: oledTheme.radius.md,
     flexDirection: 'row',
     alignItems: 'center',
@@ -360,10 +471,9 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   applyBtnText: {
-    color: '#FFFFFF',
     fontSize: 14,
-    fontWeight: '700',
-    fontFamily: 'monospace',
+    fontWeight: '800',
+    fontFamily: oledTheme.typography.caption.fontFamily,
     textTransform: 'uppercase',
   },
 });

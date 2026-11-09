@@ -6,6 +6,7 @@ import {
   Pressable,
   PanResponder,
   type LayoutChangeEvent,
+  type GestureResponderEvent,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { oledTheme, getContrastTextColor, type Theme } from '@/theme';
@@ -51,12 +52,17 @@ export const RETENTION_STEPS: StepItem[] = [
   },
 ];
 
+const THUMB_SIZE = 24;
+const THUMB_RADIUS = THUMB_SIZE / 2;
+
 export const HistorySlider = React.memo<HistorySliderProps>(function HistorySlider({
   value,
   onChange,
   theme,
 }) {
   const [trackWidth, setTrackWidth] = React.useState(0);
+  const trackWidthRef = React.useRef(0);
+  const startLocationXRef = React.useRef(0);
 
   // Find index corresponding to current value (default to 90GG if not matched)
   const activeIndex = React.useMemo(() => {
@@ -64,45 +70,66 @@ export const HistorySlider = React.memo<HistorySliderProps>(function HistorySlid
     return idx >= 0 ? idx : 3; // 90GG default
   }, [value]);
 
+  const activeIndexRef = React.useRef(activeIndex);
+  activeIndexRef.current = activeIndex;
+
+  const onChangeRef = React.useRef(onChange);
+  onChangeRef.current = onChange;
+
   const selectStepByIndex = React.useCallback(
     (index: number) => {
       const clamped = Math.max(0, Math.min(RETENTION_STEPS.length - 1, index));
-      if (clamped !== activeIndex) {
+      if (clamped !== activeIndexRef.current) {
         Haptics.selectionAsync().catch(() => {});
-        onChange(RETENTION_STEPS[clamped].value);
+        activeIndexRef.current = clamped;
+        onChangeRef.current(RETENTION_STEPS[clamped].value);
       }
     },
-    [activeIndex, onChange]
+    []
   );
 
-  const panResponder = React.useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
-        onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dx) > 4,
-        onPanResponderGrant: (evt) => {
-          if (trackWidth > 0) {
-            const touchX = evt.nativeEvent.locationX;
-            const ratio = Math.max(0, Math.min(1, touchX / trackWidth));
-            const newIndex = Math.round(ratio * (RETENTION_STEPS.length - 1));
-            selectStepByIndex(newIndex);
-          }
-        },
-        onPanResponderMove: (evt) => {
-          if (trackWidth > 0) {
-            const touchX = evt.nativeEvent.locationX;
-            const ratio = Math.max(0, Math.min(1, touchX / trackWidth));
-            const newIndex = Math.round(ratio * (RETENTION_STEPS.length - 1));
-            selectStepByIndex(newIndex);
-          }
-        },
-      }),
-    [trackWidth, selectStepByIndex]
-  );
+  const updateFromPositionX = React.useCallback((posX: number) => {
+    const w = trackWidthRef.current;
+    if (w <= THUMB_SIZE) return;
+
+    const usableWidth = w - THUMB_SIZE;
+    const clampedX = Math.max(0, Math.min(usableWidth, posX - THUMB_RADIUS));
+    const ratio = clampedX / usableWidth;
+    const newIndex = Math.max(
+      0,
+      Math.min(RETENTION_STEPS.length - 1, Math.round(ratio * (RETENTION_STEPS.length - 1)))
+    );
+
+    if (newIndex !== activeIndexRef.current) {
+      Haptics.selectionAsync().catch(() => {});
+      activeIndexRef.current = newIndex;
+      onChangeRef.current(RETENTION_STEPS[newIndex].value);
+    }
+  }, []);
+
+  // Stable PanResponder: never recreated, prevents parent ScrollView from stealing touch
+  const panResponder = React.useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dx) > 3,
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderGrant: (evt) => {
+        startLocationXRef.current = evt.nativeEvent.locationX;
+        updateFromPositionX(evt.nativeEvent.locationX);
+      },
+      onPanResponderMove: (_, gesture) => {
+        const currentX = startLocationXRef.current + gesture.dx;
+        updateFromPositionX(currentX);
+      },
+      onPanResponderRelease: () => {},
+      onPanResponderTerminate: () => {},
+    })
+  ).current;
 
   const handleLayout = (e: LayoutChangeEvent) => {
     const w = e.nativeEvent.layout.width;
     if (w > 0) {
+      trackWidthRef.current = w;
       setTrackWidth(w);
     }
   };
@@ -110,42 +137,47 @@ export const HistorySlider = React.memo<HistorySliderProps>(function HistorySlid
   const currentStep = RETENTION_STEPS[activeIndex];
   const activeRatio = activeIndex / (RETENTION_STEPS.length - 1);
   const primaryContrast = getContrastTextColor(theme.colors.primary);
+  const usableWidth = Math.max(0, trackWidth - THUMB_SIZE);
+  const thumbLeft = activeRatio * usableWidth;
 
   return (
     <View style={styles.container}>
-      {/* Interactive Slider Track */}
+      {/* Interactive Slider Track with stable touch handling */}
       <View
         style={styles.touchArea}
         onLayout={handleLayout}
         {...panResponder.panHandlers}
       >
         <View
+          pointerEvents="none"
           style={[
             styles.trackBackground,
             { backgroundColor: theme.colors.card, borderColor: theme.colors.border },
           ]}
         >
-          {/* Active fill */}
+          {/* Active fill matching thumb center */}
           <View
             style={[
               styles.trackActiveFill,
               {
-                width: `${activeRatio * 100}%`,
+                width: trackWidth > 0 ? thumbLeft + THUMB_RADIUS : `${activeRatio * 100}%`,
                 backgroundColor: currentStep.value === -1 ? theme.colors.textMuted : theme.colors.primary,
               },
             ]}
           />
 
-          {/* Step tick dots */}
+          {/* Step tick dots aligned to thumb center */}
           {RETENTION_STEPS.map((s, idx) => {
             const isFilled = idx <= activeIndex;
+            const dotRatio = idx / (RETENTION_STEPS.length - 1);
+            const dotLeft = trackWidth > 0 ? THUMB_RADIUS + dotRatio * usableWidth : `${dotRatio * 100}%`;
             return (
               <View
                 key={s.label}
                 style={[
                   styles.tickDot,
                   {
-                    left: `${(idx / (RETENTION_STEPS.length - 1)) * 100}%`,
+                    left: dotLeft,
                     backgroundColor: isFilled
                       ? currentStep.value === -1
                         ? theme.colors.textMuted
@@ -161,10 +193,11 @@ export const HistorySlider = React.memo<HistorySliderProps>(function HistorySlid
         {/* Thumb */}
         {trackWidth > 0 && (
           <View
+            pointerEvents="none"
             style={[
               styles.thumb,
               {
-                left: activeRatio * (trackWidth - 24),
+                left: thumbLeft,
                 backgroundColor: currentStep.value === -1 ? '#888888' : theme.colors.primary,
                 borderColor: '#FFFFFF',
               },

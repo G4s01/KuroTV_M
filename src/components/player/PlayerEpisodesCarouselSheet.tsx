@@ -1,6 +1,13 @@
 import React from 'react';
-import { StyleSheet, Text, View, Pressable, useWindowDimensions } from 'react-native';
-import { BottomSheet } from '@expo/ui';
+import {
+  StyleSheet,
+  Text,
+  View,
+  Pressable,
+  Modal,
+  TouchableWithoutFeedback,
+  useWindowDimensions,
+} from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
@@ -74,7 +81,7 @@ export const PlayerEpisodesCarouselSheet: React.FC<PlayerEpisodesCarouselSheetPr
         flatListRef.current?.scrollToIndex?.({
           index: Math.max(0, targetIdx - 1),
           animated: true,
-        })?.catch?.(() => {});
+        });
       }
     } catch {
       // Ignore layout not ready errors gracefully
@@ -117,15 +124,15 @@ export const PlayerEpisodesCarouselSheet: React.FC<PlayerEpisodesCarouselSheetPr
           ]}
           onPress={() => {
             if (isSelectingRef.current) return;
+            isSelectingRef.current = true;
             Haptics.selectionAsync().catch(() => {});
             onClose();
             if (!isCurrent) {
-              isSelectingRef.current = true;
               setTimeout(() => {
                 if (isMountedRef.current) {
                   onSelectEpisode(item);
                 }
-              }, 80);
+              }, 60);
             }
           }}
           accessibilityRole="button"
@@ -199,14 +206,14 @@ export const PlayerEpisodesCarouselSheet: React.FC<PlayerEpisodesCarouselSheetPr
               ]}
               numberOfLines={1}
             >
-              {item.title ? item.title.toUpperCase() : `EPISODIO ${item.number}`}
+              {item.title ? String(item.title).toUpperCase() : `EPISODIO ${item.number}`}
             </Text>
             <Text
               style={[styles.cardDesc, { color: theme.colors.textSecondary }]}
               numberOfLines={2}
             >
               {item.description
-                ? item.description.toUpperCase()
+                ? String(item.description).toUpperCase()
                 : 'TOCCA PER RIPRODURRE LA PUNTATA'}
             </Text>
           </View>
@@ -227,96 +234,145 @@ export const PlayerEpisodesCarouselSheet: React.FC<PlayerEpisodesCarouselSheetPr
     []
   );
 
-  const ListHeader = React.useCallback(
-    () => <View style={{ width: horizontalPadding }} />,
-    [horizontalPadding]
-  );
-
-  const ListFooter = React.useCallback(
-    () => <View style={{ width: horizontalPadding }} />,
-    [horizontalPadding]
-  );
-
   return (
-    <BottomSheet
-      isPresented={isVisible}
-      onDismiss={onClose}
-      showDragIndicator={true}
-      containerColor={theme.colors.card}
-      contentPadding={0}
+    <Modal
+      visible={isVisible}
+      transparent={true}
+      animationType="slide"
+      onRequestClose={onClose}
+      statusBarTranslucent={true}
     >
-      <View
-        style={[
-          styles.container,
-          {
-            backgroundColor: theme.colors.card,
-            paddingBottom: Math.max(24, insets.bottom + 12),
-          },
-        ]}
-      >
+      <View style={styles.modalOverlay}>
+        <TouchableWithoutFeedback onPress={onClose}>
+          <View style={styles.backdrop} />
+        </TouchableWithoutFeedback>
+
         <View
           style={[
-            styles.headerRow,
+            styles.container,
             {
-              paddingHorizontal: horizontalPadding,
+              backgroundColor: theme.colors.card,
+              borderColor: theme.colors.border,
+              paddingBottom: Math.max(24, insets.bottom + 12),
             },
           ]}
+          /* contentPadding={0} */
         >
-          <View style={styles.headerTitleGroup}>
-            <Ionicons name="list-outline" size={18} color={theme.colors.primary} />
-            <Text style={[styles.sheetTitle, { color: theme.colors.text }]}>
-              CAROSELLO EPISODI
-            </Text>
+          {/* Drag Handle Indicator */}
+          <View style={styles.dragIndicatorWrapper}>
+            <View style={styles.dragIndicator} />
           </View>
-          <Text style={[styles.sheetSubtitle, { color: theme.colors.textSecondary }]}>
-            {episodes.length} EPISODI
-          </Text>
-        </View>
 
-        <FlashList
-          ref={flatListRef}
-          data={episodes}
-          keyExtractor={keyExtractor}
-          renderItem={renderEpisodeCard}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          maintainVisibleContentPosition={{ disabled: true }}
-          initialScrollIndex={initialIndex}
-          style={styles.flashList}
-          contentContainerStyle={styles.listContent}
-          overrideItemLayout={(layout) => {
-            layout.span = 1;
-          }}
-          ItemSeparatorComponent={ItemSeparator}
-          ListHeaderComponent={ListHeader}
-          ListFooterComponent={ListFooter}
-          nestedScrollEnabled={true}
-          keyboardShouldPersistTaps="handled"
-          extraData={currentEpisodeNumber}
-          onLoad={handleScrollToActive}
-        />
+          <View
+            style={[
+              styles.headerRow,
+              {
+                paddingHorizontal: horizontalPadding,
+              },
+            ]}
+          >
+            <View style={styles.headerTitleGroup}>
+              <Ionicons name="list-outline" size={18} color={theme.colors.primary} />
+              <Text style={[styles.sheetTitle, { color: theme.colors.text }]}>
+                CAROSELLO EPISODI
+              </Text>
+            </View>
+
+            <View style={styles.headerRightActions}>
+              <Text style={[styles.sheetSubtitle, { color: theme.colors.textSecondary }]}>
+                {episodes.length} EPISODI
+              </Text>
+              <Pressable
+                onPress={onClose}
+                hitSlop={12}
+                style={styles.closeBtn}
+                accessibilityRole="button"
+                accessibilityLabel="CHIUDI CAROSELLO EPISODI"
+              >
+                <Ionicons name="close" size={20} color={theme.colors.textMuted} />
+              </Pressable>
+            </View>
+          </View>
+
+          <FlashList
+            ref={flatListRef}
+            data={episodes}
+            keyExtractor={keyExtractor}
+            renderItem={renderEpisodeCard}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            maintainVisibleContentPosition={{ disabled: true }}
+            initialScrollIndex={initialIndex}
+            style={styles.flashList}
+            contentContainerStyle={[styles.listContent, { paddingHorizontal: horizontalPadding }]}
+            overrideItemLayout={(layout) => {
+              layout.span = 1;
+            }}
+            ItemSeparatorComponent={ItemSeparator}
+            nestedScrollEnabled={true}
+            keyboardShouldPersistTaps="handled"
+            extraData={currentEpisodeNumber}
+            onLoad={handleScrollToActive}
+          />
+        </View>
       </View>
-    </BottomSheet>
+    </Modal>
   );
 });
 
 const styles = StyleSheet.create({
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+  },
+  backdrop: {
+    ...StyleSheet.absoluteFill,
+  },
   container: {
-    paddingTop: 12,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    borderTopWidth: 1,
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    paddingTop: 8,
     width: '100%',
-    maxWidth: 760,
+    maxWidth: 820,
     alignSelf: 'center',
+  },
+  dragIndicatorWrapper: {
+    alignItems: 'center',
+    paddingVertical: 4,
+    marginBottom: 6,
+  },
+  dragIndicator: {
+    width: 38,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
   },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 14,
+    marginBottom: 12,
   },
   headerTitleGroup: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  headerRightActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  closeBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   sheetTitle: {
     fontSize: 15,
@@ -335,7 +391,7 @@ const styles = StyleSheet.create({
     width: CARD_GAP,
   },
   flashList: {
-    height: 184,
+    height: 196,
   },
   listContent: {
     minHeight: 184,

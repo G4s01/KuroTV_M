@@ -235,13 +235,27 @@ async function main() {
   console.log(`[GitHub] Recupero dettagli release '${tag}' per ${repo}...`);
   const release = await getRelease(repo, tag, token);
 
-  // Check if an asset with the same name already exists and remove it (clobber)
+  // Check if an asset with the same name already exists and remove it (clobber).
+  // Also remove any older build code APKs for the same version (e.g. kurotv-v1.0.0-*-arm64-v8a.apk)
+  // so that releases are cleanly overwritten instead of accumulating multiple APKs with different build codes.
   if (Array.isArray(release.assets)) {
-    const existingAsset = release.assets.find(a => a.name === assetName);
-    if (existingAsset) {
-      console.log(`[GitHub] Rilevato asset esistente '${assetName}'. Rimozione in corso...`);
-      await deleteAsset(repo, tag, assetName, existingAsset.id, token);
-      console.log(`[GitHub] Asset precedente rimosso con successo.`);
+    const isVersionedApk = /^kurotv-v.*\.apk$/i.test(assetName);
+    for (const existingAsset of release.assets) {
+      const isExactMatch = existingAsset.name === assetName;
+      const isOlderBuildOfSamePattern = isVersionedApk && /^kurotv-v.*\.apk$/i.test(existingAsset.name);
+
+      if (isExactMatch || isOlderBuildOfSamePattern) {
+        console.log(`[GitHub] Rilevato asset da sovrascrivere/rimuovere: '${existingAsset.name}'. Rimozione in corso...`);
+        let assetId = existingAsset.id;
+        if (existingAsset.apiUrl) {
+          const m = existingAsset.apiUrl.match(/\/assets\/(\d+)/);
+          if (m && m[1]) {
+            assetId = m[1];
+          }
+        }
+        await deleteAsset(repo, tag, existingAsset.name, assetId, token);
+        console.log(`[GitHub] Asset '${existingAsset.name}' rimosso con successo.`);
+      }
     }
   }
 

@@ -32,6 +32,7 @@ export const ActivityIndicator = () => null;
 export const RefreshControl = () => null;
 export const useWindowDimensions = () => ({ width: 400, height: 800 });
 export const BackHandler = { addEventListener: () => ({ remove: () => {} }) };
+export const Keyboard = { dismiss: () => {}, addListener: () => ({ remove: () => {} }) };
 export const Share = { share: async () => ({ action: 'sharedAction' }) };
 export const Modal = ({ children }) => children;
 export const StatusBar = {
