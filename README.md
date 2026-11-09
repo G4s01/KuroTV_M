@@ -38,19 +38,23 @@
 - **⏩ Skip Sequenziale Intelligente**: Doppio tap $\pm 10$s con accumulo cumulativo (`+20s`, `+30s`, `+50s`, `-30s`) e pill di feedback compatto centrato accanto al tasto Play/Pausa.
 - **⏮️ Comandi Centrali Bilanciati**: Pulsante Play/Pausa circolare affiancato dai comandi per episodio precedente (`play-skip-back`) e successivo (`play-skip-forward`).
 - **📑 Carosello Episodi Virtualizzato**: Drawer modale touch-safe con `@shopify/flash-list` per navigare istantaneamente centinaia di episodi con auto-scroll alla puntata corrente e padding simmetrico.
-- **ℹ️ Scheda Info & Trama**: Accesso rapido a locandina, badge puntata, dettagli della serie e sinossi completa scrollabile con normalizzazione difensiva dei generi.
-- **☀️ Gesture HUD Volume & Luminosità**: Swipe verticale destro per il volume e sinistro per la luminosità, con modalità `AUTOMATICA` agganciata al sensore di sistema.
-- **📺 Picture-in-Picture & Controlli in Notifica (MediaStyle)**: Supporto nativo PiP e controlli rapidi Android MediaSession (precedente, play/pausa, successivo, chiudi) persistenti nel drawer notifiche con chiusura anti-zombie playback.
+- **ℹ️ Scheda Info & Trama**: Accesso rapido a locandina, badge puntata formattato rigorosamente come `'EPISODIO X/TOT'`, dettagli della serie e sinossi completa scrollabile con normalizzazione difensiva dei generi.
+- **🔄 Feedback Visivo Minimale di Caricamento**: Overlay circolare compatto (`ActivityIndicator`) senza scritte testuali durante il caricamento e buffering dello streaming.
+- **☀️ Gesture HUD Volume & Luminosità**: Swipe rigorosamente verticali con isolamento asse (`activeOffsetY`, `failOffsetX`, rigetto spostamenti orizzontali) e travel range calibrato per volume (destra) e luminosità (sinistra) con modalità `AUTOMATICA`.
+- **📺 Picture-in-Picture & Controlli in Notifica (MediaStyle)**: Supporto nativo PiP, transizione fluida a schermo intero senza pause involontarie tramite `wasPlayingInPiPRef`, controlli rapidi Android MediaSession (con tasto episodio successivo e copertina asincrona via patch native) nel cassetto notifiche e chiusura anti-zombie playback.
+- **📑 Menù e Drawer Touch-Safe Senza Tagli Visivi**: Dimensioni responsive in base all'orientamento (portrait/landscape) con troncamento elegante dei testi per azzerare i tagli laterali su smartphone di qualsiasi fattore di forma.
 
 ### 📋 Scheda Tecnica Dettaglio & Controlli Rapidi
-- **🎞️ Cella Generi a Scorrimento Orizzontale**: Consultazione dell'elenco completo dei generi senza espansioni verticali o troncamenti grafici.
+- **🖼️ Header Pulito & Copertina Espandibile a Schermo Intero**: Rimozione del vecchio backdrop ingrandito a favore di uno spacing iniziale protetto al di sotto del tasto Indietro e locandina cliccabile per aprire l'artwork ad alta risoluzione in una card modale OLED.
+- **🎞️ Tabella Tecnica & Supporto Totali Incerti**: Cella generi a scorrimento orizzontale e gestione difensiva dei totali episodi incerti o serie in corso (`??`, `?`).
 - **▶️ Controlli di Avvio Rapido Simbolici**: Header compatto con pulsanti Play (`play`) e Riavvia da capo (`reload`) a soli simboli ($\ge 44$dp), con eliminazione del tasto ridondante a fondo pagina.
 - **📑 Selettore Batch Touch-Native**: Bottom sheet modale basato su React Native `Modal` touch-safe, ripulito da contenuti correlati per garantire selezione istantanea ad ogni tocco e zero crash Fabric/Compose.
+- **🌐 Link Esterni con Icone SVG**: Pulsanti rapidi con icone SVG dedicate per Trailer YouTube, MAL e AniList.
 
 ### 🖤 Design System & Esperienza Touch
 - **Nero Assoluto OLED (`#000000`)**: Spegnimento fisico dei pixel sui display AMOLED per azzerare i consumi energetici e massimizzare il contrasto.
 - **Tipografia Monospace & CAPS LOCK**: Identità coerente su tutta l'app con font monospace di sistema e testi in maiuscolo.
-- **📱 Compatibilità Navbar di Sistema Android**: Modalità immersiva auto-hide (`BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE`) che scompare ad app aperta e ricompare temporaneamente con swipe dal basso; cuscinetto dinamico di sicurezza per chi usa la navigazione a 3 pulsanti e switch in Impostazioni.
+- **📱 Compatibilità Navbar di Sistema Android**: Navbar fissa in-app di default con sollevamento dinamico del router dei tab per zero interferenze con i tasti di navigazione fisici/virtuali, commutazione automatica in auto-hide immersivo (`BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE`) durante la riproduzione video a schermo intero e switch dedicato in Impostazioni.
 - **🔍 Ricerca Unificata in Home**: Catalogo accessibile dalla Home tramite header search con debouncing 450ms, dismiss tastiera su scroll, hardware back button e filtri modali.
 - **Zero Alert di Sistema & Modal In-App Unificato (`ConfirmModal`)**: Sostituzione integrale degli alert nativi grezzi di Android con modali a tema OLED, contrasto dinamico YIQ, feedback aptico e touch target $\ge 44$dp.
 - **Bottom Tabs Solo Icone**: Barra inferiore pulita a 4 schede (**Home**, **Preferiti**, **Cronologia**, **Impostazioni**) senza etichette testuali e touch target minimi $\ge 44$dp.
@@ -60,7 +64,7 @@
 - **Storage Sincrono MMKV v3**: Cronologia, preferiti, impostazioni AniSkip e Navbar memorizzati con letture e scritture a latenza zero.
 - **Skeleton Animati a Zero CLS**: Primitive e layout dedicati che rispecchiano al millimetro le geometrie reali (scheda tecnica metadati, pulsanti rapidi, hero spotlight, griglie senza doppio padding e sezioni condizionali sincronizzate) azzerando il Cumulative Layout Shift (CLS).
 - **Scraper 100% Hermes Safe**: Web scraper nativo basato su `cheerio/slim` ed `htmlparser2`, privo di moduli pesanti `node:*` incompatibili con il runtime mobile.
-- **Updater OTA Integrato con `UpdateModal`**: Notifica in-app all'avvio con changelog, download automatico verso Impostazioni e freccia animata sul tab Impostazioni se differito.
+- **Updater OTA Integrato con `UpdateModal`**: Notifica in-app all'avvio con changelog, scroll animato e progressivo automatico verso la sezione informazioni/download su click "AGGIORNA ORA" e freccia animata sul tab Impostazioni se differito.
 
 ---
 
@@ -73,8 +77,8 @@
 | **Routing** | **Expo Router v58** | File-based routing dichiarativo |
 | **Virtualizzazione** | **@shopify/flash-list v2** | Rendering ottimizzato per cataloghi infiniti |
 | **Componenti Modali** | **Modal Touch-Native** | Drawer custom touch-safe OLED senza crash Fabric |
-| **Sistema & Navbar** | **expo-navigation-bar** | Auto-hide immersivo e supporto 3 pulsanti |
-| **Video & Multimedialità** | **expo-video** & **ScreenOrientation** | Player HLS avanzato, PiP, MediaStyle notification e rotazione a 180° |
+| **Sistema & Navbar** | **expo-navigation-bar** | Auto-hide immersivo nel player, fissa in-app con layout rialzato |
+| **Video & Multimedialità** | **expo-video** & **ScreenOrientation** | Player HLS avanzato, PiP no-pause, MediaStyle notification e rotazione a 180° |
 | **Data Fetching** | **@tanstack/react-query v5** | Caching, deduplicazione e reattività |
 | **Local Storage** | **react-native-mmkv v3** | Key-value store sincrono C++ ad alta velocità |
 
@@ -89,11 +93,11 @@ cd KuroM
 npm install
 ```
 
-### 2. Test di Qualità (10 Stadi)
+### 2. Test di Qualità (11 Stadi)
 ```bash
 npm test
 ```
-*Valida SemVer, regole OLED, storage MMKV, batch puntate, intervalli AniSkip, skeleton animation, export delle rotte, touch sheets, updater e compatibilità navbar.*
+*Valida SemVer, regole OLED, storage MMKV, batch puntate, intervalli AniSkip, skeleton animation, export delle rotte, touch sheets, updater, compatibilità navbar, gesture verticali, PiP no-pause e dimensioni sheets.*
 
 ### 3. Build & Verifica Bytecode Hermes
 ```bash

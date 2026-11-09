@@ -12,7 +12,7 @@ export interface AnimeItem {
   status?: 'Ongoing' | 'Completed' | 'Upcoming' | string;
   state?: string;
   score?: number;
-  totalEpisodes?: number;
+  totalEpisodes?: number | string;
   episode?: number | string;
   subOrDub?: string;
   genres: string[];

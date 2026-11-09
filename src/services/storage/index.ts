@@ -185,7 +185,7 @@ export interface WatchProgressItem {
   thumbnail: string;
   episodeId: string;
   episodeNumber: number;
-  totalEpisodes?: number;
+  totalEpisodes?: number | string;
   currentTime: number;
   duration: number;
   percentage: number;
@@ -216,7 +216,7 @@ export interface ContinueWatchingItem {
   thumbnail: string;
   episodeId: string;
   episodeNumber: number;
-  totalEpisodes?: number;
+  totalEpisodes?: number | string;
   position: number;
   duration: number;
   percentage: number;
@@ -232,7 +232,7 @@ export interface SaveProgressPayload {
   thumbnail?: string;
   episodeId: string;
   episodeNumber: number;
-  totalEpisodes?: number;
+  totalEpisodes?: number | string;
   currentTime?: number;
   position?: number;
   duration: number;

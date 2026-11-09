@@ -46,7 +46,7 @@ Kuro Mobile è un'applicazione concepita **esclusivamente per smartphone Android
    - Qualsiasi elemento interattivo (`Pressable`, bottoni, chip, icone) deve rispettare l'area minima di tocco di **almeno 44x44 dp** (usare `hitSlop` per icone graficamente compatte).
 2. **Safe Area, Edge-to-Edge & Adattamento Navbar**:
    - Gestire sempre notch, fotocamere punch-hole e barra di navigazione Android tramite `react-native-safe-area-context` e `react-native-edge-to-edge`.
-   - Adattamento dinamico della barra inferiore delle tab (`height: 56 + insets.bottom`, `paddingBottom: insets.bottom`): garantisce zero sovrapposizione visiva con la navbar di sistema a 3 pulsanti, preservando l'altezza utile dei touch target $\ge 44$dp.
+   - Adattamento dinamico della barra inferiore delle tab (`androidBottomInset = Math.max(16, insets.bottom + 8)`): garantisce zero sovrapposizione visiva con la navbar di sistema a 3 pulsanti fissi in-app, sollevando il router dell'app e preservando l'altezza utile dei touch target $\ge 44$dp. In modalità video player, la barra di sistema torna invece automaticamente a scomparsa totale.
 3. **Navigazione a Bottom Tabs & Ricerca Unificata in Home**:
    - La navigazione principale usa 4 schede con sole icone vettoriali (`tabBarShowLabel: false`): **Home**, **Preferiti**, **Cronologia**, **Impostazioni**.
    - La ricerca del catalogo con filtri avanzati è integrata direttamente nell'header della **Home** (icona lente di ingrandimento, debouncing 450ms, griglia FlashList a 2 colonne e supporto al tasto fisico Indietro di Android per chiudere la ricerca senza uscire dall'app).
@@ -81,16 +81,18 @@ Kuro Mobile è un'applicazione concepita **esclusivamente per smartphone Android
      - Area di tocco minima $\ge 44$dp per i pulsanti di annulla e conferma (`minHeight: 44`).
      - Feedback tattile dedicato (`Haptics.impactAsync(Light)` su annulla/dismiss e `Haptics.notificationAsync(Success)` su conferma).
      - Overlay edge-to-edge con `statusBarTranslucent={true}` per coprire interamente la status bar Android senza tagli visivi.
-11. **Scheda Tecnica Dettaglio & Metadati Estesi (`AnimeInfoTable`)**:
-   - La schermata Dettaglio Anime arricchisce la panoramica con una tabella tecnica ordinata e compatta contenente: Audio, Stato, Data di Uscita, Durata, Studio, Episodi, Voto e Genere (con cella scorrevole orizzontalmente via `ScrollView` e `nestedScrollEnabled` per consultare l'intera lista senza tagli), estratti in sicurezza dallo scraper.
+11. **Scheda Tecnica Dettaglio & Metadati Estesi (`AnimeInfoTable`, `AnimeHeaderBackdrop`)**:
+   - **Header Pulito, Spacing Iniziale & Copertina Espandibile a Schermo Intero**: L'intestazione della schermata anime è ripulita dalla vecchia immagine di backdrop ingrandita. Spacing iniziale protetto (`paddingTop: 68` sia su `AnimeHeaderBackdrop` che su `AnimeDetailScreenSkeleton`) per garantire che la locandina e i pulsanti d'azione inizino sempre al di sotto della barra superiore fluttuante (`topNav`), azzerando sovrapposizioni visive con il tasto fisico/touch "Indietro". La copertina (locandina 110x160dp) è interattiva e cliccabile: aprendo una card modale OLED a schermo intero con l'artwork ad alta risoluzione, dismiss al tocco esterno e pulsante di chiusura $\ge 44$dp.
+   - La schermata arricchisce la panoramica con una tabella tecnica ordinata e compatta contenente: Audio, Stato, Data di Uscita, Durata, Studio, Episodi (gestendo con precisione i totali incerti o serie in corso con `??` o `?`), Voto e Genere (con cella scorrevole orizzontalmente via `ScrollView` e `nestedScrollEnabled` per consultare l'intera lista senza tagli).
    - L'header presenta accanto alla copertina i comandi rapidi di avvio: pulsante Play (`play`) e pulsante di riavvio da capo (`reload`), entrambi a soli simboli con target $\ge 44$dp.
    - Il selettore batch (`BatchBottomSheet`) è implementato come Bottom Sheet modale touch-native (senza conflitti di gesture Compose/Fabric e ripulito da sezioni correlate) per garantire selezione istantanea ad ogni tocco, feedback aptico e zero crash in Expo Go e su device fisico.
-   - Sotto la tabella sono integrati i pulsanti di consultazione rapida a trailer YouTube, MyAnimeList e AniList.
+   - Sotto la tabella sono integrati i pulsanti di consultazione rapida con icone SVG dedicate (`youtube.svg`, `myanimelist.svg`, `anilist.svg`) per Trailer YouTube, MAL (etichetta rinominata `MAL`) e AniList.
    - L'azione di condivisione dell'URL AnimeWorld originale della serie è collocata unicamente nell'header fluttuante in alto a destra, affiancata al pulsante dei preferiti.
 12. **Compatibilità Navbar di Sistema Android & Modalità Immersiva**:
-   - `expo-navigation-bar` configurato per l'auto-hide immersivo ad app aperta (`BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE`): la barra di sistema Android scompare automaticamente offrendo un'esperienza OLED a schermo intero pulita, ma ricompare temporaneamente con uno swipe verso l'alto dal bordo inferiore.
+   - Comportamento predefinito in-app `'visible'`: la barra di navigazione di sistema resta fissa e accessibile durante l'uso delle schermate dell'app, con il layout dei tab sollevato dinamicamente (`insets.bottom + 8`).
+   - Nel player video orizzontale, `expo-navigation-bar` commuta automaticamente in auto-hide immersivo (`BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE`) per la massima visione a tutto schermo, ripristinando lo stato in-app alla chiusura.
    - Sincronizzazione dinamica dello stato su `AppState` (ri-applicazione automatica quando l'app torna in stato attivo dopo l'uso di notifiche o app-switcher).
-   - Impostazione configurabile dall'utente in Impostazioni tra `NASCONDI (SWIPE)` (default) e `SEMPRE VISIBILE` (con cuscinetto di sicurezza sui tab).
+   - Impostazione configurabile dall'utente in Impostazioni tra `SEMPRE VISIBILE` (default consigliato) e `NASCONDI (SWIPE)`.
 
 ---
 
@@ -103,14 +105,19 @@ Kuro Mobile è un'applicazione concepita **esclusivamente per smartphone Android
 2. **Gesture Controls Avanzate & Isolamento OSD**:
    - **Doppio Tap con Accumulo Sequenziale**: Skip rapido $\pm 10$ secondi con pill compatto centrato a lato del tasto Play/Pausa centrale. Tap consecutivi entro 900ms sommano il tempo visualizzato (`+20s`, `+30s`, `+50s`, `-30s`) con micro-animazione elastica.
    - **Controlli Centrali Bilanciati**: Pulsante circolare Play/Pausa affiancato da bottoni dedicati per episodio precedente (`play-skip-back`) e successivo (`play-skip-forward`), con spaziatore simmetrico per il primo e l'ultimo episodio.
-   - **Swipe Verticali**: Controllo luminosità schermo (lato sinistro) e volume multimediale (lato destro) con indicatore HUD a percentuale al centro.
+   - **Swipe Rigorosamente Verticali per Luminosità e Volume**:
+     - Controllo luminosità schermo (lato sinistro) e volume multimediale (lato destro) con indicatore HUD a percentuale al centro.
+     - Attivazione vincolata ad asse verticale con `activeOffsetY([-18, 18])` e rigetto immediato di scorrimenti orizzontali con `failOffsetX([-14, 14])`.
+     - In `onUpdate`, scarto immediato se la componente orizzontale supera quella verticale (`|translationX| > |translationY|`), con corsa calibrata su `travelRange = Math.max(260, windowHeight * 0.7)` per evitare sbalzi o eccessiva sensibilità.
    - **Disabilitazione Gesture su OSD Visibile**: Le pan gesture di volume e luminosità sono vincolate a `panGesture.enabled(!showControls)` e il `GestureDetector` è montato unicamente a controlli nascosti, evitando interferenze accidentali quando si interagisce con l'interfaccia.
    - **Luminosità 'AUTOMATICA'**: Al limite inferiore dello swipe sinistro (soglia $\le 0.08$), il valore viene impostato su `-1` (`'AUTOMATICA'`), l'overlay scuro viene disattivato per affidarsi al sensore/luminosità del sistema Android e l'HUD visualizza l'icona `sunny-outline` con testo `AUTOMATICA`.
    - **Controlli OSD**: Auto-hide automatico dopo 4 secondi di inattività; sospeso temporaneamente durante il trascinamento della timeline (`isScrubbing`).
 3. **Picture-in-Picture (PiP), Controlli in Notifica & Zero Zombie Playback**:
    - Supporto nativo per Android Picture-in-Picture (`expo-video`) con flag `staysActiveInBackground = false`.
-   - **Controlli Multimediali in Notifica (MediaSession / MediaStyle)**: Configurato `showNowPlayingNotification = true` e metadati completi dello stream (titolo serie, episodio, artwork), esponendo nel cassetto delle notifiche i controlli rapidi di sistema Android (precedente, play/pausa, successivo, chiudi) attivi durante la riproduzione in background e in PiP.
-   - Alla chiusura della finestra PiP tramite pulsante 'X', il listener `onPictureInPictureStop` verifica che l'applicazione sia in stato di background (`AppState.currentState !== 'active'`) mettendo immediatamente in pausa il flusso, disattivando la notifica e salvando i progressi di riproduzione su MMKV, azzerando qualsiasi riproduzione fantasma in background.
+   - **Controlli Multimediali in Notifica (MediaSession / MediaStyle)**: Configurato `showNowPlayingNotification = true` e metadati completi dello stream (titolo serie con numero puntata `<Titolo> - EPISODIO <Num>`, artwork copertina caricata via bitmap asincrono in `largeIcon` e pulsante di avanzamento puntata successiva `nextEpisodeButton` / `COMMAND_SEEK_TO_NEXT`), esponendo nel cassetto delle notifiche i controlli rapidi di sistema Android (precedente, play/pausa, successivo, chiudi) attivi durante la riproduzione in background e in PiP.
+   - **Feedback Visivo di Caricamento Minimale**: Durante il recupero del flusso video o il passaggio ad un nuovo episodio, il player visualizza un overlay con badge centrato (`loadingOverlay`) e ActivityIndicator minimale senza scritte testuali, azzerando qualsiasi schermata nera priva di feedback per l'utente.
+   - **Rientro a Schermo Intero Senza Pause**: Memorizzazione dello stato di riproduzione PiP (`wasPlayingInPiPRef`). Quando l'utente tocca il pulsante di sistema Android per rientrare a tutto schermo, l'app torna `active` e la riproduzione prosegue/riprende fluidamente con `player.play()` senza mai entrare in pausa.
+   - **Chiusura Anti-Zombie Playback**: Alla chiusura esplicita della finestra PiP tramite tasto 'X', un timer a 500ms verifica se l'applicazione è rimasta in background (`AppState.currentState !== 'active'`), mettendo in pausa il flusso solo in tale circostanza e salvando la posizione su MMKV.
 4. **AniSkip con Bordo Temporizzato ad Esaurimento (10 Secondi & Recap Support)**:
    - Rilevamento automatico timestamp intro, outro e recap (`op`, `ed`, `mixed-op`, `mixed-ed`, `recap`) tramite servizio AniSkip.
    - **Testo Unificato 'SALTA'**: Tutti i tipi di salto utilizzano unicamente l'etichetta sintetica e minimale `'SALTA'`.
@@ -124,8 +131,13 @@ Kuro Mobile è un'applicazione concepita **esclusivamente per smartphone Android
 6. **Malleabilità dei Menù & Drawer Touch-Native**:
    - I drawer secondari adottano componenti modali custom basati su React Native `Modal` (`transparent={true}`, `statusBarTranslucent={true}`), con padding orizzontale simmetrico `Math.max(16, safeHorizontalInset)` per azzerare sbilanciamenti dovuti a fotocamere o notch in landscape e prevenire tagli orizzontali a sinistra in portrait.
    - Contenitori centrati (`alignSelf: 'center'`) con larghezza massima controllata (680-820dp) e `maxHeight` responsivo in base all'orientamento dello schermo (`Math.min(380, windowHeight * 0.55)` in portrait, 240dp in landscape).
+   - **Prevenzione Tagli Visivi in Portrait**:
+     - Tutti i titoli degli header e i testi metadati implementano `flexShrink: 1`, `numberOfLines={1}` ed `ellipsizeMode="tail"`.
+     - In `PlayerInfoSheet.tsx`, la locandina e il placeholder scalano responsive (`76x108` in portrait, `84x120` in landscape) e le etichette generi sono vincolate su riga singola.
+     - In `PlayerEpisodesCarouselSheet.tsx`, la larghezza card è dinamica (`cardWidth = isLandscape ? 170 : 152`) con scorrimento fluido e padding simmetrico.
+     - In `ServerBottomSheet.tsx`, il gap dei selettori di velocità scala (`isLandscape ? 8 : 4`) e i nomi server supportano troncamento elegante.
    - **Carosello Episodi Virtualizzato** (`PlayerEpisodesCarouselSheet.tsx`): icona `list-outline`, `@shopify/flash-list` con `contentContainerStyle` a padding simmetrico, `maintainVisibleContentPosition={{ disabled: true }}` per azzerare i crash Fabric/Hermes, auto-scroll ad episodio attivo e navigazione differita di 60ms.
-   - **Scheda Dettagli** (`PlayerInfoSheet.tsx`): icona `information-circle-outline` in header OSD con locandina, titolo, badge episodio e trama scrollabile protetta da fallback difensivi (`Array.isArray(genres)`).
+   - **Scheda Dettagli** (`PlayerInfoSheet.tsx`): icona `information-circle-outline` in header OSD con locandina, titolo, badge episodio formattato rigorosamente come `'EPISODIO X/TOT'` (es. `'EPISODIO 1/170'` o `'EPISODIO 1/??'`, pulito da suffissi titolo) e trama scrollabile protetta da fallback difensivi (`Array.isArray(genres)`).
    - **Opzioni di Riproduzione**: selettori di velocità centrati con `adjustsFontSizeToFit={true}` e `numberOfLines={1}` per prevenire tagli di testo su smartphone stretti in portrait.
 7. **Isolamento Re-Render OSD & Rotazione Semantica**:
    - Componenti `PlayerHeader`, `PlayerTimeline` e `PlayerFooter` isolati con `React.memo`.
@@ -159,7 +171,7 @@ Kuro Mobile è un'applicazione concepita **esclusivamente per smartphone Android
    - **Sorgente**: Selezione rapida dei domini supportati (`.ac`, `.so`, `.tv`) oppure URL digitabile liberamente a mano con pulsante APPLICA.
    - **Impostazioni Cronologia & Slider Reattivo**: Sezione dedicata con `HistorySlider` per la durata di conservazione: `OFF` (disattiva la registrazione e nasconde dinamicamente la tab Cronologia dalla navigazione inferiore via `href: null`), `30gg`, `60gg`, `90gg` e `ON` (conservazione permanente illimitata). Include il pulsante per svuotare l'intera cronologia con modale di conferma in-app.
    - **Informazioni & Updater Unificati**: Sezione con Nome, Stack, Package Name, Versione+Build installata e Architettura APK. In fondo alla sezione è posizionato il pulsante per verificare/aggiornare l'app.
-   - **Notifica Aggiornamenti all'Avvio & Freccia Animata sul Tab**: Controllo non-bloccante in background all'avvio con componente modale in-app `UpdateModal` (note di rilascio, "PIÙ TARDI" o "AGGIORNA ORA" con transizione fluida e auto-download). In caso di differimento, l'icona Impostazioni mostra una freccia in sù (`arrow-up`) animata con rimbalzo continuo per non perdere la notifica visiva.
+   - **Notifica Aggiornamenti all'Avvio & Auto-Scroll Coordinato**: Controllo non-bloccante in background all'avvio con componente modale in-app `UpdateModal` (note di rilascio, "PIÙ TARDI" o "AGGIORNA ORA"). Il tocco su "AGGIORNA ORA" indirizza a `/(tabs)/settings?scrollTo=update`, aziona lo scroll progressivo verso il basso e aggancia l'evento `onContentSizeChange` sulla `ScrollView`: quando la card si espande con la progress bar e i metadati di download, la vista scorre fluidamente fino a mostrare interamente la barra e il tasto per installare l'APK. In caso di differimento ("PIÙ TARDI"), l'icona Impostazioni mostra una freccia in sù (`arrow-up`) animata con rimbalzo continuo per non perdere la notifica visiva.
    - **Endpoint OTA Nascosto**: L'URL tecnico del manifest Cloudflare è rigorosamente nascosto e protetto all'interno del client.
 
 ---
@@ -180,9 +192,12 @@ Kuro Mobile è un'applicazione concepita **esclusivamente per smartphone Android
    - I backup cifrati dei segreti e keystore risiedono rigorosamente nel percorso isolato `mobile/secure-backups/` su R2, separati dai backup della versione TV.
    - Il client in-app preserva altrove il sistema di fetch su base architettura OTA (`selectApkForDevice`) con fallback trasparente su `universal` (`latest.apk`).
 4. **Tooling & Script di Manutenzione Tracciati (`scripts/`)**:
-   - La directory `scripts/` è tracciata nel repository Git e contiene gli strumenti operativi (`build-release.sh`, `backup-secrets-r2.sh`, `upload-r2.mjs`, `upload-github-release.mjs`, `clean-r2-old-versions.mjs`).
+   - La directory `scripts/` è tracciata nel repository Git e contiene gli strumenti operativi (`build-release.sh`, `backup-secrets-r2.sh`, `upload-r2.mjs`, `upload-github-release.mjs`, `clean-r2-old-versions.mjs`, `apply-patches.mjs` e `patches/`).
    - Gli script consumano segreti solo da variabili d'ambiente (`.env`, `.env.local`), senza alcuna credenziale hardcoded nel codice sorgente.
    - `build-release.sh` supporta la flag `--skip-build` per bypassare la compilazione Gradle e finalizzare/pubblicare un APK già generato senza rieseguire il build completo.
+   - **Patching Automatico Moduli Nativi (`scripts/apply-patches.mjs`)**:
+     - Eseguito automaticamente al `postinstall` di `npm install`, applica le patch native tracciate in `scripts/patches/` su `expo-video` (`ExpoVideoPlaybackService.kt` e `VideoMediaSessionCallback.kt`).
+     - Abilita il pulsante episodio successivo (`COMMAND_SEEK_TO_NEXT`), il caricamento asincrono in background della locandina in formato Bitmap (`largeIcon`) e la formattazione avanzata titolo/puntata nel cassetto delle notifiche Android (`MediaSession` / `MediaStyle`), preservando le modifiche ad ogni installazione di dipendenze.
    - **Gestione SemVer e Build Number (`build-release.sh`)**:
      - L'inserimento manuale di una versione (`1.2.0`, `1.0.0`, `v1.0.0`) **incrementa sempre automaticamente** il `versionCode` (`CURRENT_VERSION_CODE + 1`), garantendo l'accettazione del pacchetto dall'installer Android.
      - Per preservare la build numerica esistente occorre selezionare l'opzione `0` (*"Mantieni vX.Y.Z"*).
@@ -196,7 +211,7 @@ Kuro Mobile è un'applicazione concepita **esclusivamente per smartphone Android
 ## 🧪 7. Standard di Test & Verifica Qualità
 
 Prima di ogni commit o push è obbligatorio verificare la conformità tramite:
-1. `npm test`: Suite di test automatizzata a 10 stadi:
+1. `npm test`: Suite di test automatizzata a 11 stadi:
    - SemVer e Updater Service.
    - Regole di Stile Mobile & conformità OLED.
    - Storage MMKV (preferiti, cronologia visione).
@@ -207,4 +222,5 @@ Prima di ogni commit o push è obbligatorio verificare la conformità tramite:
    - Nuove Feature: UpdateStore, UpdateModal, Tab Arrow, Touch Sheets & PiP Controls.
    - Sheets Cutoff Fixes, AniSkip Settings & FilterBottomSheet Modal.
    - System Navigation Bar Compatibility & Auto-Hide Mode.
+   - Gestures Verticali, PiP No-Pause, Sheets Dimensioni & Update Scroll.
 2. `npx expo export --platform android`: Verifica dell'assenza di errori di bundle e corretta generazione del bytecode Hermes.

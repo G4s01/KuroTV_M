@@ -45,6 +45,11 @@ export const AppState = {
   currentState: 'active',
   addEventListener: () => ({ remove: () => {} }),
 };
+export const DeviceEventEmitter = {
+  addListener: () => ({ remove: () => {} }),
+  emit: () => {},
+  removeAllListeners: () => {},
+};
 export const processColor = (color) => color;
 export const unstable_createElement = () => null;
 export const useColorScheme = () => 'dark';

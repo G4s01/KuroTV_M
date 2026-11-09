@@ -22,7 +22,7 @@ KuroM/
 │   └── player/
 │       └── [id].tsx             # Player Video Touch Mobile (Gesture, OSD, PiP, MediaStyle notification, AniSkip)
 ├── assets/                      # Risorse statiche
-│   ├── icons/                   # Icone SVG dei temi (theme-oled, theme-pikachu, ...)
+│   ├── icons/                   # Icone SVG (temi, youtube, myanimelist, anilist)
 │   └── images/                  # Icone app Android, Splash screen e banner
 ├── src/                         # Moduli core dell'applicazione
 │   ├── components/              # Componenti UI riutilizzabili (FlashList items, Modali touch-native)
@@ -43,8 +43,8 @@ KuroM/
 │   ├── theme/                   # Sistema di stili reattivo e ThemeProvider
 │   └── types/                   # Definizioni TypeScript condivise
 ├── workers/                     # Cloudflare Worker unificato per OTA
-├── scripts/                     # Tooling DevOps & pipeline di release (build-release.sh, backup R2, upload)
-└── tests/                       # Suite di verifica qualità a 10 stadi
+├── scripts/                     # Tooling DevOps, release pipeline & patch native (apply-patches, build-release)
+└── tests/                       # Suite di verifica qualità a 11 stadi
 ```
 
 ---
@@ -147,23 +147,27 @@ La gestione dello storico di visione in [`app/(tabs)/history.tsx`](file:///home/
 
 ---
 
-## 📋 Scheda Tecnica & Metadati Estesi Anime (`AnimeInfoTable`)
+## 📋 Scheda Tecnica & Metadati Estesi Anime (`AnimeInfoTable`, `AnimeHeaderBackdrop`)
 
-La schermata Dettaglio Anime arricchisce la consultazione con il componente [`AnimeInfoTable`](file:///home/g4s/VSCode/KuroM/src/components/anime/AnimeInfoTable.tsx):
+La schermata Dettaglio Anime arricchisce la consultazione con i componenti [`AnimeInfoTable`](file:///home/g4s/VSCode/KuroM/src/components/anime/AnimeInfoTable.tsx) e [`AnimeHeaderBackdrop`](file:///home/g4s/VSCode/KuroM/src/components/anime/AnimeHeaderBackdrop.tsx):
 
-1. **Tabella Tecnica a 4 Righe con Generi Scorrevoli**:
+1. **Header Pulito, Spacing Iniziale & Copertina Espandibile a Schermo Intero**:
+   - Intestazione ripulita dalla vecchia immagine di backdrop ingrandita a 260dp.
+   - Spacing iniziale protetto (`paddingTop: 68` sia su `AnimeHeaderBackdrop` che su `AnimeDetailScreenSkeleton`) per garantire che la locandina e i pulsanti d'azione inizino sempre al di sotto della barra superiore fluttuante (`topNav`), azzerando le sovrapposizioni visive con il tasto fisico/touch "Indietro".
+   - La copertina (locandina 110x160dp) è interattiva e cliccabile: apre una card modale OLED a schermo intero con l'artwork ad alta risoluzione, dismiss al tocco esterno e pulsante di chiusura $\ge 44$dp.
+2. **Tabella Tecnica con Generi Scorrevoli & Totali Incerti**:
    - Visualizza in griglia compatta: **Audio**, **Stato**, **Uscita**, **Durata**, **Studio**, **Episodi**, **Voto** e **Genere**.
+   - Supporto completo ai totali episodi incerti o serie in corso con punti di domanda (`??`, `?`, `12 / ??`) tipici di AnimeWorld, estratti in sicurezza dallo scraper e propagati nello storage.
    - La cella *Genere* adotta uno `ScrollView` orizzontale con `nestedScrollEnabled={true}` e `showsHorizontalScrollIndicator={false}`, consentendo la consultazione dell'elenco completo dei generi senza tagli o espansioni verticali anomale.
-   - Tutti i valori sono estratti con fallback sicuri su Hermes dallo scraper HTML AnimeWorld.
-2. **Controlli di Avvio Rapido nell'Header (`AnimeHeaderBackdrop`)**:
-   - I generi testuali sotto il titolo sono stati rimossi a favore di una riga di comandi touch dedicati: pulsante di riproduzione continua (**Play** `play`) e pulsante di riavvio dall'episodio 1 (**Restart** `reload`), entrambi a soli simboli con target $\ge 44$dp.
+3. **Controlli di Avvio Rapido nell'Header**:
+   - Comandi touch dedicati accanto alla copertina: pulsante di riproduzione continua (**Play** `play`) e pulsante di riavvio dall'episodio 1 (**Restart** `reload`), entrambi a soli simboli con target $\ge 44$dp.
    - Eliminato il pulsante play ridondante a fondo schermata, offrendo un layout compatto e focalizzato.
-3. **Selettore Batch Puntate Touch-Native (`BatchBottomSheet`)**:
+4. **Selettore Batch Puntate Touch-Native (`BatchBottomSheet`)**:
    - Implementato come Bottom Sheet modale basato su React Native `Modal` (`animationType="slide"`), risolvendo alla radice le interferenze di touch/gesture del `ModalBottomSheet` nativo di Compose su Android/Expo Go.
    - Rimosse le sezioni correlate non pertinenti per focalizzare la visualizzazione esclusivamente sulle batch numeriche delle puntate.
    - FlashList degli episodi configurata con `maintainVisibleContentPosition={{ disabled: true }}` per azzerare i crash nativi Fabric/Hermes allo scroll rapido.
-4. **Link Esterni & Condivisione Intelligente**:
-   - Pulsanti dedicati per l'apertura rapida di **Trailer YouTube** ufficiale, scheda **MyAnimeList** e scheda **AniList**.
+5. **Link Esterni con Icone SVG & Condivisione Intelligente**:
+   - Pulsanti dedicati con icone SVG per l'apertura rapida di **Trailer YouTube** (`youtube.svg`), scheda **MAL** (`myanimelist.svg`, etichetta unificata) e scheda **AniList** (`anilist.svg`).
    - Il pulsante di condivisione (`Share.share`) dell'URL AnimeWorld originale è posizionato nell'header superiore accanto al cuore dei preferiti, garantendo un'interfaccia pulita e minimale sotto la tabella.
 
 ---
@@ -173,7 +177,9 @@ La schermata Dettaglio Anime arricchisce la consultazione con il componente [`An
 Il sottosistema video ([`app/player/[id].tsx`](file:///home/g4s/VSCode/KuroM/app/player/[id].tsx)) adotta la gestione asincrona delle sorgenti multimediali:
 - **`replaceAsync` off-thread**: Sostituisce il metodo deprecato `player.replace` per prevenire il blocco del Main Thread durante l'inizializzazione dei formati video su iOS e Android.
 - **Gestione Stream & Ripresa**: Mantiene sincronizzato il `playbackRate` e applica il punto di ripresa memorizzato in MMKV al completamento della risoluzione della risorsa, senza glitch visivi.
-- **Controlli Multimediali in Notifica (MediaSession / MediaStyle)**: Espone `showNowPlayingNotification = true` e metadati completi dello stream (titolo, episodio, artwork), abilitando i controlli rapidi di sistema (prev, play/pause, next, close) persistenti nel drawer notifiche durante il Picture-in-Picture e in background.
+- **Feedback Visivo di Caricamento Minimale**: Durante il recupero del flusso o il cambio episodio, visualizza un badge circolare centrato (`loadingOverlay`) con solo indicatore di attività (`ActivityIndicator`), senza scritte testuali.
+- **Controlli Multimediali in Notifica & Patch Native (`scripts/apply-patches.mjs`)**: Espone `showNowPlayingNotification = true` e metadati completi dello stream (titolo `<Titolo> - EPISODIO <Num>`, locandina artwork caricata via bitmap asincrono in `largeIcon` e pulsante episodio successivo `nextEpisodeButton` / `COMMAND_SEEK_TO_NEXT`), abilitando i controlli rapidi Android MediaSession / MediaStyle persistenti nel drawer notifiche e durante il Picture-in-Picture.
+- **Scheda Dettagli Player (`PlayerInfoSheet.tsx`)**: Badge puntata formattato rigorosamente come `'EPISODIO X/TOT'` (es. `'EPISODIO 1/170'`, `'EPISODIO 1/??'`), pulito da suffissi titolo puntata ridondanti.
 - **AniSkip Unificato**: Rileva sigle d'apertura (`op`), chiusura (`ed`) e recap (`recap`) con pulsante unico 'SALTA', timer ad esaurimento limitato a 10s e resilienza al riavvolgimento (rewind).
 
 ---

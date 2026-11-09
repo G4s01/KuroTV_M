@@ -9,8 +9,13 @@ import {
 import * as Linking from 'expo-linking';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { oledTheme, getContrastTextColor, type Theme } from '@/theme';
 import type { AnimeDetail } from '@/types';
+
+import youtubeSvg from '../../../assets/icons/youtube.svg';
+import malSvg from '../../../assets/icons/myanimelist.svg';
+import anilistSvg from '../../../assets/icons/anilist.svg';
 
 export interface AnimeInfoTableProps {
   anime: AnimeDetail;
@@ -39,11 +44,27 @@ export const AnimeInfoTable = React.memo<AnimeInfoTableProps>(
         ? `${anime.score} / 10`
         : 'N/D';
     const durationText = anime.duration ? anime.duration.toUpperCase() : '24 MIN';
-    const episodesText = anime.totalEpisodes
-      ? String(anime.totalEpisodes)
-      : anime.episodes && anime.episodes.length > 0
-        ? String(anime.episodes.length)
-        : 'N/D';
+    const episodesText = React.useMemo(() => {
+      const epCount = anime.episodes && anime.episodes.length > 0 ? anime.episodes.length : 0;
+      if (anime.totalEpisodes !== undefined && anime.totalEpisodes !== null) {
+        const totalStr = String(anime.totalEpisodes).trim();
+        if (totalStr.includes('/')) {
+          return totalStr;
+        }
+        if (totalStr.includes('?')) {
+          return epCount > 0 ? `${epCount} / ${totalStr}` : totalStr;
+        }
+        const totalNum = Number(totalStr);
+        if (!isNaN(totalNum) && totalNum > 0) {
+          if (epCount > 0 && epCount < totalNum) {
+            return `${epCount} / ${totalNum}`;
+          }
+          return String(totalNum);
+        }
+        return totalStr;
+      }
+      return epCount > 0 ? String(epCount) : 'N/D';
+    }, [anime.totalEpisodes, anime.episodes]);
     const statusText = anime.status
       ? anime.status.toUpperCase()
       : anime.state
@@ -211,7 +232,7 @@ export const AnimeInfoTable = React.memo<AnimeInfoTableProps>(
           </View>
         </View>
 
-        {/* Link Esterni: Trailer, MyAnimeList, AniList */}
+        {/* Link Esterni: Trailer, MAL, AniList */}
         <View style={styles.linksRow}>
           <Pressable
             style={[styles.linkBtn, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
@@ -220,7 +241,7 @@ export const AnimeInfoTable = React.memo<AnimeInfoTableProps>(
             accessibilityRole="button"
             accessibilityLabel="GUARDA IL TRAILER SU YOUTUBE"
           >
-            <Ionicons name="logo-youtube" size={16} color="#FF0000" />
+            <Image source={youtubeSvg} style={styles.linkIcon} contentFit="contain" />
             <Text style={[styles.linkBtnText, { color: theme.colors.text }]}>TRAILER</Text>
           </Pressable>
 
@@ -229,10 +250,10 @@ export const AnimeInfoTable = React.memo<AnimeInfoTableProps>(
             onPress={handleOpenMal}
             hitSlop={4}
             accessibilityRole="button"
-            accessibilityLabel="APRI SCHEDA SU MYANIMELIST"
+            accessibilityLabel="APRI SCHEDA SU MAL"
           >
-            <Ionicons name="open-outline" size={15} color="#2E51A2" />
-            <Text style={[styles.linkBtnText, { color: theme.colors.text }]}>MYANIMELIST</Text>
+            <Image source={malSvg} style={styles.linkIcon} contentFit="contain" />
+            <Text style={[styles.linkBtnText, { color: theme.colors.text }]}>MAL</Text>
           </Pressable>
 
           <Pressable
@@ -242,7 +263,7 @@ export const AnimeInfoTable = React.memo<AnimeInfoTableProps>(
             accessibilityRole="button"
             accessibilityLabel="APRI SCHEDA SU ANILIST"
           >
-            <Ionicons name="open-outline" size={15} color="#02A9FF" />
+            <Image source={anilistSvg} style={styles.linkIcon} contentFit="contain" />
             <Text style={[styles.linkBtnText, { color: theme.colors.text }]}>ANILIST</Text>
           </Pressable>
         </View>
@@ -328,6 +349,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
     paddingHorizontal: 8,
+  },
+  linkIcon: {
+    width: 16,
+    height: 16,
   },
   linkBtnText: {
     fontSize: 11,

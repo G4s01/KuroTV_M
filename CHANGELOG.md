@@ -7,4 +7,4 @@ e questo progetto aderisce al [Semantic Versioning](https://semver.org/lang/it/)
 
 ## [1.0.1] - 2026-11-09
 
-## [1.0.0] - 2026-11-09
+## [1.0.0] - 2026-11-10

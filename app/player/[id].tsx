@@ -8,6 +8,8 @@ import {
   Animated,
   Platform,
   AppState,
+  DeviceEventEmitter,
+  ActivityIndicator,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -88,8 +90,8 @@ export default function VideoPlayerScreen() {
   const pipStopTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Next episode & total episodes metadata refs
-  const totalEpisodesRef = React.useRef<number | undefined>(
-    params.totalEpisodes ? parseInt(params.totalEpisodes, 10) : undefined
+  const totalEpisodesRef = React.useRef<number | string | undefined>(
+    params.totalEpisodes || undefined
   );
   const nextEpisodeRef = React.useRef<{ id: string; number: number; dataId?: string } | null>(null);
   const hasResumedRef = React.useRef(false);
@@ -203,6 +205,12 @@ export default function VideoPlayerScreen() {
     p.showNowPlayingNotification = true;
     p.timeUpdateEventInterval = 0.5; // Starts Android IntervalUpdateClock for timeUpdate
     p.play();
+  });
+
+  // Track player loading and playback status
+  const [playerStatus, setPlayerStatus] = React.useState<string>('idle');
+  useEventListener(player, 'statusChange', ({ status }) => {
+    setPlayerStatus(status);
   });
 
   // Track playback time
@@ -452,12 +460,16 @@ export default function VideoPlayerScreen() {
 
       if (directUrl) {
         setVideoUrl(directUrl);
+        const formattedTitle = animeTitle
+          ? `${animeTitle} - EPISODIO ${episodeNumber}`
+          : `EPISODIO ${episodeNumber}`;
+        const artworkUri = thumbnailRef.current || thumbnail || animeDetail?.image || animeDetail?.thumbnail || undefined;
         const videoSource = {
           uri: directUrl,
           metadata: {
-            title: animeTitle || 'KURO MOBILE',
-            artist: `EPISODIO ${episodeNumber}`,
-            artwork: thumbnail || undefined,
+            title: formattedTitle,
+            artist: animeTitle ? String(animeTitle).toUpperCase() : 'KURO MOBILE',
+            artwork: artworkUri,
           },
         };
         if (typeof player.replaceAsync === 'function') {
@@ -521,7 +533,7 @@ export default function VideoPlayerScreen() {
             }
             if (detail.episodes && Array.isArray(detail.episodes)) {
               setEpisodesList(detail.episodes);
-              totalEpisodesRef.current = detail.episodes.length;
+              totalEpisodesRef.current = detail.totalEpisodes ?? detail.episodes.length;
               const currIdx = detail.episodes.findIndex(
                 (e) => e.id === episodeId || e.number === episodeNumber
               );
@@ -640,7 +652,7 @@ export default function VideoPlayerScreen() {
   }, [nextEpisode]);
 
   const handleNavigateToEpisode = React.useCallback(
-    (targetEp: Episode) => {
+    (targetEp: Episode | { id: string; number: number; dataId?: string; thumbnail?: string }) => {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
       saveProgress(currentTimeRef.current, durationRef.current);
       hasResumedRef.current = false;
@@ -658,12 +670,25 @@ export default function VideoPlayerScreen() {
           serverId,
           thumbnail: nextThumb,
           position: String(savedProg && !savedProg.isCompleted ? savedProg.currentTime : 0),
-          totalEpisodes: String(episodesList.length || ''),
+          totalEpisodes: String(totalEpisodesRef.current ?? (episodesList.length || '')),
         },
       });
     },
     [animeId, animeTitle, serverId, episodesList.length, router, saveProgress]
   );
+
+  // Notification Shade Next Episode Action listener
+  React.useEffect(() => {
+    const nextSub = DeviceEventEmitter.addListener('KuroNotificationNextEpisode', () => {
+      const nextEp = nextEpisodeRef.current;
+      if (nextEp) {
+        handleNavigateToEpisode(nextEp);
+      }
+    });
+    return () => {
+      nextSub.remove();
+    };
+  }, [handleNavigateToEpisode]);
 
   const handleDoubleTap = (direction: 'left' | 'right') => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
@@ -950,6 +975,20 @@ export default function VideoPlayerScreen() {
           </View>
         )}
 
+        {/* Loading / Buffering Feedback Overlay during episode loading */}
+        {videoUrl && (isLoadingSource || playerStatus === 'loading') && (
+          <View style={styles.loadingOverlay} pointerEvents="none">
+            <View
+              style={[
+                styles.loadingBox,
+                { backgroundColor: 'rgba(0, 0, 0, 0.85)', borderColor: theme.colors.border },
+              ]}
+            >
+              <ActivityIndicator size="small" color={theme.colors.primary} />
+            </View>
+          </View>
+        )}
+
         {/* Gesture detector touch surface over video (active when controls hidden) */}
         {!showControls && (
           <GestureDetector gesture={composedGestures}>
@@ -1168,6 +1207,7 @@ export default function VideoPlayerScreen() {
         onClose={() => setIsInfoSheetVisible(false)}
         animeTitle={animeTitle}
         episodeNumber={episodeNumber}
+        totalEpisodes={totalEpisodesRef.current ?? animeDetail?.totalEpisodes}
         episodeTitle={episodesList[currEpIndex]?.title}
         episodeDescription={episodesList[currEpIndex]?.description}
         animeImage={thumbnail || animeDetail?.image || animeDetail?.thumbnail}
@@ -1200,6 +1240,21 @@ const styles = StyleSheet.create({
   video: {
     width: '100%',
     height: '100%',
+  },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 20,
+  },
+  loadingBox: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
   },
   loadingWrapper: {
     ...StyleSheet.absoluteFill,

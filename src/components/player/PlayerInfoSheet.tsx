@@ -19,6 +19,7 @@ export interface PlayerInfoSheetProps {
   onClose: () => void;
   animeTitle: string;
   episodeNumber: number;
+  totalEpisodes?: number | string;
   episodeTitle?: string;
   episodeDescription?: string;
   animeImage?: string;
@@ -33,6 +34,7 @@ export const PlayerInfoSheet: React.FC<PlayerInfoSheetProps> = React.memo(({
   onClose,
   animeTitle,
   episodeNumber,
+  totalEpisodes,
   episodeTitle,
   episodeDescription,
   animeImage,
@@ -48,6 +50,20 @@ export const PlayerInfoSheet: React.FC<PlayerInfoSheetProps> = React.memo(({
 
   const safeGenres = Array.isArray(genres) ? genres : [];
   const activeDescription = episodeDescription || description;
+
+  const episodeBadgeText = React.useMemo(() => {
+    let text = `EPISODIO ${episodeNumber}`;
+    if (totalEpisodes !== undefined && totalEpisodes !== null && totalEpisodes !== '') {
+      const str = String(totalEpisodes).trim();
+      if (str.includes('/')) {
+        const parts = str.split('/');
+        text += `/${parts[parts.length - 1].trim()}`;
+      } else {
+        text += `/${str}`;
+      }
+    }
+    return text;
+  }, [episodeNumber, totalEpisodes]);
 
   const safeHorizontalInset = Math.max(insets.left, insets.right);
   const horizontalPadding = Math.max(16, safeHorizontalInset);
@@ -159,18 +175,29 @@ export const PlayerInfoSheet: React.FC<PlayerInfoSheetProps> = React.memo(({
                     numberOfLines={1}
                     ellipsizeMode="tail"
                   >
-                    EPISODIO {episodeNumber}
-                    {episodeTitle ? `: ${String(episodeTitle).toUpperCase()}` : ''}
+                    {episodeBadgeText}
                   </Text>
                 </View>
 
-                {(releaseYear || status) && (
+                {(releaseYear || status || totalEpisodes) && (
                   <Text
                     style={[styles.metaText, { color: theme.colors.textMuted }]}
                     numberOfLines={1}
                     ellipsizeMode="tail"
                   >
-                    {[releaseYear, status].filter(Boolean).map(String).join(' • ').toUpperCase()}
+                    {[
+                      releaseYear,
+                      status,
+                      totalEpisodes
+                        ? String(totalEpisodes).includes('?')
+                          ? `TOT. ${totalEpisodes}`
+                          : `${totalEpisodes} EPISODI`
+                        : null,
+                    ]
+                      .filter(Boolean)
+                      .map(String)
+                      .join(' • ')
+                      .toUpperCase()}
                   </Text>
                 )}
 

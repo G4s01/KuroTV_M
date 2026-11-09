@@ -100,7 +100,7 @@ export default function AnimeDetailScreen() {
         serverId: selectedServerId,
         thumbnail: anime.image || anime.thumbnail || '',
         position: String(savedProg && !savedProg.isCompleted ? savedProg.currentTime : 0),
-        totalEpisodes: String(episodes.length || ''),
+        totalEpisodes: String(anime.totalEpisodes ?? (episodes.length || '')),
       },
     });
   };
@@ -120,7 +120,7 @@ export default function AnimeDetailScreen() {
         serverId: selectedServerId,
         thumbnail: anime.image || anime.thumbnail || '',
         position: '0',
-        totalEpisodes: String(episodes.length || ''),
+        totalEpisodes: String(anime.totalEpisodes ?? (episodes.length || '')),
       },
     });
   };
@@ -254,7 +254,7 @@ export default function AnimeDetailScreen() {
   return (
     <View style={[styles.root, { paddingTop: insets.top, backgroundColor: theme.colors.background }]}>
       {/* Back & Share Floating Header */}
-      <View style={styles.topNav}>
+      <View style={[styles.topNav, { top: Math.max(insets.top + 8, 12) }]}>
         <Pressable
           style={styles.navIconBtn}
           onPress={() => router.back()}
@@ -349,7 +349,6 @@ const styles = StyleSheet.create({
   },
   topNav: {
     position: 'absolute',
-    top: 40,
     left: 16,
     right: 16,
     zIndex: 10,

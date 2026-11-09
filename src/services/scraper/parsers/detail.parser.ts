@@ -357,8 +357,28 @@ export function parseDetailPage(
     releaseYear = parseInt(yearMatch[1], 10);
   }
 
-  // Parse total episodes
-  const totalEpisodes = !isNaN(totalEpCount) ? totalEpCount : undefined;
+  // Parse total episodes (numbers or unknown indicators like '??' / '?')
+  let totalEpisodes: number | string | undefined = undefined;
+  if (totalEpisodesStr) {
+    const clean = totalEpisodesStr.trim();
+    if (clean.includes('/')) {
+      const parts = clean.split('/').map((p) => p.trim());
+      if (parts.length >= 2) {
+        const totalPart = parts[1];
+        if (totalPart.includes('?')) {
+          totalEpisodes = totalPart;
+        } else {
+          const num = parseInt(totalPart, 10);
+          totalEpisodes = !isNaN(num) ? num : totalPart;
+        }
+      }
+    } else if (clean.includes('?')) {
+      totalEpisodes = clean;
+    } else {
+      const num = parseInt(clean, 10);
+      totalEpisodes = !isNaN(num) ? num : clean;
+    }
+  }
 
   // Fallback to Server 4 (YouTube) if trailer was not in dedicated markup
   if (!trailerUrl) {

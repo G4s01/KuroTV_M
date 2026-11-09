@@ -18,7 +18,12 @@ Il player integra gesture native ad altissima fluidità tramite `react-native-ge
 - **Tris di Pulsanti Principali**: Il pulsante centrale circolare Play/Pausa è affiancato dai pulsanti per passare direttamente all'**Episodio Precedente** (`play-skip-back`) e all'**Episodio Successivo** (`play-skip-forward`).
 - **Bilanciamento Dinamico**: Quando la puntata corrente è la prima o l'ultima della serie, uno spaziatore trasparente simmetrico mantiene il pulsante Play/Pausa perfettamente centrato al pixel.
 
-### 3. Swipe Verticali per Luminosità e Volume
+### 3. Swipe Rigorosamente Verticali per Luminosità e Volume
+- **Isolamento dell'Asse**:
+  - Attivazione vincolata con soglia minima verticale `activeOffsetY([-18, 18])` per evitare inneschi accidentali su tocchi leggeri.
+  - Rigetto immediato del pan con `failOffsetX([-14, 14])`: se lo swipe è orizzontale la gesture fallisce e non altera volume o luminosità.
+  - In `onUpdate`, esclusione dei frame di pan in cui la componente orizzontale domina (`Math.abs(e.translationX) > Math.abs(e.translationY)`).
+  - Corsa di regolazione progressiva su travel range calibrato (`Math.max(260, windowHeight * 0.7)`), offrendo sensibilità naturale a 60/120 FPS.
 - **Swipe Lato Sinistro**: Regolazione continua della luminosità dello schermo (da 10% a 100%).
 - **Luminosità 'AUTOMATICA'**: Al limite inferiore dello swipe ($\le 0.08$), la luminosità passa a modalità `-1` (`'AUTOMATICA'`), l'overlay scuro si disattiva per affidarsi al sensore di sistema Android e l'HUD mostra l'icona solare `sunny-outline`.
 - **Swipe Lato Destro**: Regolazione del volume multimediale (da 0% a 100%).
@@ -59,22 +64,26 @@ Il player si interfaccia in background con il servizio **AniSkip** ([`src/compon
 
 ---
 
-## 📑 Drawer & Modali Touch-Native (Zero Crash Fabric/Compose)
+## 📑 Drawer & Modali Touch-Native (Zero Crash Fabric/Compose & No Cutoff)
 
 Tutti i menù secondari sfruttano modali touch-native basati su React Native `Modal` (`transparent={true}`, `statusBarTranslucent={true}` e animazione a scorrimento `slide`), eliminando le fragilità e i crash nativi di Jetpack Compose (`@expo/ui`) su layout fullscreen landscape e rotazioni:
 
-- **Centratura Ottica & Nessun Taglio a Sinistra**: Applicato padding orizzontale simmetrico `horizontalPadding = Math.max(16, safeHorizontalInset)` su entrambi i lati. Nel carosello episodi, il padding è impostato direttamente su `contentContainerStyle` di `FlashList`, garantendo visibilità e perfetto allineamento anche delle prime due card a sinistra in portrait.
+- **Centratura Ottica & Dimensioni Responsive (Nessun Taglio ai Lati)**:
+  - Applicato padding orizzontale simmetrico `horizontalPadding = Math.max(16, safeHorizontalInset)` su entrambi i lati.
+  - Testi degli header e sottotitoli vincolati con `flexShrink: 1`, `numberOfLines={1}` ed `ellipsizeMode="tail"` per prevenire sbordamenti o tagli visivi a destra e a sinistra su display verticali o stretti.
 - **Carosello Episodi Virtualizzato** ([`PlayerEpisodesCarouselSheet.tsx`](file:///home/g4s/VSCode/KuroM/src/components/player/PlayerEpisodesCarouselSheet.tsx)):
   - Icona intuitiva `list-outline` nel footer del player.
   - Virtualizzazione orizzontale con `@shopify/flash-list` (`FlashList`), layout stabile con `maintainVisibleContentPosition={{ disabled: true }}` per azzerare i crash nativi Fabric/Hermes.
+  - Larghezza card scalata su orientamento (`cardWidth = isLandscape ? 170 : 152`) con padding simmetrico direttamente su `contentContainerStyle`.
   - Scorrimento programmatico sicuro all'episodio attivo (`initialScrollIndex` e `scrollToIndex` protetto da try/catch).
   - Navigazione asincrona differita di 60ms alla selezione per concedere al Dialog nativo Android il tempo di chiusura.
 - **Scheda Dettagli & Trama** ([`PlayerInfoSheet.tsx`](file:///home/g4s/VSCode/KuroM/src/components/player/PlayerInfoSheet.tsx)):
   - Tasto `information-circle-outline` nell'header OSD.
-  - Normalizzazione difensiva di generi (`Array.isArray(genres)`) e testi maiuscoli.
-  - Locandina anime con `flexShrink: 0`, metadati con `minWidth: 0` e sinossi completa in un riquadro scrollabile.
+  - Badge episodio formattato rigorosamente come `'EPISODIO X/TOT'` (es. `'EPISODIO 1/170'`, `'EPISODIO 1/??'`), pulito da suffissi titolo puntata ridondanti.
+  - Normalizzazione difensiva di generi (`Array.isArray(genres)`), etichette con `numberOfLines={1}` e testi maiuscoli.
+  - Locandina anime e placeholder ridimensionati dinamicamente (`76x108` in portrait, `84x120` in landscape), metadati con `minWidth: 0` e sinossi completa in un riquadro scrollabile.
 - **Opzioni di Riproduzione & Velocità** ([`ServerBottomSheet.tsx`](file:///home/g4s/VSCode/KuroM/src/components/ServerBottomSheet.tsx)):
-  - Centratura ottica dei selettori di velocità ($0.75\times, 1.0\times, 1.25\times, 1.5\times, 2.0\times$) e selezione server video.
+  - Centratura ottica dei selettori di velocità ($0.75\times, 1.0\times, 1.25\times, 1.5\times, 2.0\times$) con gap responsive (`isLandscape ? 8 : 4`) e selezione server video con troncamento automatico del testo lungo.
   - `maxHeight` responsivo in base all'orientamento dello schermo (`Math.min(380, windowHeight * 0.55)` in portrait, 240dp in landscape).
 
 ---
@@ -84,12 +93,12 @@ Tutti i menù secondari sfruttano modali touch-native basati su React Native `Mo
 - **Avvio Automatico in Landscape**: Il player si apre per default in modalità orizzontale a tutto schermo con `ScreenOrientation.lockAsync(OrientationLock.LANDSCAPE)`.
 - **Sensore Landscape Android**: Con rotazione automatica attiva nel sistema, lo schermo è sensibile e ruota liberamente a 180° tra landscape sinistro e destro.
 - **Barra di Navigazione Nascosta**: All'interno del player, la navbar di sistema Android è rigorosamente nascosta per la massima immersione cinematografica e ripristina la modalità utente solo all'uscita.
-- **Picture-in-Picture (PiP) & Controlli Rapidi MediaStyle**:
+- **Picture-in-Picture (PiP) Senza Pause & Controlli Rapidi MediaStyle**:
   - Tasto PiP dedicato nell'header (`open-outline`).
-  - `p.showNowPlayingNotification = true` e metadati completi dello stream (titolo serie, numero episodio, locandina artwork).
-  - Controlli multimediali di sistema persistenti nel cassetto notifiche Android (precedente, play/pausa, successivo, chiudi) attivi durante il PiP.
-  - Finestra di tolleranza di 600ms al passaggio in background per consentire ad Android di completare la transizione PiP senza interruzioni video premature.
-  - Alla chiusura della finestra PiP con la 'X' di Android, il listener `onPictureInPictureStop` controlla se l'app è in background (`AppState.currentState !== 'active'`), mettendo subito in pausa lo stream, disattivando la notifica e salvando la posizione esatta su MMKV.
+  - `player.showNowPlayingNotification = true` e metadati completi dello stream (titolo serie con numero puntata `<Titolo> - EPISODIO <Num>`, locandina artwork caricata via bitmap asincrono in `largeIcon`, pulsante dedicato per episodio successivo `nextEpisodeButton` / `COMMAND_SEEK_TO_NEXT`, abilitati via patch native `scripts/apply-patches.mjs`).
+  - Overlay di caricamento minimale (`loadingOverlay`) con badge circolare compatto (56x56 dp) contenente unicamente `ActivityIndicator` (senza scritte testuali) per garantire un feedback continuo e pulito durante buffering o cambio puntata.
+  - **Rientro a Tutto Schermo Fluido**: Memorizzazione in tempo reale di `wasPlayingInPiPRef`. Quando l'utente tocca il pulsante Android per rientrare a schermo intero dal PiP, l'Activity torna in primo piano (`AppState === 'active'`) e `player.play()` riprende istantaneamente la riproduzione senza pause o scatti.
+  - **Chiusura Volontaria con la 'X'**: In `onPictureInPictureStop`, un timer di tolleranza di 500ms attende l'eventuale riattivazione dell'Activity; solo se l'app rimane effettivamente in background lo stream viene messo in pausa, salvando i progressi di visione su MMKV.
 
 ---
 

@@ -1090,14 +1090,33 @@ assert.strictEqual(parsedDetail.anilistId, 12345, 'AniList ID deve essere estrat
 assert.strictEqual(parsedDetail.malId, 67890, 'MAL ID deve essere estratto');
 assert(parsedDetail.trailer?.includes('dQw4w9WgXcQ'), 'Trailer YouTube deve essere estratto e normalizzato');
 
+// Verifica gestione episodi sconosciuti (?? o ?)
+const sampleUnknownHtml = `
+<div class="widget info">
+  <div class="info">
+    <dl class="row">
+      <dt>Episodi</dt><dd>??</dd>
+    </dl>
+  </div>
+</div>
+`;
+const parsedUnknown = parseDetailPage(sampleUnknownHtml, 'https://www.animeworld.so/play/test-unknown', 'https://www.animeworld.so');
+assert.strictEqual(parsedUnknown.totalEpisodes, '??', 'Episodi sconosciuti devono preservare ??');
+
 // Verifica AnimeInfoTable, AnimeHeaderBackdrop e BatchBottomSheet
 const infoTableCode = fs.readFileSync(path.resolve(process.cwd(), 'src/components/anime/AnimeInfoTable.tsx'), 'utf-8');
 assert(infoTableCode.includes('horizontal'), 'AnimeInfoTable deve supportare scroll orizzontale per i generi');
 assert(infoTableCode.includes('nestedScrollEnabled'), 'AnimeInfoTable deve abilitare nestedScrollEnabled sullo scroll generi');
+assert(infoTableCode.includes('youtubeSvg'), 'AnimeInfoTable deve importare youtubeSvg');
+assert(infoTableCode.includes('malSvg'), 'AnimeInfoTable deve importare malSvg');
+assert(infoTableCode.includes('anilistSvg'), 'AnimeInfoTable deve importare anilistSvg');
+assert(infoTableCode.includes('>MAL<'), 'AnimeInfoTable deve rinominare MYANIMELIST in MAL');
 
 const headerBackdropCode = fs.readFileSync(path.resolve(process.cwd(), 'src/components/anime/AnimeHeaderBackdrop.tsx'), 'utf-8');
 assert(headerBackdropCode.includes('actionButtonsRow'), 'AnimeHeaderBackdrop deve includere la riga con pulsanti azione simbolici');
 assert(headerBackdropCode.includes('name="play"'), 'AnimeHeaderBackdrop deve includere il simbolo play');
+assert(headerBackdropCode.includes('isCoverExpanded'), 'AnimeHeaderBackdrop deve supportare la copertina espandibile a schermo intero');
+assert(!headerBackdropCode.includes('BACKDROP_HEIGHT'), 'AnimeHeaderBackdrop deve rimuovere la vecchia intestazione ingrandita');
 assert(headerBackdropCode.includes('name="reload"'), 'AnimeHeaderBackdrop deve includere il simbolo reload per riniziare da capo');
 assert(!headerBackdropCode.includes('styles.genresText'), 'AnimeHeaderBackdrop non deve mostrare i generi sotto il titolo');
 
@@ -1113,7 +1132,7 @@ assert(animeDetailCode.includes('maintainVisibleContentPosition={{ disabled: tru
 // Verifica Skeletons Coerenti e Zero CLS
 // -----------------------------------------------------------------------------
 const animeDetailSkeletonCode = fs.readFileSync(path.resolve(process.cwd(), 'src/components/skeleton/AnimeDetailScreenSkeleton.tsx'), 'utf-8');
-assert(animeDetailSkeletonCode.includes('BACKDROP_HEIGHT = 260'), 'AnimeDetailScreenSkeleton deve usare altezza 260 coerente con AnimeHeaderBackdrop');
+assert(!animeDetailSkeletonCode.includes('BACKDROP_HEIGHT'), 'AnimeDetailScreenSkeleton deve essere privo di backdrop per zero layout shift');
 assert(animeDetailSkeletonCode.includes('width={110} height={160}'), 'AnimeDetailScreenSkeleton poster deve misurare 110x160');
 assert(animeDetailSkeletonCode.includes('actionButtonsRow'), 'AnimeDetailScreenSkeleton deve includere i bottoni di azione circolari');
 assert(animeDetailSkeletonCode.includes('tableCard'), 'AnimeDetailScreenSkeleton deve includere la scheda tecnica AnimeInfoTable');
@@ -1285,6 +1304,9 @@ assert(sliderSource.includes('onPanResponderTerminationRequest'), 'HistorySlider
 const playerFullSource = fs.readFileSync(path.resolve(process.cwd(), 'app/player/[id].tsx'), 'utf-8');
 assert(playerFullSource.includes('showNowPlayingNotification'), 'app/player/[id].tsx deve abilitare showNowPlayingNotification per i controlli in area notifica');
 assert(playerFullSource.includes('metadata: {'), 'app/player/[id].tsx deve inviare metadata (titolo, episodio, thumbnail) per la notifica multimediale');
+assert(playerFullSource.includes('formattedTitle'), 'app/player/[id].tsx deve inviare il titolo con numero di episodio');
+assert(playerFullSource.includes('loadingOverlay'), 'app/player/[id].tsx deve mostrare feedback visivo di caricamento con loadingOverlay');
+assert(playerFullSource.includes('KuroNotificationNextEpisode'), 'app/player/[id].tsx deve ascoltare l\'evento di episodio successivo da notifica');
 assert(playerFullSource.includes('isInPiPRef.current'), 'app/player/[id].tsx deve tracciare isInPiPRef per preservare riproduzione e notifiche');
 
 // 6. Tab Layout Animated Upward Arrow
@@ -1307,6 +1329,7 @@ assert(carouselCode.includes('paddingHorizontal: horizontalPadding'), 'PlayerEpi
 const infoSheetCode = fs.readFileSync(path.resolve(process.cwd(), 'src/components/player/PlayerInfoSheet.tsx'), 'utf-8');
 assert(infoSheetCode.includes('numberOfLines={1}'), 'PlayerInfoSheet episodeBadge deve avere numberOfLines={1}');
 assert(infoSheetCode.includes('ellipsizeMode="tail"'), 'PlayerInfoSheet episodeBadge deve avere ellipsizeMode="tail"');
+assert(infoSheetCode.includes('totalEpisodes'), 'PlayerInfoSheet deve gestire totalEpisodes per mostrare il numero totale episodi');
 
 // 3. ServerBottomSheet speedChip padding
 const serverCode = fs.readFileSync(path.resolve(process.cwd(), 'src/components/ServerBottomSheet.tsx'), 'utf-8');
@@ -1499,6 +1522,49 @@ assert(
 assert(
   updatedSettings.includes('onContentSizeChange'),
   'SettingsScreen deve osservare onContentSizeChange per scorrere reattivamente all\'espansione della sezione'
+);
+
+// 6. Verifica Refinements: Player Info Sheet episode badge, Player minimal loading feedback, Anime Detail spacing
+const playerInfoSheetSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/player/PlayerInfoSheet.tsx'), 'utf-8');
+assert(
+  playerInfoSheetSource.includes('{episodeBadgeText}'),
+  'PlayerInfoSheet deve renderizzare {episodeBadgeText} nel badge senza testo duplicato o suffisso titolo'
+);
+assert(
+  !playerInfoSheetSource.includes('EPISODIO {episodeNumber}{totalEpisodesText}'),
+  'PlayerInfoSheet non deve includere il vecchio formato con totalEpisodesText disgiunto'
+);
+
+const playerSourceForLoading = fs.readFileSync(path.resolve(process.cwd(), 'app/player/[id].tsx'), 'utf-8');
+assert(
+  playerSourceForLoading.includes('loadingOverlay'),
+  'app/player/[id].tsx deve mostrare loadingOverlay durante il caricamento'
+);
+assert(
+  !playerSourceForLoading.includes('CARICAMENTO EPISODIO'),
+  'app/player/[id].tsx deve avere feedback minimale senza scritte testuali'
+);
+assert(
+  !playerSourceForLoading.includes('loadingBoxText'),
+  'app/player/[id].tsx non deve avere stili di testo nel loadingBox minimale'
+);
+
+const animeHeaderSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/anime/AnimeHeaderBackdrop.tsx'), 'utf-8');
+assert(
+  animeHeaderSource.includes('paddingTop: 68'),
+  'AnimeHeaderBackdrop deve avere paddingTop: 68 per garantire lo spacing iniziale sotto il tasto indietro'
+);
+
+const animeSkeletonSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/skeleton/AnimeDetailScreenSkeleton.tsx'), 'utf-8');
+assert(
+  animeSkeletonSource.includes('paddingTop: 68'),
+  'AnimeDetailScreenSkeleton deve sincronizzare paddingTop: 68 con AnimeHeaderBackdrop per zero CLS'
+);
+
+const animeDetailScreenSource = fs.readFileSync(path.resolve(process.cwd(), 'app/anime/[id].tsx'), 'utf-8');
+assert(
+  animeDetailScreenSource.includes('top: Math.max(insets.top + 8, 12)'),
+  'app/anime/[id].tsx deve posizionare topNav dinamicamente in base a insets.top'
 );
 
 console.log('✓ Gestures Verticali, PiP No-Pause, Sheets Dimensioni & Update Scroll verificati con successo.');
