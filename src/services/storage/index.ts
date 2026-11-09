@@ -12,6 +12,8 @@ import { scraperConfig } from '../scraper/config';
 export type { AniSkipSettings, AniSkipMode };
 export { DEFAULT_ANISKIP_SETTINGS };
 
+export type NavBarMode = 'auto-hide' | 'visible';
+
 
 export interface StorageAdapter {
   getString(key: string): string | undefined;
@@ -155,6 +157,7 @@ export interface AppSettings {
   searchDebounceMs: number;
   searchMinChars: number;
   aniSkipSettings?: AniSkipSettings;
+  navBarMode?: NavBarMode;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -173,6 +176,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   searchDebounceMs: 800,
   searchMinChars: 3,
   aniSkipSettings: DEFAULT_ANISKIP_SETTINGS,
+  navBarMode: 'auto-hide',
 };
 
 export interface WatchProgressItem {
@@ -623,6 +627,17 @@ export const AppStorage = {
 
   setAniSkipSettings: (partial: Partial<AniSkipSettings>): AniSkipSettings => {
     return AppStorage.saveAniSkipSettings(partial);
+  },
+
+  // ----------------------------------------------------
+  // System Navigation Bar Settings
+  // ----------------------------------------------------
+  getNavBarMode: (): NavBarMode => {
+    return AppStorage.getSettings().navBarMode ?? 'auto-hide';
+  },
+
+  setNavBarMode: (mode: NavBarMode): void => {
+    AppStorage.saveSettings({ navBarMode: mode });
   },
 
   // ----------------------------------------------------

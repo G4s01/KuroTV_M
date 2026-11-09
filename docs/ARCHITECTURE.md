@@ -12,37 +12,39 @@ KuroM/
 │   ├── _layout.tsx              # Root Layout: ThemeProvider, QueryClient, GestureHandler
 │   ├── (tabs)/                  # Navigazione a schede inferiori
 │   │   ├── _layout.tsx          # Configurazione TabBar con tinte reattive
-│   │   ├── index.tsx            # Home: Hero Spotlight, Continua a guardare, Ultime uscite
-│   │   ├── explore.tsx          # Esplora: Ricerca istantanea e filtri generi
+│   │   ├── index.tsx            # Home: Hero Spotlight, Continua a guardare, Ultime uscite, ricerca unificata & filtri
+│   │   ├── explore.tsx          # Reindirizzamento trasparente a Home
 │   │   ├── favorites.tsx        # Preferiti: Griglia anime salvati in locale
 │   │   ├── history.tsx          # Cronologia: Storico di visione e ripresa episodio
-│   │   └── settings.tsx         # Impostazioni: Temi iconici SVG, sorgente scraping (.ac, .so, .tv o URL), info app e updater unificato
+│   │   └── settings.tsx         # Impostazioni: Temi SVG, AniSkip, Navbar Android, sorgente (.ac, .so, .tv), info & updater
 │   ├── anime/
 │   │   └── [id].tsx             # Scheda Dettaglio Anime (Header, Trama, Server, Griglia Puntate)
 │   └── player/
-│       └── [id].tsx             # Player Video Touch Mobile (Gesture, OSD, PiP, AniSkip)
+│       └── [id].tsx             # Player Video Touch Mobile (Gesture, OSD, PiP, MediaStyle notification, AniSkip)
 ├── assets/                      # Risorse statiche
 │   ├── icons/                   # Icone SVG dei temi (theme-oled, theme-pikachu, ...)
 │   └── images/                  # Icone app Android, Splash screen e banner
 ├── src/                         # Moduli core dell'applicazione
-│   ├── components/              # Componenti UI riutilizzabili (FlashList items, BottomSheets)
+│   ├── components/              # Componenti UI riutilizzabili (FlashList items, Modali touch-native)
 │   │   ├── anime/               # Moduli dettaglio anime (Backdrop, Synopsis, AnimeInfoTable, Controls)
 │   │   ├── player/              # Moduli isolati video player (Header, Timeline, Footer, Carousel, Info)
 │   │   ├── skeleton/            # Primitive e layout skeleton animati (Zero CLS, OLED #161616)
+│   │   ├── FilterBottomSheet.tsx# Modale filtri di ricerca touch-safe
+│   │   ├── UpdateModal.tsx      # Modale notifica aggiornamento in-app all'avvio
 │   │   └── HistorySlider.tsx    # Slider discreto retention cronologia (OFF, 30g, 60g, 90g, ON)
 │   ├── services/
 │   │   ├── anilist/             # Integrazione metadata AniList GraphQL
-│   │   ├── aniskip/             # Servizio timestamp per skip intro/outro
+│   │   ├── aniskip/             # Servizio timestamp per skip intro/outro/recap
 │   │   ├── kitsu/               # Metadata e trending Kitsu API
 │   │   ├── queries/             # QueryOptions TanStack React Query v5
 │   │   ├── scraper/             # Web Scraper AnimeWorld con cheerio/slim
 │   │   ├── storage/             # Storage locale a zero-latenza MMKV v3
-│   │   └── updater/             # Client OTA manifest e download APK
+│   │   └── updater/             # Client OTA manifest, update store reattivo e download APK
 │   ├── theme/                   # Sistema di stili reattivo e ThemeProvider
 │   └── types/                   # Definizioni TypeScript condivise
 ├── workers/                     # Cloudflare Worker unificato per OTA
 ├── scripts/                     # Tooling DevOps & pipeline di release (build-release.sh, backup R2, upload)
-└── tests/                       # Suite di verifica qualità a 7 stadi
+└── tests/                       # Suite di verifica qualità a 10 stadi
 ```
 
 ---
@@ -171,3 +173,31 @@ La schermata Dettaglio Anime arricchisce la consultazione con il componente [`An
 Il sottosistema video ([`app/player/[id].tsx`](file:///home/g4s/VSCode/KuroM/app/player/[id].tsx)) adotta la gestione asincrona delle sorgenti multimediali:
 - **`replaceAsync` off-thread**: Sostituisce il metodo deprecato `player.replace` per prevenire il blocco del Main Thread durante l'inizializzazione dei formati video su iOS e Android.
 - **Gestione Stream & Ripresa**: Mantiene sincronizzato il `playbackRate` e applica il punto di ripresa memorizzato in MMKV al completamento della risoluzione della risorsa, senza glitch visivi.
+- **Controlli Multimediali in Notifica (MediaSession / MediaStyle)**: Espone `showNowPlayingNotification = true` e metadati completi dello stream (titolo, episodio, artwork), abilitando i controlli rapidi di sistema (prev, play/pause, next, close) persistenti nel drawer notifiche durante il Picture-in-Picture e in background.
+- **AniSkip Unificato**: Rileva sigle d'apertura (`op`), chiusura (`ed`) e recap (`recap`) con pulsante unico 'SALTA', timer ad esaurimento limitato a 10s e resilienza al riavvolgimento (rewind).
+
+---
+
+## 📱 Gestione Navbar di Sistema Android & Modalità Immersiva
+
+Per massimizzare la resa visiva sui display AMOLED ed eliminare sovrapposizioni grafiche con i pulsanti di sistema:
+1. **Modalità Immersiva Auto-Hide (`expo-navigation-bar`)**:
+   - `BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE`: la navbar di sistema Android viene nascosta automaticamente all'apertura dell'app.
+   - Può essere richiamata in qualsiasi momento con un semplice swipe verso l'alto dal bordo inferiore e scompare nuovamente in automatico dopo l'uso.
+   - Sincronizzazione dinamica dello stato su `AppState` (ripristino automatico al ritorno da background).
+2. **Adattamento Dinamico Safe Area sui Tab**:
+   - `tabBarStyle` in [`app/(tabs)/_layout.tsx`](file:///home/g4s/VSCode/KuroM/app/(tabs)/_layout.tsx) calcola l'altezza come `56 + insets.bottom` e il padding inferiore come `insets.bottom`.
+   - Se la navbar a 3 pulsanti è visibile o l'utente seleziona la modalità `SEMPRE VISIBILE` in Impostazioni, la barra delle tab espande un cuscinetto inferiore OLED evitando qualsiasi collisione con le icone.
+3. **Configurazione Utente in Impostazioni**:
+   - Selezione istantanea tra `NASCONDI (SWIPE)` (default consigliato) e `SEMPRE VISIBILE`, persistita in MMKV (`AppStorage.setNavBarMode`).
+
+---
+
+## 🔄 Updater Reattivo & Notifica all'Avvio (`UpdateModal`)
+
+L'applicazione include un sistema di notifica e aggiornamento in-app progettato per non essere invasivo:
+1. **Controllo Asincrono all'Avvio**: 1200ms dopo il montaggio iniziale, `UpdaterService.checkForUpdates()` verifica in background la presenza di nuove build sul manifest Cloudflare R2.
+2. **Modale In-App `UpdateModal`**: Se è disponibile una nuova versione, visualizza un modale OLED con versione, codice build e note di rilascio scrollabili.
+3. **Flusso Diretto o Differito**:
+   - **Tasto "AGGIORNA ORA"**: Chiude il modale, naviga alla sezione Impostazioni e avvia immediatamente il download con progress bar.
+   - **Tasto "PIÙ TARDI" / Dismiss**: Chiude il modale e attiva una **freccia in sù (`arrow-up`) animata** con rimbalzo continuo (`Animated.loop`) sopra l'icona Impostazioni del router Expo, lasciando un promemoria visivo discreto ma visibile.

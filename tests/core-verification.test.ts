@@ -1393,6 +1393,38 @@ assert(exploreCode.includes('/(tabs)'), 'app/(tabs)/explore.tsx deve reindirizza
 console.log('✓ Sheets Cutoff Fixes, AniSkip Settings & FilterBottomSheet Modal verificati con successo.');
 
 // -----------------------------------------------------------------------------
+// [10/10] Verifica System Navigation Bar Compatibility & Auto-Hide Mode
+// -----------------------------------------------------------------------------
+console.log('\n[10/10] Verifica System Navigation Bar Compatibility & Auto-Hide Mode...');
+
+// 1. Storage default and toggling
+AppStorage.setNavBarMode('auto-hide');
+assert.strictEqual(AppStorage.getNavBarMode(), 'auto-hide', 'Default navBarMode deve essere auto-hide');
+AppStorage.setNavBarMode('visible');
+assert.strictEqual(AppStorage.getNavBarMode(), 'visible', 'setNavBarMode deve memorizzare visible');
+AppStorage.setNavBarMode('auto-hide');
+
+// 2. Tab layout safe insets verification
+const currentTabLayoutSource = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/_layout.tsx'), 'utf-8');
+assert(currentTabLayoutSource.includes('useSafeAreaInsets'), 'TabLayout deve importare ed utilizzare useSafeAreaInsets');
+assert(currentTabLayoutSource.includes('insets.bottom'), 'TabLayout deve considerare insets.bottom per evitare sovrapposizioni con la navbar');
+assert(currentTabLayoutSource.includes('androidBottomInset'), 'TabLayout deve calcolare androidBottomInset per la compatibilità con i pulsanti di sistema');
+
+// 3. Root layout navigation bar auto-hide
+const rootLayoutSource = fs.readFileSync(path.resolve(process.cwd(), 'app/_layout.tsx'), 'utf-8');
+assert(rootLayoutSource.includes('expo-navigation-bar'), 'RootLayout deve integrare expo-navigation-bar');
+assert(rootLayoutSource.includes('setVisibilityAsync'), 'RootLayout deve richiamare setVisibilityAsync per nascondere la barra ad app aperta');
+assert(rootLayoutSource.includes('navBarMode'), 'RootLayout deve sincronizzarsi dinamicamente con navBarMode');
+
+// 4. Settings screen UI section
+const settingsSource = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/settings.tsx'), 'utf-8');
+assert(settingsSource.includes('NAVBAR DI SISTEMA'), 'SettingsScreen deve contenere la sezione NAVBAR DI SISTEMA');
+assert(settingsSource.includes('NASCONDI (SWIPE)'), 'SettingsScreen deve contenere l\'opzione NASCONDI (SWIPE)');
+assert(settingsSource.includes('SEMPRE VISIBILE'), 'SettingsScreen deve contenere l\'opzione SEMPRE VISIBILE');
+
+console.log('✓ System Navigation Bar Compatibility & Auto-Hide Mode verificati con successo.');
+
+// -----------------------------------------------------------------------------
 // Fine Test
 // -----------------------------------------------------------------------------
 console.log('\n==============================================');

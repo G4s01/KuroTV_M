@@ -380,19 +380,16 @@ export default function VideoPlayerScreen() {
     return () => {
       ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
       if (Platform.OS === 'android') {
-        NavigationBar.setVisibilityAsync('visible').catch(() => {});
+        const mode = AppStorage.getNavBarMode();
+        NavigationBar.setVisibilityAsync(mode === 'auto-hide' ? 'hidden' : 'visible').catch(() => {});
       }
     };
   }, []);
 
-  // Manage navigation bar visibility based on current orientation state
+  // Video playback always maintains hidden navigation bar for full immersion
   React.useEffect(() => {
     if (Platform.OS === 'android') {
-      if (isLandscape) {
-        NavigationBar.setVisibilityAsync('hidden').catch(() => {});
-      } else {
-        NavigationBar.setVisibilityAsync('visible').catch(() => {});
-      }
+      NavigationBar.setVisibilityAsync('hidden').catch(() => {});
     }
   }, [isLandscape]);
 

@@ -43,50 +43,53 @@ La barra di avanzamento ([`src/components/player/PlayerTimeline.tsx`](file:///ho
 
 ---
 
-## ⏭️ Integrazione AniSkip con Bordo Temporizzato ad Esaurimento
+## ⏭️ Integrazione AniSkip con Bordo Temporizzato ad Esaurimento (10s & Recap)
 
 Il player si interfaccia in background con il servizio **AniSkip** ([`src/components/AniSkipButton.tsx`](file:///home/g4s/VSCode/KuroM/src/components/AniSkipButton.tsx)):
 
-1. **Recupero Timestamp**: Rilevamento automatico degli intervalli per sigla d'apertura (`op`), chiusura (`ed`) e recap.
-2. **Bordo ad Esaurimento Temporale**:
-   - Il pulsante include due binari superiore e inferiore in cui una barra colorata con la tinta del tema primario si consuma progressivamente man mano che il tempo per premere il pulsante scorre:
-     $$\text{ratio} = \frac{\text{endTime} - \text{currentTime}}{\text{endTime} - \text{startTime}}$$
-   - Calcolo istantaneo del progresso iniziale (`getInitialProgress`) al montaggio del componente, evitando scatti a pieno o zero.
-3. **Isolamento Tocco**: `zIndex: 10` ed elevazione nativa per intercettare il tocco senza chiudere l'OSD sottostante.
-4. **Contrasto Dinamico YIQ**: Colore del testo calcolato dinamicamente con `getContrastTextColor(theme.colors.primary)` per garantire leggibilità assoluta su qualsiasi tema (inclusi Pikachu e Rainbow).
+1. **Recupero Timestamp & Tipi Supportati**: Rilevamento automatico degli intervalli per sigla d'apertura (`op`, `mixed-op`), chiusura (`ed`, `mixed-ed`) e `recap`.
+2. **Etichetta Unificata 'SALTA'**: Tutti i tipi di skip utilizzano la stringa minimale `'SALTA'`.
+3. **Timer di Esposizione a 10 Secondi**:
+   - In modalità manuale, il pulsante viene mostrato per massimo **10 secondi** dall'inizio dell'intervallo (o per l'intera durata della sezione se inferiore a 10s), dopodiché si dissolve automaticamente (`onTimeout`).
+   - Se l'utente torna indietro nel video (rewind) all'interno dei primi 10s della sezione, il pulsante 'SALTA' riappare immediatamente con il tempo residuo.
+   - Bordo superiore e inferiore animato a consumo in tempo reale proporzionale ai 10s:
+     $$\text{ratio} = \frac{\text{maxDuration} - \text{elapsed}}{\text{maxDuration}}$$
+4. **Modalità Automatica**: In modalità auto (configurabile dall'utente in Impostazioni), l'intervallo viene saltato all'istante al raggiungimento del timestamp iniziale.
+5. **Isolamento Tocco & Contrasto YIQ**: `zIndex: 10` ed elevazione nativa, con colore del testo calcolato dinamicamente con `getContrastTextColor(theme.colors.primary)` per la massima leggibilità.
 
 ---
 
-## 📑 Bottom Sheets Nativi & Malleabilità del Layout
+## 📑 Drawer & Modali Touch-Native (Zero Crash Fabric/Compose)
 
-Tutti i menù secondari sfruttano i `BottomSheet` nativi di Jetpack Compose (`@expo/ui`) rifiniti per una resa simmetrica e malleabile in orizzontale e verticale:
+Tutti i menù secondari sfruttano modali touch-native basati su React Native `Modal` (`transparent={true}`, `statusBarTranslucent={true}` e animazione a scorrimento `slide`), eliminando le fragilità e i crash nativi di Jetpack Compose (`@expo/ui`) su layout fullscreen landscape e rotazioni:
 
-- **Centratura Ottica Perfetta**: Applicato `contentPadding={0}` e calcolato `safeHorizontalInset = Math.max(insets.left, insets.right)` simmetrico su entrambi i lati, evitando sbilanciamenti dovuti a punch-hole o fotocamere frontali in modalità landscape.
+- **Centratura Ottica & Nessun Taglio a Sinistra**: Applicato padding orizzontale simmetrico `horizontalPadding = Math.max(16, safeHorizontalInset)` su entrambi i lati. Nel carosello episodi, il padding è impostato direttamente su `contentContainerStyle` di `FlashList`, garantendo visibilità e perfetto allineamento anche delle prime due card a sinistra in portrait.
 - **Carosello Episodi Virtualizzato** ([`PlayerEpisodesCarouselSheet.tsx`](file:///home/g4s/VSCode/KuroM/src/components/player/PlayerEpisodesCarouselSheet.tsx)):
   - Icona intuitiva `list-outline` nel footer del player.
-  - Virtualizzazione orizzontale ad alte prestazioni con `@shopify/flash-list` (`FlashList`), layout stabile con `maintainVisibleContentPosition={{ disabled: true }}` e altezza fissa per prevenire crash su Android.
-  - Scorrimento automatico all'episodio attualmente attivo (`initialScrollIndex` e `scrollToIndex` protetto).
-  - Predisposizione nativa per caricamento dinamico di copertina, titolo e descrizione puntata (`Episode.description`).
-  - Chiusura preventiva dello sheet con navigazione asincrona differita di 80ms per evitare collisioni native.
+  - Virtualizzazione orizzontale con `@shopify/flash-list` (`FlashList`), layout stabile con `maintainVisibleContentPosition={{ disabled: true }}` per azzerare i crash nativi Fabric/Hermes.
+  - Scorrimento programmatico sicuro all'episodio attivo (`initialScrollIndex` e `scrollToIndex` protetto da try/catch).
+  - Navigazione asincrona differita di 60ms alla selezione per concedere al Dialog nativo Android il tempo di chiusura.
 - **Scheda Dettagli & Trama** ([`PlayerInfoSheet.tsx`](file:///home/g4s/VSCode/KuroM/src/components/player/PlayerInfoSheet.tsx)):
   - Tasto `information-circle-outline` nell'header OSD.
-  - Visualizzazione di locandina anime, titolo serie, badge numero/titolo puntata, anno di rilascio, stato, generi e sinossi completa in un riquadro scrollabile.
+  - Normalizzazione difensiva di generi (`Array.isArray(genres)`) e testi maiuscoli.
+  - Locandina anime con `flexShrink: 0`, metadati con `minWidth: 0` e sinossi completa in un riquadro scrollabile.
 - **Opzioni di Riproduzione & Velocità** ([`ServerBottomSheet.tsx`](file:///home/g4s/VSCode/KuroM/src/components/ServerBottomSheet.tsx)):
-  - Centratura ottica dei selettori di velocità ($0.75\times, 1.0\times, 1.25\times, 1.5\times, 2.0\times$).
-  - I chip utilizzano `adjustsFontSizeToFit={true}` e `numberOfLines={1}` per prevenire tagli di testo su smartphone stretti in portrait.
-  - Ciclo rapido al tap singolo sul pulsante velocità del footer e apertura opzioni al long-press.
+  - Centratura ottica dei selettori di velocità ($0.75\times, 1.0\times, 1.25\times, 1.5\times, 2.0\times$) e selezione server video.
+  - `maxHeight` responsivo in base all'orientamento dello schermo (`Math.min(380, windowHeight * 0.55)` in portrait, 240dp in landscape).
 
 ---
 
-## 🔄 Orientamento, Fullscreen & Picture-in-Picture
+## 🔄 Orientamento, Fullscreen & Picture-in-Picture con Controlli in Notifica
 
 - **Avvio Automatico in Landscape**: Il player si apre per default in modalità orizzontale a tutto schermo con `ScreenOrientation.lockAsync(OrientationLock.LANDSCAPE)`.
 - **Sensore Landscape Android**: Con rotazione automatica attiva nel sistema, lo schermo è sensibile e ruota liberamente a 180° tra landscape sinistro e destro.
-- **Icona Semantica di Orientamento**: Nel footer, l'icona indica l'azione di rotazione reale del dispositivo: `phone-portrait-outline` quando si è in orizzontale (per passare in verticale) e `phone-landscape-outline` quando si è in verticale.
-- **Picture-in-Picture (PiP) Senza Zombie Playback**:
+- **Barra di Navigazione Nascosta**: All'interno del player, la navbar di sistema Android è rigorosamente nascosta per la massima immersione cinematografica e ripristina la modalità utente solo all'uscita.
+- **Picture-in-Picture (PiP) & Controlli Rapidi MediaStyle**:
   - Tasto PiP dedicato nell'header (`open-outline`).
-  - Flag `staysActiveInBackground = false`.
-  - Alla chiusura della finestra PiP con la 'X' di Android, il listener `onPictureInPictureStop` controlla se l'app è in background (`AppState.currentState !== 'active'`), mettendo subito in pausa lo stream e salvando la posizione esatta su MMKV.
+  - `p.showNowPlayingNotification = true` e metadati completi dello stream (titolo serie, numero episodio, locandina artwork).
+  - Controlli multimediali di sistema persistenti nel cassetto notifiche Android (precedente, play/pausa, successivo, chiudi) attivi durante il PiP.
+  - Finestra di tolleranza di 600ms al passaggio in background per consentire ad Android di completare la transizione PiP senza interruzioni video premature.
+  - Alla chiusura della finestra PiP con la 'X' di Android, il listener `onPictureInPictureStop` controlla se l'app è in background (`AppState.currentState !== 'active'`), mettendo subito in pausa lo stream, disattivando la notifica e salvando la posizione esatta su MMKV.
 
 ---
 

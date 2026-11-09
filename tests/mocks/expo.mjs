@@ -61,6 +61,12 @@ export const setVisibilityAsync = async () => {};
 export const setBehaviorAsync = async () => {};
 export const setBackgroundColorAsync = async () => {};
 export const getVisibilityAsync = async () => 'visible';
+export const setHidden = async () => {};
+export const setStyle = () => {};
+export const NavigationBar = ({ children }) => children;
+NavigationBar.setStyle = () => {};
+NavigationBar.setHidden = () => {};
+NavigationBar.NavigationBar = NavigationBar;
 export const OrientationLock = { LANDSCAPE: 'LANDSCAPE', PORTRAIT_UP: 'PORTRAIT_UP', DEFAULT: 'DEFAULT' };
 export const selectionAsync = async () => {};
 export const impactAsync = async () => {};
@@ -86,6 +92,7 @@ export default {
   setBehaviorAsync,
   setBackgroundColorAsync,
   getVisibilityAsync,
+  NavigationBar,
   OrientationLock,
   selectionAsync,
   impactAsync,

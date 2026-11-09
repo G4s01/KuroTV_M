@@ -1,6 +1,7 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
 import { Platform, View, StyleSheet, Animated } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useTheme, getContrastTextColor } from '@/theme';
@@ -73,6 +74,7 @@ function SettingsTabIcon({ color, focused }: { color: string; focused: boolean }
 
 export default function TabLayout() {
   const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
 
   const [isHistoryEnabled, setIsHistoryEnabled] = React.useState<boolean>(() => {
     return AppStorage.isHistoryEnabled();
@@ -85,6 +87,9 @@ export default function TabLayout() {
     return unsubscribe;
   }, []);
 
+  const androidBottomInset = Math.max(0, insets.bottom);
+  const iosBottomInset = Math.max(20, insets.bottom);
+
   return (
     <Tabs
       screenOptions={{
@@ -96,12 +101,12 @@ export default function TabLayout() {
           backgroundColor: theme.colors.background,
           borderTopColor: theme.colors.border,
           borderTopWidth: 1,
-          height: Platform.OS === 'android' ? 56 : 78,
-          paddingBottom: Platform.OS === 'android' ? 0 : 20,
+          height: Platform.OS === 'android' ? 56 + androidBottomInset : 58 + iosBottomInset,
+          paddingBottom: Platform.OS === 'android' ? androidBottomInset : iosBottomInset,
           paddingTop: 0,
         },
         tabBarItemStyle: {
-          minHeight: 44,
+          height: 56,
           justifyContent: 'center',
           alignItems: 'center',
         },

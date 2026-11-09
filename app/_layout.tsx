@@ -1,11 +1,13 @@
 import React from 'react';
+import { Platform, AppState } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import * as NavigationBar from 'expo-navigation-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider, useTheme } from '@/theme';
-import { AppStorage } from '@/services/storage';
+import { AppStorage, type NavBarMode } from '@/services/storage';
 import { UpdaterService, UpdateStore } from '@/services/updater';
 import { UpdateModal } from '@/components';
 
@@ -22,9 +24,44 @@ function RootNavigation() {
   const { theme } = useTheme();
   const isLight = theme.name === 'light';
 
+  const [navBarMode, setNavBarMode] = React.useState<NavBarMode>(() => AppStorage.getNavBarMode());
+
+  React.useEffect(() => {
+    if (Platform.OS !== 'android') return;
+
+    const applyNavBarVisibility = (mode: NavBarMode) => {
+      NavigationBar.setVisibilityAsync(mode === 'auto-hide' ? 'hidden' : 'visible').catch(() => {});
+    };
+
+    applyNavBarVisibility(navBarMode);
+
+    const subAppState = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        applyNavBarVisibility(AppStorage.getNavBarMode());
+      }
+    });
+
+    const unsubSettings = AppStorage.addSettingsListener(() => {
+      const latest = AppStorage.getNavBarMode();
+      setNavBarMode(latest);
+      applyNavBarVisibility(latest);
+    });
+
+    return () => {
+      subAppState.remove();
+      unsubSettings();
+    };
+  }, [navBarMode]);
+
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: theme.colors.background }}>
       <StatusBar style={isLight ? 'dark' : 'light'} />
+      {Platform.OS === 'android' && (
+        <NavigationBar.NavigationBar
+          hidden={navBarMode === 'auto-hide'}
+          style={isLight ? 'dark' : 'light'}
+        />
+      )}
       <Stack
         screenOptions={{
           headerShown: false,

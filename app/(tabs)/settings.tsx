@@ -8,6 +8,7 @@ import {
   Pressable,
   TextInput,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
@@ -24,6 +25,7 @@ import {
   type HistoryRetentionDays,
   type AniSkipSettings,
   type AniSkipMode,
+  type NavBarMode,
 } from '@/services/storage';
 import { HistorySlider } from '@/components/HistorySlider';
 import { ConfirmModal } from '@/components/ConfirmModal';
@@ -137,6 +139,17 @@ export default function SettingsScreen() {
     Haptics.selectionAsync().catch(() => {});
     const updated = AppStorage.saveAniSkipSettings({ [key]: !aniSkipSettings[key] });
     setAniSkipSettings(updated);
+  };
+
+  // System Navigation Bar state
+  const [navBarMode, setNavBarMode] = React.useState<NavBarMode>(() => {
+    return AppStorage.getNavBarMode();
+  });
+
+  const handleUpdateNavBarMode = (mode: NavBarMode) => {
+    Haptics.selectionAsync().catch(() => {});
+    AppStorage.setNavBarMode(mode);
+    setNavBarMode(mode);
   };
 
   const showHistoryNotice = (msg: string) => {
@@ -546,6 +559,66 @@ export default function SettingsScreen() {
             })}
           </View>
         </View>
+
+        {/* NAVBAR DI SISTEMA ANDROID */}
+        {Platform.OS === 'android' && (
+          <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+            <Text style={[styles.cardTitle, { color: theme.colors.text }]}>NAVBAR DI SISTEMA</Text>
+            <Text style={[styles.aniskipSubTitle, { color: theme.colors.textSecondary }]}>
+              COMPORTAMENTO BARRA ANDROID
+            </Text>
+            <View style={styles.navBarRow}>
+              {[
+                {
+                  mode: 'auto-hide' as NavBarMode,
+                  label: 'NASCONDI (SWIPE)',
+                },
+                {
+                  mode: 'visible' as NavBarMode,
+                  label: 'SEMPRE VISIBILE',
+                },
+              ].map((item) => {
+                const active = navBarMode === item.mode;
+                const contrastColor = active ? getContrastTextColor(theme.colors.primary) : theme.colors.text;
+                return (
+                  <Pressable
+                    key={item.mode}
+                    style={[
+                      styles.navBarChip,
+                      {
+                        backgroundColor: active ? theme.colors.primary : theme.colors.card,
+                        borderColor: active ? theme.colors.primary : theme.colors.border,
+                      },
+                    ]}
+                    onPress={() => handleUpdateNavBarMode(item.mode)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`NAVBAR ${item.label}${active ? ' ATTIVA' : ''}`}
+                  >
+                    <Ionicons
+                      name={item.mode === 'auto-hide' ? 'phone-portrait-outline' : 'ellipsis-horizontal'}
+                      size={15}
+                      color={contrastColor}
+                    />
+                    <Text
+                      style={[
+                        styles.navBarChipText,
+                        { color: contrastColor },
+                        active && styles.navBarChipTextActive,
+                      ]}
+                    >
+                      {item.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <Text style={[styles.navBarHelpText, { color: theme.colors.textMuted }]}>
+              {navBarMode === 'auto-hide'
+                ? 'LA BARRA DI SISTEMA SPARISCE AUTOMATICAMENTE DURANTE L\'USO DELL\'APP PER UN\'ESPERIENZA IMMERSIVA. PUOI RICHIAMARLA IN QUALSIASI MOMENTO CON UNO SWIPE DAL BORDO INFERIORE.'
+                : 'I PULSANTI DI SISTEMA RIMANGONO SEMPRE VISIBILI CON SPAZIATURA DI SICUREZZA PER NON COPRIRE LE TAB DI NAVIGAZIONE.'}
+            </Text>
+          </View>
+        )}
 
         {/* SORGENTE (.ac, .so, .tv o scrivibile a mano) */}
         <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
@@ -1023,6 +1096,40 @@ const styles = StyleSheet.create({
   },
   aniskipChipTextActive: {
     fontWeight: '900',
+  },
+  navBarRow: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  navBarChip: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: oledTheme.radius.md,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 8,
+  },
+  navBarChipText: {
+    fontSize: 11,
+    fontWeight: '700',
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
+  },
+  navBarChipTextActive: {
+    fontWeight: '900',
+  },
+  navBarHelpText: {
+    fontSize: 10,
+    lineHeight: 15,
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
+    marginTop: 4,
+    letterSpacing: 0.3,
   },
   customUrlRow: {
     flexDirection: 'row',

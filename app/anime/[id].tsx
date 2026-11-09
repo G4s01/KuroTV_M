@@ -305,7 +305,7 @@ export default function AnimeDetailScreen() {
           numColumns={viewMode === 'grid' ? 4 : 1}
           keyExtractor={(item) => item.id}
           ListHeaderComponent={renderHeader}
-          contentContainerStyle={styles.listContentContainer}
+          contentContainerStyle={[styles.listContentContainer, { paddingBottom: 48 + Math.max(0, insets.bottom) }]}
           maintainVisibleContentPosition={{ disabled: true }}
           renderItem={({ item }) => {
             const prog = progressMap.get(item.number);
