@@ -37,6 +37,7 @@ export interface Episode {
   id: string;
   number: number;
   title?: string;
+  description?: string;
   thumbnail?: string;
   videoUrl?: string;
   servers?: VideoServer[];
@@ -65,6 +66,8 @@ export interface AnimeDetail extends AnimeItem {
   anilistLink?: string;
   malId?: number;
   myanimelistLink?: string;
+  trailer?: string;
+  trailerUrl?: string;
   commentInfo?: {
     token: string;
     commentId: string;

@@ -5,19 +5,21 @@ import {
   View,
   TextInput,
   Pressable,
-  ActivityIndicator,
   useWindowDimensions,
   ScrollView,
+  RefreshControl,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { FlashList } from '@shopify/flash-list';
+import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { AnimeWorldScraper } from '@/services/scraper';
-import { oledTheme, useTheme } from '@/theme';
+import { oledTheme, useTheme, getContrastTextColor } from '@/theme';
 import { AnimeCard } from '@/components/AnimeCard';
+import { ExploreScreenSkeleton } from '@/components/skeleton';
 import { FilterBottomSheet, type FilterState } from '@/components/FilterBottomSheet';
 import type { AnimeItem, SearchFilter } from '@/types';
 
@@ -67,6 +69,19 @@ export default function ExploreScreen() {
     staleTime: 5 * 60 * 1000,
   });
 
+  // Proactive pre-fetching of top 4 search result images
+  React.useEffect(() => {
+    if (searchResults?.items && searchResults.items.length > 0) {
+      const urls = searchResults.items
+        .slice(0, 4)
+        .map((item) => item.image || item.thumbnail || '')
+        .filter(Boolean);
+      if (urls.length > 0) {
+        Image.prefetch(urls).catch(() => {});
+      }
+    }
+  }, [searchResults]);
+
   const navigateToAnime = (animeId: string, title?: string) => {
     Haptics.selectionAsync().catch(() => {});
     router.push({
@@ -87,15 +102,15 @@ export default function ExploreScreen() {
   const items: AnimeItem[] = searchResults?.items || [];
 
   return (
-    <View style={[styles.root, { paddingTop: insets.top }]}>
+    <View style={[styles.root, { paddingTop: insets.top, backgroundColor: theme.colors.background }]}>
       {/* Search Header */}
-      <View style={styles.header}>
-        <View style={styles.searchBar}>
-          <Ionicons name="search" size={20} color={oledTheme.colors.textMuted} />
+      <View style={[styles.header, { borderBottomColor: theme.colors.border }]}>
+        <View style={[styles.searchBar, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
+          <Ionicons name="search" size={20} color={theme.colors.textMuted} />
           <TextInput
-            style={styles.searchInput}
-            placeholder="Cerca anime, serie, film..."
-            placeholderTextColor={oledTheme.colors.textMuted}
+            style={[styles.searchInput, { color: theme.colors.text }]}
+            placeholder="CERCA ANIME, SERIE, FILM..."
+            placeholderTextColor={theme.colors.textMuted}
             value={searchQuery}
             onChangeText={setSearchQuery}
             returnKeyType="search"
@@ -107,27 +122,31 @@ export default function ExploreScreen() {
               hitSlop={12}
               style={styles.clearBtn}
             >
-              <Ionicons name="close-circle" size={18} color={oledTheme.colors.textMuted} />
+              <Ionicons name="close-circle" size={18} color={theme.colors.textMuted} />
             </Pressable>
           )}
         </View>
 
         <Pressable
-          style={[styles.filterBtn, activeFilterCount > 0 && styles.filterBtnActive]}
+          style={[
+            styles.filterBtn,
+            { backgroundColor: theme.colors.card, borderColor: theme.colors.border },
+            activeFilterCount > 0 && [styles.filterBtnActive, { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary }],
+          ]}
           onPress={() => {
             Haptics.selectionAsync().catch(() => {});
             setIsFilterSheetVisible(true);
           }}
-          accessibilityLabel="Filtri avanzati"
+          accessibilityLabel="FILTRI AVANZATI"
         >
           <Ionicons
             name="options-outline"
             size={20}
-            color={activeFilterCount > 0 ? '#FFFFFF' : oledTheme.colors.text}
+            color={activeFilterCount > 0 ? getContrastTextColor(theme.colors.primary) : theme.colors.text}
           />
           {activeFilterCount > 0 && (
-            <View style={[styles.filterBadge, { backgroundColor: theme.colors.primary }]}>
-              <Text style={styles.filterBadgeText}>{activeFilterCount}</Text>
+            <View style={[styles.filterBadge, { backgroundColor: getContrastTextColor(theme.colors.primary) }]}>
+              <Text style={[styles.filterBadgeText, { color: theme.colors.primary }]}>{activeFilterCount}</Text>
             </View>
           )}
         </Pressable>
@@ -135,30 +154,30 @@ export default function ExploreScreen() {
 
       {/* Active Filter Chips */}
       {activeFilterCount > 0 && (
-        <View style={styles.chipsContainer}>
+        <View style={[styles.chipsContainer, { borderBottomColor: theme.colors.border }]}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsScroll}>
             {filterState.genre && (
               <Pressable style={[styles.activeChip, { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary }]} onPress={() => removeFilter('genre')}>
-                <Text style={styles.activeChipText}>{filterState.genre}</Text>
-                <Ionicons name="close" size={14} color="#FFF" />
+                <Text style={[styles.activeChipText, { color: getContrastTextColor(theme.colors.primary) }]}>{filterState.genre}</Text>
+                <Ionicons name="close" size={14} color={getContrastTextColor(theme.colors.primary)} />
               </Pressable>
             )}
             {filterState.type && (
               <Pressable style={[styles.activeChip, { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary }]} onPress={() => removeFilter('type')}>
-                <Text style={styles.activeChipText}>{filterState.type}</Text>
-                <Ionicons name="close" size={14} color="#FFF" />
+                <Text style={[styles.activeChipText, { color: getContrastTextColor(theme.colors.primary) }]}>{filterState.type}</Text>
+                <Ionicons name="close" size={14} color={getContrastTextColor(theme.colors.primary)} />
               </Pressable>
             )}
             {filterState.status && (
               <Pressable style={[styles.activeChip, { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary }]} onPress={() => removeFilter('status')}>
-                <Text style={styles.activeChipText}>{filterState.status}</Text>
-                <Ionicons name="close" size={14} color="#FFF" />
+                <Text style={[styles.activeChipText, { color: getContrastTextColor(theme.colors.primary) }]}>{filterState.status}</Text>
+                <Ionicons name="close" size={14} color={getContrastTextColor(theme.colors.primary)} />
               </Pressable>
             )}
             {filterState.sort && (
               <Pressable style={[styles.activeChip, { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary }]} onPress={() => removeFilter('sort')}>
-                <Text style={styles.activeChipText}>{filterState.sort}</Text>
-                <Ionicons name="close" size={14} color="#FFF" />
+                <Text style={[styles.activeChipText, { color: getContrastTextColor(theme.colors.primary) }]}>{filterState.sort}</Text>
+                <Ionicons name="close" size={14} color={getContrastTextColor(theme.colors.primary)} />
               </Pressable>
             )}
           </ScrollView>
@@ -167,23 +186,22 @@ export default function ExploreScreen() {
 
       {/* Content List */}
       {isLoading ? (
-        <View style={styles.centerContainer}>
-          <ActivityIndicator size="large" color={theme.colors.primary} />
-          <Text style={styles.loadingText}>Ricerca in corso...</Text>
-        </View>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.listContent}>
+          <ExploreScreenSkeleton cardWidth={cardWidth} cardHeight={cardHeight} itemCount={6} />
+        </ScrollView>
       ) : isError ? (
         <View style={styles.centerContainer}>
-          <Ionicons name="alert-circle-outline" size={48} color={oledTheme.colors.error} />
-          <Text style={styles.errorText}>Errore durante la ricerca</Text>
-          <Pressable style={styles.retryBtn} onPress={() => refetch()}>
-            <Text style={styles.retryBtnText}>Riprova</Text>
+          <Ionicons name="alert-circle-outline" size={48} color={theme.colors.error || oledTheme.colors.error} />
+          <Text style={[styles.errorText, { color: theme.colors.error || oledTheme.colors.error }]}>ERRORE DURANTE LA RICERCA</Text>
+          <Pressable style={[styles.retryBtn, { backgroundColor: theme.colors.primary }]} onPress={() => refetch()}>
+            <Text style={[styles.retryBtnText, { color: getContrastTextColor(theme.colors.primary) }]}>RIPROVA</Text>
           </Pressable>
         </View>
       ) : items.length === 0 ? (
         <View style={styles.centerContainer}>
-          <Ionicons name="search-outline" size={48} color={oledTheme.colors.textMuted} />
-          <Text style={styles.emptyTitle}>Nessun risultato trovato</Text>
-          <Text style={styles.emptySubtitle}>Prova a cercare con altri termini o rimuovi i filtri</Text>
+          <Ionicons name="search-outline" size={48} color={theme.colors.textMuted} />
+          <Text style={[styles.emptyTitle, { color: theme.colors.text }]}>NESSUN RISULTATO TROVATO</Text>
+          <Text style={[styles.emptySubtitle, { color: theme.colors.textSecondary }]}>PROVA A CERCARE CON ALTRI TERMINI O RIMUOVI I FILTRI</Text>
         </View>
       ) : (
         <View style={styles.listWrapper}>
@@ -200,8 +218,16 @@ export default function ExploreScreen() {
               />
             )}
             contentContainerStyle={styles.listContent}
-            refreshing={isRefetching}
-            onRefresh={refetch}
+            refreshControl={
+              <RefreshControl
+                refreshing={isRefetching}
+                onRefresh={() => {
+                  refetch();
+                }}
+                tintColor={theme.colors.primary}
+                colors={[theme.colors.primary]}
+              />
+            }
           />
         </View>
       )}
@@ -247,6 +273,7 @@ const styles = StyleSheet.create({
     flex: 1,
     color: '#FFFFFF',
     fontSize: 14,
+    fontFamily: 'monospace',
     marginLeft: 8,
     height: '100%',
   },
@@ -286,6 +313,7 @@ const styles = StyleSheet.create({
     color: oledTheme.colors.primary,
     fontSize: 9,
     fontWeight: '900',
+    fontFamily: 'monospace',
   },
   chipsContainer: {
     paddingVertical: 8,
@@ -311,6 +339,8 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 12,
     fontWeight: '600',
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
   },
   centerContainer: {
     flex: 1,
@@ -322,11 +352,15 @@ const styles = StyleSheet.create({
   loadingText: {
     color: oledTheme.colors.textMuted,
     fontSize: 14,
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
   },
   errorText: {
     color: oledTheme.colors.error,
     fontSize: 15,
     fontWeight: '600',
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
   },
   retryBtn: {
     backgroundColor: oledTheme.colors.primary,
@@ -341,17 +375,23 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '700',
     fontSize: 13,
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
   },
   emptyTitle: {
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '700',
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
   },
   emptySubtitle: {
     color: oledTheme.colors.textMuted,
     fontSize: 13,
     textAlign: 'center',
     marginTop: 4,
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
   },
   listWrapper: {
     flex: 1,

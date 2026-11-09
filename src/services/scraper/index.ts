@@ -7,3 +7,5 @@ export * from "./parsers/detail.parser";
 export * from "./parsers/search.parser";
 export * from "./parsers/video.parser";
 export * from "./animeworld-scraper";
+export * from "./types";
+export * from "./registry";

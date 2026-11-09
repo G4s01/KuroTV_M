@@ -1,18 +1,18 @@
 ================================================================================
-KUROTV - CLOUDFLARE R2 SECURE BACKUP & RESTORE GUIDE
+KUROTV MOBILE - CLOUDFLARE R2 SECURE BACKUP & RESTORE GUIDE
 ================================================================================
-Data Documento: 30 Ottobre 2026
-Applicazione: KuroTV (Client Android TV Leanback)
+Data Documento: 8 Novembre 2026
+Applicazione: KuroTV Mobile (Client Smartphone Android)
 Storage: Cloudflare R2 (Bucket privato)
-Cartella Remota: secure-backups/
+Cartella Remota: mobile/secure-backups/
 
 Questo file di testo e' conservato IN CHIARO sullo storage R2 come prontuario
 e guida di riferimento rapido per il ripristino delle credenziali, della chiave
-di firma permanente, delle password e della configurazione dell'applicazione.
+di firma permanente, delle password e della configurazione dell'applicazione mobile.
 
 PRINCIPI DI SICUREZZA & ZERO-KNOWLEDGE:
 1. Questo file NON contiene password, chiavi private o token segreti.
-2. Tutti i file sensibili presenti in secure-backups/ (.enc) sono cifrati
+2. Tutti i file sensibili presenti in mobile/secure-backups/ (.enc) sono cifrati
    lato client con standard AES-256-CBC (OpenSSL PBKDF2, 100.000 iterazioni)
    protetti dalla tua Passphrase Master.
 3. Il Cloudflare Worker "kuro-tv" implementa una Positive Whitelist Regex
@@ -23,23 +23,22 @@ PRINCIPI DI SICUREZZA & ZERO-KNOWLEDGE:
    tramite credenziali autorizzate (Wrangler CLI, AWS CLI S3 API o Dashboard).
 
 ================================================================================
-1. MAPPA DEI FILE DI BACKUP DISPONIBILI SU R2 (secure-backups/)
+1. MAPPA DEI FILE DI BACKUP DISPONIBILI SU R2 (mobile/secure-backups/)
 ================================================================================
-- secure-backups/HOW-TO-RESTORE.txt
+- mobile/secure-backups/HOW-TO-RESTORE.txt
     Questa guida di ripristino in formato testo semplice.
 
-- secure-backups/kurotv-release.keystore.enc
-    Copia cifrata (AES-256) della chiave di firma permanente per l'APK Android TV.
-    Fingerprint SHA-256: 61:FD:6C:6B:9F:54:1C:BE:7E:B6:17:57:0E:3F:7C:87:AB:72:37:0E:80:AC:40:1A:5C:CD:BB:02:0A:9A:A4:5A
-    Alias chiave:        kurotv
+- mobile/secure-backups/kurotv-release.keystore.enc
+    Copia cifrata (AES-256) della chiave di firma permanente per l'APK Android Mobile.
+    Alias chiave:        kurotv-mobile.key
 
-- secure-backups/signing-credentials.txt.enc
+- mobile/secure-backups/signing-credentials.txt.enc
     Copia cifrata delle credenziali di firma (Store Password, Key Password, Alias).
 
-- secure-backups/.env.enc
+- mobile/secure-backups/.env.enc
     Copia cifrata dei file di ambiente (.env e .env.local).
 
-- secure-backups/kurotv-secrets-backup-latest.tar.gz.enc
+- mobile/secure-backups/kurotv-secrets-backup-latest.tar.gz.enc
     Archivio bundle completo cifrato contenente tutti i componenti sopra elencati.
     Ad ogni nuovo backup, questo archivio e i singoli file vengono sovrascritti
     in-place per azzerare lo spreco di storage e mantenere sempre e solo l'ultima versione.
@@ -53,19 +52,19 @@ oppure tramite la dashboard web di Cloudflare (sezione R2).
 Opzione A - Con Cloudflare Wrangler (consigliata nel workspace KuroTV):
 ----------------------------------------------------------------------
 # 1. Scaricare la guida in chiaro:
-npm --prefix workers/kuro-tv exec -- wrangler r2 object get "<BUCKET>/secure-backups/HOW-TO-RESTORE.txt" --file=HOW-TO-RESTORE.txt --remote
+npm --prefix workers/kuro-tv exec -- wrangler r2 object get "<BUCKET>/mobile/secure-backups/HOW-TO-RESTORE.txt" --file=HOW-TO-RESTORE.txt --remote
 
 # 2. Scaricare il bundle completo cifrato:
-npm --prefix workers/kuro-tv exec -- wrangler r2 object get "<BUCKET>/secure-backups/kurotv-secrets-backup-latest.tar.gz.enc" --file=kurotv-backup.tar.gz.enc --remote
+npm --prefix workers/kuro-tv exec -- wrangler r2 object get "<BUCKET>/mobile/secure-backups/kurotv-secrets-backup-latest.tar.gz.enc" --file=kurotv-backup.tar.gz.enc --remote
 
 # 3. Scaricare la sola chiave di firma cifrata:
-npm --prefix workers/kuro-tv exec -- wrangler r2 object get "<BUCKET>/secure-backups/kurotv-release.keystore.enc" --file=kurotv-release.keystore.enc --remote
+npm --prefix workers/kuro-tv exec -- wrangler r2 object get "<BUCKET>/mobile/secure-backups/kurotv-release.keystore.enc" --file=kurotv-release.keystore.enc --remote
 
 # 4. Scaricare le sole credenziali/password di firma cifrate:
-npm --prefix workers/kuro-tv exec -- wrangler r2 object get "<BUCKET>/secure-backups/signing-credentials.txt.enc" --file=signing-credentials.txt.enc --remote
+npm --prefix workers/kuro-tv exec -- wrangler r2 object get "<BUCKET>/mobile/secure-backups/signing-credentials.txt.enc" --file=signing-credentials.txt.enc --remote
 
 # 5. Scaricare il file di configurazione .env cifrato:
-npm --prefix workers/kuro-tv exec -- wrangler r2 object get "<BUCKET>/secure-backups/.env.enc" --file=env.enc --remote
+npm --prefix workers/kuro-tv exec -- wrangler r2 object get "<BUCKET>/mobile/secure-backups/.env.enc" --file=env.enc --remote
 
 Nota: Sostituire <BUCKET> con il nome del bucket (es. kuro-tv o kurotv-backups).
 
@@ -77,13 +76,13 @@ export AWS_SECRET_ACCESS_KEY="<R2_SECRET_ACCESS_KEY>"
 export R2_ENDPOINT="https://<ACCOUNT_ID>.r2.cloudflarestorage.com"
 
 # Scaricare il bundle:
-aws s3 cp "s3://<BUCKET>/secure-backups/kurotv-secrets-backup-latest.tar.gz.enc" ./kurotv-backup.tar.gz.enc --endpoint-url "$R2_ENDPOINT"
+aws s3 cp "s3://<BUCKET>/mobile/secure-backups/kurotv-secrets-backup-latest.tar.gz.enc" ./kurotv-backup.tar.gz.enc --endpoint-url "$R2_ENDPOINT"
 
 # Scaricare il singolo keystore:
-aws s3 cp "s3://<BUCKET>/secure-backups/kurotv-release.keystore.enc" ./kurotv-release.keystore.enc --endpoint-url "$R2_ENDPOINT"
+aws s3 cp "s3://<BUCKET>/mobile/secure-backups/kurotv-release.keystore.enc" ./kurotv-release.keystore.enc --endpoint-url "$R2_ENDPOINT"
 
 # Scaricare la password di firma:
-aws s3 cp "s3://<BUCKET>/secure-backups/signing-credentials.txt.enc" ./signing-credentials.txt.enc --endpoint-url "$R2_ENDPOINT"
+aws s3 cp "s3://<BUCKET>/mobile/secure-backups/signing-credentials.txt.enc" ./signing-credentials.txt.enc --endpoint-url "$R2_ENDPOINT"
 
 ================================================================================
 3. COMANDI DI DECRITTAZIONE E RIPRISTINO (AES-256-CBC)

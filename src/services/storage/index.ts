@@ -134,7 +134,7 @@ export type OrchidMode = 'dark' | 'light';
 export type RainbowMode = 'dark' | 'light';
 export type EndingThreshold = 90 | 60 | 30 | 0;
 export type PreferredQuality = 'auto' | '1080p' | '720p' | '480p' | '360p';
-export type HistoryRetentionDays = 30 | 60 | 90 | 180 | 0;
+export type HistoryRetentionDays = -1 | 0 | 30 | 60 | 90 | 180;
 export type SearchMode = 'auto' | 'manual';
 
 export interface AppSettings {
@@ -234,9 +234,38 @@ export interface SaveProgressPayload {
   duration: number;
   dataId?: string;
   serverId?: string;
+  nextEpisode?: {
+    id: string;
+    number: number;
+    dataId?: string;
+  };
+}
+
+export type SettingsListener = (settings: AppSettings) => void;
+const settingsListeners = new Set<SettingsListener>();
+
+function notifySettingsListeners(settings: AppSettings): void {
+  for (const listener of settingsListeners) {
+    try {
+      listener(settings);
+    } catch {
+      // Ignore listener errors safely
+    }
+  }
 }
 
 export const AppStorage = {
+  addSettingsListener: (listener: SettingsListener): (() => void) => {
+    settingsListeners.add(listener);
+    return () => {
+      settingsListeners.delete(listener);
+    };
+  },
+
+  isHistoryEnabled: (): boolean => {
+    return AppStorage.getHistoryRetentionDays() !== -1;
+  },
+
   getString: (key: string): string | undefined => {
     return storage.getString(key);
   },
@@ -327,6 +356,7 @@ export const AppStorage = {
     if (partial.aniSkipSettings) {
       AppStorage.saveAniSkipSettings(partial.aniSkipSettings);
     }
+    notifySettingsListeners(updated);
     return updated;
   },
 
@@ -458,10 +488,12 @@ export const AppStorage = {
     if (cleanTld) {
       scraperConfig.setTld(cleanTld);
       const settings = AppStorage.getSettings();
-      AppStorage.setObject(StorageKeys.APP_SETTINGS, {
+      const updated = {
         ...settings,
         tld: cleanTld,
-      });
+      };
+      delete updated.customDomain;
+      AppStorage.setObject(StorageKeys.APP_SETTINGS, updated);
     }
   },
 
@@ -477,15 +509,19 @@ export const AppStorage = {
     return AppStorage.getSettings().customDomain;
   },
 
-  setCustomDomain: (domain: string): void => {
-    const cleanDomain = domain.trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '').toLowerCase();
-    if (cleanDomain) {
-      scraperConfig.setBaseUrl(`https://${cleanDomain}`);
+  setCustomDomain: (domainOrUrl: string): void => {
+    const trimmed = domainOrUrl.trim().replace(/\/+$/, '');
+    if (trimmed) {
+      const fullUrl = trimmed.startsWith('http://') || trimmed.startsWith('https://')
+        ? trimmed
+        : `https://${trimmed}`;
+      scraperConfig.setBaseUrl(fullUrl);
+      const detectedTld = scraperConfig.getTld();
       const settings = AppStorage.getSettings();
       AppStorage.setObject(StorageKeys.APP_SETTINGS, {
         ...settings,
-        customDomain: cleanDomain,
-        tld: cleanDomain,
+        customDomain: fullUrl,
+        tld: detectedTld || 'so',
       });
     }
   },
@@ -494,10 +530,9 @@ export const AppStorage = {
     const settings = AppStorage.getSettings();
     const updated = { ...settings };
     delete updated.customDomain;
-    if (updated.tld === settings.customDomain) {
-      updated.tld = 'so';
-      scraperConfig.setTld('so');
-    }
+    const fallbackTld = updated.tld && updated.tld !== settings.customDomain ? updated.tld : 'so';
+    updated.tld = fallbackTld;
+    scraperConfig.setTld(fallbackTld);
     AppStorage.setObject(StorageKeys.APP_SETTINGS, updated);
   },
 
@@ -507,6 +542,14 @@ export const AppStorage = {
 
   setThemeFamily: (family: ThemeFamily): void => {
     AppStorage.saveSettings({ themeFamily: family });
+  },
+
+  getThemeMode: (): ThemeMode => {
+    return AppStorage.getSettings().themeMode || 'oled';
+  },
+
+  setThemeMode: (mode: ThemeMode): void => {
+    AppStorage.saveSettings({ themeMode: mode });
   },
 
   getPikachuMode: (): PikachuMode => {
@@ -672,47 +715,83 @@ export const AppStorage = {
     return removedCount;
   },
 
+  /**
+   * Prunes old watch progress entries to prevent unbounded MMKV growth.
+   * - Retains all items in active "Continue Watching"
+   * - Deletes completed episodes older than retentionDays (default 60 days)
+   * - If total progress keys still exceed maxItems, removes the oldest completed entries (LRU)
+   */
+  pruneOldProgress: (maxItems = 200, retentionDays = 60): number => {
+    const continueWatching = AppStorage.getContinueWatching();
+    const activeAnimeIds = new Set(continueWatching.map((c) => c.animeId));
+
+    const cutoffTime = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
+    const allKeys = storage.getAllKeys();
+    const progressKeys = allKeys.filter((k) => k.startsWith(StorageKeys.WATCH_PROGRESS_PREFIX));
+
+    let removedCount = 0;
+    const remainingEntries: { key: string; item: WatchProgressItem }[] = [];
+
+    for (const key of progressKeys) {
+      const item = AppStorage.getObject<WatchProgressItem>(key);
+      if (!item) {
+        storage.remove(key);
+        removedCount++;
+        continue;
+      }
+
+      const isCurrentContinue = activeAnimeIds.has(item.animeId);
+      // If completed and older than retention period, and not active in continue watching: remove
+      if (!isCurrentContinue && item.isCompleted && (item.updatedAt || 0) < cutoffTime) {
+        storage.remove(key);
+        removedCount++;
+        continue;
+      }
+
+      remainingEntries.push({ key, item });
+    }
+
+    // If still over maxItems, remove oldest completed entries first, then oldest non-active entries
+    if (remainingEntries.length > maxItems) {
+      const prunable = remainingEntries.filter((entry) => !activeAnimeIds.has(entry.item.animeId));
+      prunable.sort((a, b) => {
+        if (a.item.isCompleted && !b.item.isCompleted) return -1;
+        if (!a.item.isCompleted && b.item.isCompleted) return 1;
+        return (a.item.updatedAt || 0) - (b.item.updatedAt || 0);
+      });
+
+      const excess = remainingEntries.length - maxItems;
+      const toRemove = prunable.slice(0, excess);
+      for (const entry of toRemove) {
+        storage.remove(entry.key);
+        removedCount++;
+      }
+    }
+
+    return removedCount;
+  },
+
   getWatchHistory: (): WatchHistoryItem[] => {
+    const retentionDays = AppStorage.getHistoryRetentionDays();
+    if (retentionDays === -1) return [];
     const data = AppStorage.getObject<unknown>(StorageKeys.WATCH_HISTORY);
     const history = Array.isArray(data) ? (data as WatchHistoryItem[]) : [];
-    const retentionDays = AppStorage.getHistoryRetentionDays();
-    if (retentionDays <= 0) return history;
+    if (retentionDays === 0) return history;
     const cutoffTime = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
     return history.filter((item) => (item.updatedAt || 0) >= cutoffTime);
   },
 
   getContinueWatching: (): ContinueWatchingItem[] => {
-    const saved = AppStorage.getObject<unknown>(StorageKeys.CONTINUE_WATCHING);
     const retentionDays = AppStorage.getHistoryRetentionDays();
+    if (retentionDays === -1) return [];
+    const saved = AppStorage.getObject<unknown>(StorageKeys.CONTINUE_WATCHING);
     const cutoffTime = retentionDays > 0 ? Date.now() - retentionDays * 24 * 60 * 60 * 1000 : 0;
-    if (Array.isArray(saved) && saved.length > 0) {
+    if (Array.isArray(saved)) {
       return retentionDays > 0
         ? (saved as ContinueWatchingItem[]).filter((item) => (item.updatedAt || 0) >= cutoffTime)
         : (saved as ContinueWatchingItem[]);
     }
-    // Fallback: derive from watch history deduplicated by animeId
-    const history = AppStorage.getWatchHistory();
-    const seen = new Set<string>();
-    const derived: ContinueWatchingItem[] = [];
-    for (const h of history) {
-      if (!seen.has(h.animeId)) {
-        seen.add(h.animeId);
-        derived.push({
-          animeId: h.animeId,
-          title: h.title,
-          thumbnail: h.thumbnail,
-          episodeId: h.episodeId,
-          episodeNumber: h.episodeNumber,
-          position: h.position,
-          duration: h.duration,
-          percentage: h.progressPercent,
-          updatedAt: h.updatedAt,
-          dataId: h.dataId,
-          serverId: h.serverId,
-        });
-      }
-    }
-    return derived;
+    return [];
   },
 
   removeContinueWatching: (animeId: string): void => {
@@ -802,12 +881,22 @@ export const AppStorage = {
 
   saveWatchProgress: (payload: SaveProgressPayload): WatchProgressItem | null => {
     if (!payload?.animeId) return null;
+    const retentionDays = AppStorage.getHistoryRetentionDays();
+    if (retentionDays === -1) {
+      // History is completely disabled
+      return null;
+    }
 
     const currentTime = Math.max(0, payload.currentTime ?? payload.position ?? 0);
     const duration = Math.max(0, payload.duration || 0);
     const percentage = duration > 0 ? Math.min(100, Math.round((currentTime / duration) * 100)) : 0;
     const existing = AppStorage.getWatchProgress(payload.animeId, payload.episodeNumber);
-    const isCompleted = Boolean(existing?.isCompleted || percentage >= 90);
+    const endingThreshold = AppStorage.getEndingThreshold() || 90;
+    const isCompleted = Boolean(
+      existing?.isCompleted ||
+      percentage >= 90 ||
+      (duration > 0 && duration - currentTime <= endingThreshold && currentTime > 30)
+    );
     const animeTitle = payload.animeTitle || payload.title || existing?.animeTitle || 'Anime';
     const thumbnail = payload.thumbnail || existing?.thumbnail || '';
     const updatedAt = Date.now();
@@ -862,21 +951,44 @@ export const AppStorage = {
     const continueList = Array.isArray(rawContinue)
       ? rawContinue.filter((c) => c.animeId !== payload.animeId)
       : [];
-    const continueItem: ContinueWatchingItem = {
-      animeId: payload.animeId,
-      title: animeTitle,
-      thumbnail,
-      episodeId: payload.episodeId,
-      episodeNumber: payload.episodeNumber,
-      totalEpisodes: payload.totalEpisodes,
-      position: currentTime,
-      duration,
-      percentage,
-      updatedAt,
-      dataId,
-      serverId,
-    };
-    continueList.unshift(continueItem);
+
+    if (isCompleted) {
+      if (payload.nextEpisode && payload.nextEpisode.number) {
+        // Advance to next episode starting at 0%
+        const nextContinueItem: ContinueWatchingItem = {
+          animeId: payload.animeId,
+          title: animeTitle,
+          thumbnail,
+          episodeId: payload.nextEpisode.id,
+          episodeNumber: payload.nextEpisode.number,
+          totalEpisodes: payload.totalEpisodes,
+          position: 0,
+          duration: 0,
+          percentage: 0,
+          updatedAt,
+          dataId: payload.nextEpisode.dataId,
+          serverId,
+        };
+        continueList.unshift(nextContinueItem);
+      }
+      // If no next episode available (series completed), keep it removed from continue watching
+    } else {
+      const continueItem: ContinueWatchingItem = {
+        animeId: payload.animeId,
+        title: animeTitle,
+        thumbnail,
+        episodeId: payload.episodeId,
+        episodeNumber: payload.episodeNumber,
+        totalEpisodes: payload.totalEpisodes,
+        position: currentTime,
+        duration,
+        percentage,
+        updatedAt,
+        dataId,
+        serverId,
+      };
+      continueList.unshift(continueItem);
+    }
     AppStorage.setObject(StorageKeys.CONTINUE_WATCHING, continueList.slice(0, 50));
 
     return progressItem;
@@ -892,6 +1004,86 @@ export const AppStorage = {
         storage.remove(key);
       }
     }
+    notifySettingsListeners(AppStorage.getSettings());
+  },
+
+  removeWatchHistoryItem: (animeId: string, episodeId?: string, episodeNumber?: number): boolean => {
+    if (!animeId) return false;
+    let modified = false;
+
+    // 1. Remove from watch history
+    const rawHistory = AppStorage.getObject<WatchHistoryItem[]>(StorageKeys.WATCH_HISTORY);
+    if (Array.isArray(rawHistory)) {
+      const filtered = rawHistory.filter((item) => {
+        if (item.animeId !== animeId) return true;
+        if (episodeId && item.episodeId === episodeId) return false;
+        if (episodeNumber !== undefined && item.episodeNumber === episodeNumber) return false;
+        if (!episodeId && episodeNumber === undefined) return false;
+        return true;
+      });
+      if (filtered.length !== rawHistory.length) {
+        modified = true;
+        AppStorage.setObject(StorageKeys.WATCH_HISTORY, filtered);
+      }
+    }
+
+    // 2. Remove episode progress key(s)
+    if (episodeNumber !== undefined) {
+      const progressKey = `${StorageKeys.WATCH_PROGRESS_PREFIX}${animeId}.${episodeNumber}`;
+      if (storage.contains(progressKey)) {
+        storage.remove(progressKey);
+        modified = true;
+      }
+    } else {
+      const allKeys = storage.getAllKeys();
+      const prefix = `${StorageKeys.WATCH_PROGRESS_PREFIX}${animeId}.`;
+      for (const k of allKeys) {
+        if (k.startsWith(prefix)) {
+          storage.remove(k);
+          modified = true;
+        }
+      }
+    }
+
+    // 3. Update or remove from continue watching
+    const continueList = AppStorage.getContinueWatching();
+    const existingContinue = continueList.find((c) => c.animeId === animeId);
+    if (existingContinue) {
+      const isTargetEpisode =
+        (episodeId && existingContinue.episodeId === episodeId) ||
+        (episodeNumber !== undefined && existingContinue.episodeNumber === episodeNumber) ||
+        (!episodeId && episodeNumber === undefined);
+
+      if (isTargetEpisode) {
+        const remainingHistory = AppStorage.getWatchHistory().filter((h) => h.animeId === animeId);
+        if (remainingHistory.length > 0) {
+          const latest = remainingHistory[0];
+          const updatedContinue = continueList.map((c) => {
+            if (c.animeId !== animeId) return c;
+            return {
+              ...c,
+              episodeId: latest.episodeId,
+              episodeNumber: latest.episodeNumber,
+              position: latest.position,
+              duration: latest.duration,
+              percentage: latest.progressPercent,
+              updatedAt: latest.updatedAt,
+              dataId: latest.dataId,
+              serverId: latest.serverId,
+            };
+          });
+          AppStorage.setObject(StorageKeys.CONTINUE_WATCHING, updatedContinue);
+        } else {
+          AppStorage.removeContinueWatching(animeId);
+        }
+        modified = true;
+      }
+    }
+
+    if (modified) {
+      notifySettingsListeners(AppStorage.getSettings());
+    }
+    return modified;
   },
 
   // ----------------------------------------------------
@@ -955,3 +1147,15 @@ export const AppStorage = {
     }
   },
 };
+
+// Sincronizza scraperConfig all'avvio dell'applicazione con i valori persistiti
+try {
+  const initialSettings = AppStorage.getSettings();
+  if (initialSettings.customDomain) {
+    scraperConfig.setBaseUrl(initialSettings.customDomain);
+  } else if (initialSettings.tld) {
+    scraperConfig.setTld(initialSettings.tld);
+  }
+} catch {
+  // Ignora in ambienti headless o di test dove lo storage non è ancora configurato
+}

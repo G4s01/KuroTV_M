@@ -1,8 +1,9 @@
 import type { ScraperConfig } from '@/types';
 
 export const DEFAULT_TLD = 'so';
+export const CANDIDATE_TLDS = ['so', 'ac', 'tv'] as const;
 export const DEFAULT_USER_AGENT =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/119.0';
+  'Mozilla/5.0 (Linux; Android 14; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36';
 export const DEFAULT_TIMEOUT_MS = 15000;
 
 class ConfigManager {
@@ -10,6 +11,14 @@ class ConfigManager {
   private customBaseUrl: string | null = null;
   private userAgent = DEFAULT_USER_AGENT;
   private timeout = DEFAULT_TIMEOUT_MS;
+
+  public getCandidateTlds(): string[] {
+    return [...CANDIDATE_TLDS];
+  }
+
+  public getAlternativeTlds(currentTld = this.tld): string[] {
+    return CANDIDATE_TLDS.filter((t) => t !== currentTld);
+  }
 
   public getTld(): string {
     return this.tld;

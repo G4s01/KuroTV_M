@@ -56,34 +56,27 @@ const autoConfirm = args.includes('--yes') || args.includes('-y');
 const targetBucketsFromArgs = args.filter(a => !a.startsWith('-'));
 
 const privateBucket = process.env.R2_PRIVATE_BUCKET_NAME || 'kuro-tv';
-const legacyBucket = process.env.R2_BUCKET_NAME || 'kurotv-releases';
 
 const bucketsToClean = targetBucketsFromArgs.length > 0
   ? targetBucketsFromArgs
-  : Array.from(new Set([privateBucket, legacyBucket].filter(Boolean)));
+  : [privateBucket].filter(Boolean);
 
 const PROTECTED_KEYS = new Set([
   'manifest.json',
   'latest.apk',
-  'latest-arm64-v8a.apk',
-  'latest-armeabi-v7a.apk',
-  'latest-x86_64.apk',
   'mobile/manifest.json',
   'mobile/latest.apk',
-  'mobile/latest-arm64-v8a.apk',
-  'mobile/latest-armeabi-v7a.apk',
-  'mobile/latest-x86_64.apk',
 ]);
 
 function isDeletableOldVersion(key) {
   if (PROTECTED_KEYS.has(key)) return false;
   if (key.startsWith('secure-backups/') || key.startsWith('mobile/secure-backups/')) return false;
 
-  // Stale versioned APK patterns (root or mobile/ prefix)
+  // Stale versioned or duplicate architecture APK patterns
   if (/^mobile\/kurotv-mobile-v.*\.apk$/i.test(key)) return true;
   if (/^kurotv-v.*\.apk$/i.test(key)) return true;
   if (/^app-.*\.apk$/i.test(key)) return true;
-  if (key === 'latest-universal.apk') return true;
+  if (/latest-.*\.apk$/i.test(key)) return true;
 
   return false;
 }

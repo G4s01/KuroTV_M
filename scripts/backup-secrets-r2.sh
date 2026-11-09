@@ -76,7 +76,7 @@ fi
 # Configuration & Defaults
 # Dedicated backup bucket isolated from the Worker releases bucket
 R2_BACKUP_BUCKET="${R2_BACKUP_BUCKET_NAME:-${R2_PRIVATE_BUCKET_NAME:-kuro-tv}}"
-R2_BACKUP_PREFIX="secure-backups"
+R2_BACKUP_PREFIX="mobile/secure-backups"
 BACKUP_PASSPHRASE="${BACKUP_ENCRYPTION_PASSPHRASE:-}"
 NON_INTERACTIVE=0
 SKIP_ENCRYPTION=0

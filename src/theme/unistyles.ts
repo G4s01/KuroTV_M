@@ -1,5 +1,11 @@
 import React from 'react';
-import { StyleSheet as RNStyleSheet } from 'react-native';
+import { StyleSheet as RNStyleSheet, Platform } from 'react-native';
+
+export const FONT_MONO = Platform.select({
+  ios: 'Menlo',
+  android: 'monospace',
+  default: 'monospace',
+});
 
 export const oledTheme = {
   name: 'oled' as const,
@@ -36,30 +42,41 @@ export const oledTheme = {
     minTouchTarget: 44, // Mobile minimum touch target >= 44dp
   },
   typography: {
+    fontFamily: FONT_MONO,
     hero: {
+      fontFamily: FONT_MONO,
       fontSize: 28,
       fontWeight: 'bold' as const,
       lineHeight: 34,
+      textTransform: 'uppercase' as const,
     },
     title: {
+      fontFamily: FONT_MONO,
       fontSize: 22,
       fontWeight: 'bold' as const,
       lineHeight: 28,
+      textTransform: 'uppercase' as const,
     },
     subtitle: {
+      fontFamily: FONT_MONO,
       fontSize: 18,
       fontWeight: '600' as const,
       lineHeight: 24,
+      textTransform: 'uppercase' as const,
     },
     body: {
+      fontFamily: FONT_MONO,
       fontSize: 15,
       fontWeight: 'normal' as const,
       lineHeight: 22,
+      textTransform: 'uppercase' as const,
     },
     caption: {
+      fontFamily: FONT_MONO,
       fontSize: 13,
       fontWeight: '500' as const,
       lineHeight: 18,
+      textTransform: 'uppercase' as const,
     },
   },
   radius: {
@@ -120,6 +137,8 @@ export interface AppTheme {
   typography: typeof oledTheme.typography;
   radius: typeof oledTheme.radius;
 }
+
+export type Theme = AppTheme;
 
 export interface MaterialYouPalette {
   id: string;
@@ -571,16 +590,21 @@ export function applyRainbowTheme(themeName: 'oled' | 'light'): void {
   }
 }
 
-export function applyThemeFamily(family: string): void {
+export function applyThemeFamily(family: string, mode: 'dark' | 'light' = 'dark'): void {
+  const isLight = mode === 'light';
+  const targetThemeName: ThemeName = isLight ? 'light' : 'oled';
+
   if (family === 'pikachu') {
-    applyPikachuTheme('oled');
+    applyPikachuTheme(isLight ? 'light' : 'oled');
   } else if (family === 'orchid') {
-    applyOrchidTheme('oled');
+    applyOrchidTheme(isLight ? 'light' : 'oled');
   } else if (family === 'rainbow') {
-    applyRainbowTheme('oled');
+    applyRainbowTheme(isLight ? 'light' : 'oled');
   } else if (family === 'oled' || family === 'default') {
-    resetThemeToDefaults('oled');
+    resetThemeToDefaults(isLight ? 'light' : 'oled');
   }
+
+  UnistylesRuntime.setTheme(targetThemeName);
 }
 
 export function initThemeFromStorage(): void {
@@ -588,10 +612,19 @@ export function initThemeFromStorage(): void {
     // Dynamic require prevents circular dependency issues at early bundle initialization
     const { AppStorage } = require('@/services/storage');
     if (AppStorage && typeof AppStorage.getThemeFamily === 'function') {
-      const family = AppStorage.getThemeFamily();
-      if (family && family !== 'default' && family !== 'oled') {
-        applyThemeFamily(family);
+      const family = AppStorage.getThemeFamily() || 'default';
+      const cleanFamily = family === 'default' ? 'oled' : family;
+      let mode: 'dark' | 'light' = 'dark';
+      if (cleanFamily === 'pikachu') {
+        mode = AppStorage.getPikachuMode() || 'dark';
+      } else if (cleanFamily === 'orchid') {
+        mode = AppStorage.getOrchidMode() || 'dark';
+      } else if (cleanFamily === 'rainbow') {
+        mode = AppStorage.getRainbowMode() || 'dark';
+      } else {
+        mode = AppStorage.getThemeMode() === 'light' ? 'light' : 'dark';
       }
+      applyThemeFamily(cleanFamily, mode);
     }
   } catch {
     // Safely ignore if storage is not yet initialized or mocked
@@ -668,6 +701,26 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   );
 
   return React.createElement(ThemeContext.Provider, { value }, children);
+}
+
+export function getContrastTextColor(hexColor?: string): string {
+  if (!hexColor || typeof hexColor !== 'string') return '#FFFFFF';
+  const clean = hexColor.replace('#', '').trim();
+  if (clean.length === 6) {
+    const r = parseInt(clean.substring(0, 2), 16);
+    const g = parseInt(clean.substring(2, 4), 16);
+    const b = parseInt(clean.substring(4, 6), 16);
+    const yiq = (r * 299 + g * 587 + b * 114) / 1000;
+    return yiq >= 150 ? '#000000' : '#FFFFFF';
+  }
+  if (clean.length === 3) {
+    const r = parseInt(clean[0] + clean[0], 16);
+    const g = parseInt(clean[1] + clean[1], 16);
+    const b = parseInt(clean[2] + clean[2], 16);
+    const yiq = (r * 299 + g * 587 + b * 114) / 1000;
+    return yiq >= 150 ? '#000000' : '#FFFFFF';
+  }
+  return '#FFFFFF';
 }
 
 export type UseThemeResult = AppTheme & { theme: AppTheme };
@@ -794,6 +847,8 @@ export default {
   applyThemeColors,
   resetThemeToDefaults,
   applyCustomColors,
+  getContrastTextColor,
+  FONT_MONO,
   applyPikachuTheme,
   applyOrchidTheme,
   applyRainbowTheme,

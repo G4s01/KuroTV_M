@@ -40,6 +40,10 @@ export const StatusBar = {
   setTranslucent: () => {},
   currentHeight: 24,
 };
+export const AppState = {
+  currentState: 'active',
+  addEventListener: () => ({ remove: () => {} }),
+};
 export const processColor = (color) => color;
 export const unstable_createElement = () => null;
 export const useColorScheme = () => 'dark';
@@ -53,6 +57,12 @@ export const PixelRatio = {
   roundToNearestPixel: (n) => n,
 };
 export const I18nManager = { isRTL: false };
+export const PanResponder = {
+  create: (config) => ({
+    panHandlers: {},
+    config,
+  }),
+};
 export const FlatList = ({ children }) => children;
 export const SectionList = ({ children }) => children;
 
@@ -72,21 +82,31 @@ export const Animated = {
     start: (cb) => {
       if (cb) cb({ finished: true });
     },
+    stop: () => {},
   }),
   spring: () => ({
     start: (cb) => {
       if (cb) cb({ finished: true });
     },
+    stop: () => {},
   }),
   sequence: () => ({
     start: (cb) => {
       if (cb) cb({ finished: true });
     },
+    stop: () => {},
   }),
   parallel: () => ({
     start: (cb) => {
       if (cb) cb({ finished: true });
     },
+    stop: () => {},
+  }),
+  loop: (anim) => ({
+    start: (cb) => {
+      if (cb) cb({ finished: true });
+    },
+    stop: () => {},
   }),
 };
 
@@ -111,6 +131,7 @@ export default {
   Share,
   Modal,
   StatusBar,
+  AppState,
   processColor,
   unstable_createElement,
   useColorScheme,
@@ -119,5 +140,6 @@ export default {
   I18nManager,
   FlatList,
   SectionList,
+  PanResponder,
   Animated,
 };

@@ -1,0 +1,433 @@
+import React from 'react';
+import { StyleSheet, Text, View, Pressable, useWindowDimensions } from 'react-native';
+import { BottomSheet } from '@expo/ui';
+import { FlashList } from '@shopify/flash-list';
+import { Image } from 'expo-image';
+import * as Haptics from 'expo-haptics';
+import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import type { Episode } from '@/types';
+import { AppStorage } from '@/services/storage';
+import { useTheme, getContrastTextColor, oledTheme } from '@/theme';
+
+export interface PlayerEpisodesCarouselSheetProps {
+  isVisible: boolean;
+  onClose: () => void;
+  episodes: Episode[];
+  currentEpisodeNumber: number;
+  animeId?: string;
+  animeImage?: string;
+  onSelectEpisode: (episode: Episode) => void;
+}
+
+const CARD_WIDTH = 176;
+const CARD_GAP = 12;
+
+export const PlayerEpisodesCarouselSheet: React.FC<PlayerEpisodesCarouselSheetProps> = React.memo(({
+  isVisible,
+  onClose,
+  episodes,
+  currentEpisodeNumber,
+  animeId,
+  animeImage,
+  onSelectEpisode,
+}) => {
+  const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const isLandscape = windowWidth > windowHeight;
+
+  // Symmetric horizontal padding to ensure perfect centering in both portrait and landscape
+  const safeHorizontalInset = Math.max(insets.left, insets.right);
+  const horizontalPadding = Math.max(16, safeHorizontalInset);
+
+  const flatListRef = React.useRef<any>(null);
+  const isMountedRef = React.useRef(true);
+  const isSelectingRef = React.useRef(false);
+
+  React.useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  // Reset selection lock when visibility changes
+  React.useEffect(() => {
+    if (isVisible) {
+      isSelectingRef.current = false;
+    }
+  }, [isVisible]);
+
+  const initialIndex = React.useMemo(() => {
+    if (!episodes || episodes.length === 0) return 0;
+    const idx = episodes.findIndex((e) => e?.number === currentEpisodeNumber);
+    return idx >= 0 ? Math.max(0, idx - 1) : 0;
+  }, [episodes, currentEpisodeNumber]);
+
+  // Safe programmatic scroll to the active episode with promise catch
+  const handleScrollToActive = React.useCallback(() => {
+    if (!flatListRef.current || !episodes || episodes.length === 0) return;
+    try {
+      const targetIdx = episodes.findIndex((e) => e?.number === currentEpisodeNumber);
+      if (targetIdx >= 0 && targetIdx < episodes.length) {
+        flatListRef.current?.scrollToIndex?.({
+          index: Math.max(0, targetIdx - 1),
+          animated: true,
+        })?.catch?.(() => {});
+      }
+    } catch {
+      // Ignore layout not ready errors gracefully
+    }
+  }, [episodes, currentEpisodeNumber]);
+
+  React.useEffect(() => {
+    if (isVisible && episodes.length > 0) {
+      const timer = setTimeout(() => {
+        if (isMountedRef.current) {
+          handleScrollToActive();
+        }
+      }, 200);
+      return () => clearTimeout(timer);
+    }
+  }, [isVisible, episodes.length, handleScrollToActive]);
+
+  const renderEpisodeCard = React.useCallback(
+    ({ item }: { item: Episode }) => {
+      if (!item) return null;
+
+      const isCurrent = item.number === currentEpisodeNumber;
+      const progress = animeId ? AppStorage.getWatchProgress(animeId, item.number) : null;
+      const progressPercent =
+        progress && progress.duration > 0
+          ? Math.min(100, Math.round((progress.currentTime / progress.duration) * 100))
+          : 0;
+
+      const coverUri = item.thumbnail || animeImage;
+
+      return (
+        <Pressable
+          style={[
+            styles.card,
+            {
+              backgroundColor: theme.colors.surface,
+              borderColor: isCurrent ? theme.colors.primary : theme.colors.border,
+            },
+            isCurrent && styles.cardActive,
+          ]}
+          onPress={() => {
+            if (isSelectingRef.current) return;
+            Haptics.selectionAsync().catch(() => {});
+            onClose();
+            if (!isCurrent) {
+              isSelectingRef.current = true;
+              setTimeout(() => {
+                if (isMountedRef.current) {
+                  onSelectEpisode(item);
+                }
+              }, 80);
+            }
+          }}
+          accessibilityRole="button"
+          accessibilityLabel={`EPISODIO ${item.number}${isCurrent ? ' IN RIPRODUZIONE' : ''}`}
+        >
+          <View style={styles.imageContainer}>
+            {coverUri ? (
+              <Image
+                source={{ uri: coverUri }}
+                style={styles.cardImage}
+                contentFit="cover"
+                transition={200}
+              />
+            ) : (
+              <View style={[styles.placeholderThumb, { backgroundColor: theme.colors.card }]}>
+                <Ionicons name="film-outline" size={28} color={theme.colors.textMuted} />
+                <Text style={[styles.placeholderText, { color: theme.colors.textMuted }]}>
+                  EP. {item.number}
+                </Text>
+              </View>
+            )}
+
+            {isCurrent ? (
+              <View
+                style={[
+                  styles.currentBadge,
+                  { backgroundColor: theme.colors.primary },
+                ]}
+              >
+                <Ionicons
+                  name="play"
+                  size={12}
+                  color={getContrastTextColor(theme.colors.primary)}
+                />
+                <Text
+                  style={[
+                    styles.currentBadgeText,
+                    { color: getContrastTextColor(theme.colors.primary) },
+                  ]}
+                >
+                  ATTIVO
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.epNumberBadge}>
+                <Text style={styles.epNumberBadgeText}>EP. {item.number}</Text>
+              </View>
+            )}
+
+            {progressPercent > 0 && (
+              <View style={styles.progressTrack}>
+                <View
+                  style={[
+                    styles.progressBar,
+                    {
+                      width: `${progressPercent}%`,
+                      backgroundColor: theme.colors.primary,
+                    },
+                  ]}
+                />
+              </View>
+            )}
+          </View>
+
+          <View style={styles.cardMeta}>
+            <Text
+              style={[
+                styles.cardTitle,
+                { color: theme.colors.text },
+                isCurrent && { color: theme.colors.primary, fontWeight: '800' },
+              ]}
+              numberOfLines={1}
+            >
+              {item.title ? item.title.toUpperCase() : `EPISODIO ${item.number}`}
+            </Text>
+            <Text
+              style={[styles.cardDesc, { color: theme.colors.textSecondary }]}
+              numberOfLines={2}
+            >
+              {item.description
+                ? item.description.toUpperCase()
+                : 'TOCCA PER RIPRODURRE LA PUNTATA'}
+            </Text>
+          </View>
+        </Pressable>
+      );
+    },
+    [currentEpisodeNumber, animeId, animeImage, theme, onSelectEpisode, onClose]
+  );
+
+  const keyExtractor = React.useCallback(
+    (item: Episode, index: number) =>
+      item?.id ? `${item.id}-${item.number ?? index}` : `ep-${item?.number ?? index}-${index}`,
+    []
+  );
+
+  const ItemSeparator = React.useCallback(
+    () => <View style={styles.itemSeparator} />,
+    []
+  );
+
+  const ListHeader = React.useCallback(
+    () => <View style={{ width: horizontalPadding }} />,
+    [horizontalPadding]
+  );
+
+  const ListFooter = React.useCallback(
+    () => <View style={{ width: horizontalPadding }} />,
+    [horizontalPadding]
+  );
+
+  return (
+    <BottomSheet
+      isPresented={isVisible}
+      onDismiss={onClose}
+      showDragIndicator={true}
+      containerColor={theme.colors.card}
+      contentPadding={0}
+    >
+      <View
+        style={[
+          styles.container,
+          {
+            backgroundColor: theme.colors.card,
+            paddingBottom: Math.max(24, insets.bottom + 12),
+          },
+        ]}
+      >
+        <View
+          style={[
+            styles.headerRow,
+            {
+              paddingHorizontal: horizontalPadding,
+            },
+          ]}
+        >
+          <View style={styles.headerTitleGroup}>
+            <Ionicons name="list-outline" size={18} color={theme.colors.primary} />
+            <Text style={[styles.sheetTitle, { color: theme.colors.text }]}>
+              CAROSELLO EPISODI
+            </Text>
+          </View>
+          <Text style={[styles.sheetSubtitle, { color: theme.colors.textSecondary }]}>
+            {episodes.length} EPISODI
+          </Text>
+        </View>
+
+        <FlashList
+          ref={flatListRef}
+          data={episodes}
+          keyExtractor={keyExtractor}
+          renderItem={renderEpisodeCard}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          maintainVisibleContentPosition={{ disabled: true }}
+          initialScrollIndex={initialIndex}
+          style={styles.flashList}
+          contentContainerStyle={styles.listContent}
+          overrideItemLayout={(layout) => {
+            layout.span = 1;
+          }}
+          ItemSeparatorComponent={ItemSeparator}
+          ListHeaderComponent={ListHeader}
+          ListFooterComponent={ListFooter}
+          nestedScrollEnabled={true}
+          keyboardShouldPersistTaps="handled"
+          extraData={currentEpisodeNumber}
+          onLoad={handleScrollToActive}
+        />
+      </View>
+    </BottomSheet>
+  );
+});
+
+const styles = StyleSheet.create({
+  container: {
+    paddingTop: 12,
+    width: '100%',
+    maxWidth: 760,
+    alignSelf: 'center',
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+  },
+  headerTitleGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  sheetTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    fontFamily: oledTheme.typography.title.fontFamily,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  sheetSubtitle: {
+    fontSize: 11,
+    fontFamily: oledTheme.typography.caption.fontFamily,
+    textTransform: 'uppercase',
+    fontWeight: '700',
+  },
+  itemSeparator: {
+    width: CARD_GAP,
+  },
+  flashList: {
+    height: 184,
+  },
+  listContent: {
+    minHeight: 184,
+  },
+  card: {
+    width: CARD_WIDTH,
+    borderRadius: 12,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  cardActive: {
+    borderWidth: 2,
+  },
+  imageContainer: {
+    width: '100%',
+    height: 98,
+    position: 'relative',
+    backgroundColor: '#0A0A0A',
+  },
+  cardImage: {
+    width: '100%',
+    height: '100%',
+  },
+  placeholderThumb: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  placeholderText: {
+    fontSize: 10,
+    fontWeight: '700',
+    fontFamily: oledTheme.typography.caption.fontFamily,
+  },
+  currentBadge: {
+    position: 'absolute',
+    top: 6,
+    left: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  currentBadgeText: {
+    fontSize: 9,
+    fontWeight: '900',
+    fontFamily: oledTheme.typography.caption.fontFamily,
+    textTransform: 'uppercase',
+  },
+  epNumberBadge: {
+    position: 'absolute',
+    top: 6,
+    left: 6,
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+  },
+  epNumberBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 9,
+    fontWeight: '700',
+    fontFamily: oledTheme.typography.caption.fontFamily,
+  },
+  progressTrack: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 3,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  progressBar: {
+    height: '100%',
+  },
+  cardMeta: {
+    padding: 10,
+    gap: 4,
+  },
+  cardTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    fontFamily: oledTheme.typography.title.fontFamily,
+  },
+  cardDesc: {
+    fontSize: 10,
+    lineHeight: 14,
+    fontFamily: oledTheme.typography.caption.fontFamily,
+  },
+});

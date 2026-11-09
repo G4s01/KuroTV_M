@@ -4,7 +4,8 @@ import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import type { AnimeItem } from '@/types';
-import { oledTheme, useTheme } from '@/theme';
+import { oledTheme, useTheme, getContrastTextColor } from '@/theme';
+import { Skeleton } from './skeleton/Skeleton';
 
 interface AnimeCardProps {
   anime: AnimeItem;
@@ -14,7 +15,7 @@ interface AnimeCardProps {
   showEpisodeBadge?: boolean;
 }
 
-export const AnimeCard: React.FC<AnimeCardProps> = ({
+export const AnimeCard: React.FC<AnimeCardProps> = React.memo(({
   anime,
   onPress,
   width = 130,
@@ -22,13 +23,15 @@ export const AnimeCard: React.FC<AnimeCardProps> = ({
   showEpisodeBadge = true,
 }) => {
   const { theme } = useTheme();
+  const [isImageLoaded, setIsImageLoaded] = React.useState(false);
+
   const handlePress = () => {
     Haptics.selectionAsync().catch(() => {});
     onPress();
   };
 
   const imageUrl = anime.image || anime.thumbnail;
-  const episodeText = anime.episode ? `Ep. ${anime.episode}` : anime.subOrDub || null;
+  const episodeText = anime.episode ? `EP. ${anime.episode}` : anime.subOrDub || null;
 
   return (
     <Pressable
@@ -42,23 +45,34 @@ export const AnimeCard: React.FC<AnimeCardProps> = ({
       accessibilityRole="button"
       accessibilityLabel={anime.title}
     >
-      <View style={[styles.posterWrapper, { height }]}>
+      <View style={[styles.posterWrapper, { height, backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+        {!isImageLoaded && Boolean(imageUrl) && (
+          <Skeleton width="100%" height={height} style={StyleSheet.absoluteFill} />
+        )}
         {imageUrl ? (
           <Image
             source={{ uri: imageUrl }}
             style={styles.poster}
             contentFit="cover"
             transition={250}
+            onLoad={() => setIsImageLoaded(true)}
+            onError={() => setIsImageLoaded(true)}
           />
         ) : (
-          <View style={[styles.poster, styles.fallbackPoster]}>
-            <Ionicons name="film-outline" size={32} color={oledTheme.colors.textMuted} />
+          <View style={[styles.poster, styles.fallbackPoster, { backgroundColor: theme.colors.card }]}>
+            <Ionicons name="film-outline" size={32} color={theme.colors.textMuted} />
           </View>
         )}
 
         {showEpisodeBadge && episodeText && (
           <View style={[styles.badge, { backgroundColor: theme.colors.primary }]}>
-            <Text style={styles.badgeText} numberOfLines={1}>
+            <Text
+              style={[
+                styles.badgeText,
+                { color: getContrastTextColor(theme.colors.primary) },
+              ]}
+              numberOfLines={1}
+            >
               {episodeText}
             </Text>
           </View>
@@ -72,12 +86,12 @@ export const AnimeCard: React.FC<AnimeCardProps> = ({
         ) : null}
       </View>
 
-      <Text style={styles.title} numberOfLines={2}>
+      <Text style={[styles.title, { color: theme.colors.text }]} numberOfLines={2}>
         {anime.title}
       </Text>
     </Pressable>
   );
-};
+});
 
 const styles = StyleSheet.create({
   container: {
@@ -120,6 +134,7 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 10,
     fontWeight: '800',
+    fontFamily: 'monospace',
     textTransform: 'uppercase',
   },
   ratingBadge: {
@@ -138,12 +153,16 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 10,
     fontWeight: '700',
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
   },
   title: {
     color: oledTheme.colors.text,
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
     marginTop: 6,
-    lineHeight: 18,
+    lineHeight: 16,
   },
 });

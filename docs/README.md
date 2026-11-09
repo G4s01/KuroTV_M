@@ -8,11 +8,12 @@ Benvenuto nella documentazione tecnica ufficiale di **Kuro Mobile**, l'applicazi
 
 | Documento | Descrizione |
 |---|---|
-| [**Architettura del Progetto**](./ARCHITECTURE.md) | Struttura del codebase, Expo Router, data fetching con TanStack Query, MMKV storage e scraper compatibile con Hermes. |
-| [**Video Player Mobile**](./VIDEO_PLAYER.md) | Gestione gesture touch (doppio tap seek, swipe luminosità/volume), OSD immersivo, PiP, landscape e integrazione AniSkip. |
-| [**Temi & Design System**](./THEMES_AND_STYLING.md) | Filosofia OLED `#000000`, palette colori, icone SVG, regole di touch target $\ge 44$dp e reattività dinamica con `useTheme()`. |
-| [**Pipeline di Release & OTA**](./OTA_AND_RELEASES.md) | Architettura Cloudflare Worker, storage R2, manifest `/mobile/manifest.json`, updater automatico e backup cifrati. |
-| [**Regole & Standard (AGENTS.md)**](../AGENTS.md) | Standard di progetto tassativi, divieti TV/D-Pad, convenzioni e checklist di verifica pre-commit. |
+| [**Architettura del Progetto**](./ARCHITECTURE.md) | Struttura modulare del codebase, Expo Router v58, data fetching con TanStack Query v5, MMKV storage sincrono e scraper Hermes-safe. |
+| [**Video Player Mobile**](./VIDEO_PLAYER.md) | Gesture touch avanzate (doppio tap con accumulo sequenziale, swipe volume/luminosità), OSD immersivo, PiP senza zombie playback, anteprima live dei frame video reali a 60 FPS, carosello puntate FlashList e AniSkip con bordo a consumo temporale. |
+| [**Temi & Design System**](./THEMES_AND_STYLING.md) | Filosofia OLED `#000000`, palette temi (OLED, Pikachu, Orchidea, Rainbow), icone SVG pure, contrasto YIQ, schermata impostazioni minimale con changelog scrollabile e regole touch target $\ge 44$dp. |
+| [**Pipeline di Release & OTA**](./OTA_AND_RELEASES.md) | Architettura Cloudflare Worker, storage R2, manifest `/mobile/manifest.json`, updater automatico in-app e backup cifrati AES-256. |
+| [**Ottimizzazioni & Refactoring**](./REFACTORING_AND_OPTIMIZATIONS.md) | Roadmap modulare completata e tracciata (isolamento OSD, batching adattivo episodi, prefetching immagini e pulizia storage). |
+| [**Regole & Standard (AGENTS.md)**](../AGENTS.md) | Standard architetturali tassativi, divieti TV/D-Pad, convenzioni touch native e checklist di verifica pre-commit. |
 
 ---
 
@@ -29,7 +30,7 @@ Benvenuto nella documentazione tecnica ufficiale di **Kuro Mobile**, l'applicazi
 # Avvio ambiente di sviluppo con Metro bundler
 npm run start
 
-# Esecuzione completa dei test di verifica (6 stadi)
+# Esecuzione completa dei test di verifica (7 stadi)
 npm test
 
 # Controllo tipi TypeScript

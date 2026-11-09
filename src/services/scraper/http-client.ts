@@ -92,7 +92,7 @@ export class HttpClient {
       mergedHeaders["Cookie"] = cookieString;
     }
 
-    let response: AxiosResponse<T>;
+    let response: AxiosResponse<T> = undefined as unknown as AxiosResponse<T>;
     try {
       response = await this.client.request<T>({
         ...config,
@@ -101,7 +101,11 @@ export class HttpClient {
       });
     } catch (err: unknown) {
       // If axios threw on 3xx redirect status code when validateStatus isn't applied
-      const axiosErr = err as { response?: AxiosResponse<T> };
+      const axiosErr = err as {
+        response?: AxiosResponse<T>;
+        code?: string;
+        message?: string;
+      };
       if (
         axiosErr.response &&
         axiosErr.response.status >= 300 &&
@@ -109,7 +113,65 @@ export class HttpClient {
       ) {
         response = axiosErr.response;
       } else {
-        throw err;
+        // Step 6: Adaptive failover for AnimeWorld mirror TLDs (.so, .ac, .tv) on 502/503/timeout
+        const isServerDown =
+          axiosErr.response &&
+          (axiosErr.response.status === 502 ||
+            axiosErr.response.status === 503 ||
+            axiosErr.response.status === 504);
+        const isTimeoutOrNetwork =
+          axiosErr.code === "ECONNABORTED" ||
+          axiosErr.code === "ETIMEDOUT" ||
+          axiosErr.code === "ERR_NETWORK" ||
+          (axiosErr.message && axiosErr.message.includes("timeout"));
+
+        const animeworldMatch = currentUrl.match(
+          /https?:\/\/(?:www\.)?animeworld\.([a-z]+)(\/.*)?$/i,
+        );
+        if (
+          (isServerDown || isTimeoutOrNetwork) &&
+          animeworldMatch &&
+          redirectCount === 0
+        ) {
+          const currentTld = animeworldMatch[1].toLowerCase();
+          const alternativeTlds = scraperConfig.getAlternativeTlds(currentTld);
+
+          let fallbackSuccess = false;
+          for (const altTld of alternativeTlds) {
+            const fallbackUrl = currentUrl.replace(
+              new RegExp(`(animeworld\\.)${currentTld}`, "i"),
+              `$1${altTld}`,
+            );
+            try {
+              await new Promise((r) => setTimeout(r, 250));
+              const fallbackResponse = await this.client.request<T>({
+                ...config,
+                url: fallbackUrl,
+                headers: {
+                  ...mergedHeaders,
+                },
+              });
+              if (
+                fallbackResponse.status >= 200 &&
+                fallbackResponse.status < 400
+              ) {
+                scraperConfig.setTld(altTld);
+                response = fallbackResponse;
+                currentUrl = fallbackUrl;
+                fallbackSuccess = true;
+                break;
+              }
+            } catch {
+              // Try next candidate mirror
+            }
+          }
+
+          if (!fallbackSuccess) {
+            throw err;
+          }
+        } else {
+          throw err;
+        }
       }
     }
 

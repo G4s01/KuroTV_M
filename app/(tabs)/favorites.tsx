@@ -7,13 +7,13 @@ import {
   useWindowDimensions,
   RefreshControl,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FlashList } from '@shopify/flash-list';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { AppStorage } from '@/services/storage';
-import { oledTheme, useTheme } from '@/theme';
+import { oledTheme, useTheme, getContrastTextColor } from '@/theme';
 import { AnimeCard } from '@/components/AnimeCard';
 import type { AnimeItem } from '@/types';
 
@@ -34,9 +34,11 @@ export default function FavoritesScreen() {
     setFavorites(items);
   }, []);
 
-  React.useEffect(() => {
-    loadFavorites();
-  }, [loadFavorites]);
+  useFocusEffect(
+    React.useCallback(() => {
+      loadFavorites();
+    }, [loadFavorites])
+  );
 
   const onRefresh = React.useCallback(() => {
     setIsRefreshing(true);
@@ -54,14 +56,14 @@ export default function FavoritesScreen() {
   };
 
   return (
-    <View style={[styles.root, { paddingTop: insets.top }]}>
+    <View style={[styles.root, { paddingTop: insets.top, backgroundColor: theme.colors.background }]}>
       {/* App Bar */}
-      <View style={styles.appBar}>
+      <View style={[styles.appBar, { borderBottomColor: theme.colors.border }]}>
         <View style={styles.titleRow}>
-          <Text style={styles.title}>I Miei Preferiti</Text>
+          <Text style={[styles.title, { color: theme.colors.text }]}>I MIEI PREFERITI</Text>
           {favorites.length > 0 && (
-            <View style={styles.countBadge}>
-              <Text style={styles.countBadgeText}>{favorites.length}</Text>
+            <View style={[styles.countBadge, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+              <Text style={[styles.countBadgeText, { color: theme.colors.primary }]}>{favorites.length}</Text>
             </View>
           )}
         </View>
@@ -69,19 +71,19 @@ export default function FavoritesScreen() {
 
       {favorites.length === 0 ? (
         <View style={styles.emptyContainer}>
-          <View style={styles.emptyIconCircle}>
+          <View style={[styles.emptyIconCircle, { backgroundColor: `${theme.colors.primary}18` }]}>
             <Ionicons name="heart-outline" size={48} color={theme.colors.primary} />
           </View>
-          <Text style={styles.emptyTitle}>Nessun anime nei preferiti</Text>
-          <Text style={styles.emptySubtitle}>
-            Aggiungi le tue serie e i tuoi film preferiti toccando l&apos;icona del cuore nella pagina di dettaglio.
+          <Text style={[styles.emptyTitle, { color: theme.colors.text }]}>NESSUN ANIME NEI PREFERITI</Text>
+          <Text style={[styles.emptySubtitle, { color: theme.colors.textSecondary }]}>
+            AGGIUNGI LE TUE SERIE E I TUOI FILM PREFERITI TOCCANDO L&apos;ICONA DEL CUORE NELLA PAGINA DI DETTAGLIO.
           </Text>
           <Pressable
             style={[styles.exploreBtn, { backgroundColor: theme.colors.primary }]}
             onPress={() => router.push('/(tabs)/explore')}
           >
-            <Ionicons name="compass-outline" size={18} color="#FFFFFF" />
-            <Text style={styles.exploreBtnText}>Esplora Catalogo</Text>
+            <Ionicons name="compass-outline" size={18} color={getContrastTextColor(theme.colors.primary)} />
+            <Text style={[styles.exploreBtnText, { color: getContrastTextColor(theme.colors.primary) }]}>ESPLORA CATALOGO</Text>
           </Pressable>
         </View>
       ) : (
@@ -136,8 +138,10 @@ const styles = StyleSheet.create({
   },
   title: {
     color: '#FFFFFF',
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '800',
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
     letterSpacing: -0.5,
   },
   countBadge: {
@@ -152,6 +156,7 @@ const styles = StyleSheet.create({
     color: oledTheme.colors.primary,
     fontSize: 12,
     fontWeight: '800',
+    fontFamily: 'monospace',
   },
   emptyContainer: {
     flex: 1,
@@ -171,15 +176,19 @@ const styles = StyleSheet.create({
   },
   emptyTitle: {
     color: '#FFFFFF',
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '700',
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
   },
   emptySubtitle: {
     color: oledTheme.colors.textMuted,
-    fontSize: 13,
+    fontSize: 12,
     textAlign: 'center',
     lineHeight: 18,
     maxWidth: 280,
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
   },
   exploreBtn: {
     backgroundColor: oledTheme.colors.primary,
@@ -194,8 +203,10 @@ const styles = StyleSheet.create({
   },
   exploreBtnText: {
     color: '#FFFFFF',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
   },
   listWrapper: {
     flex: 1,

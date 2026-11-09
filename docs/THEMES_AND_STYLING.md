@@ -47,28 +47,50 @@ Su smartphone Android con navigazione a gesture touch, elementi interattivi trop
 
 ---
 
+## 🔤 Tipografia Monospace & Caps Lock
+
+Kuro Mobile adotta un'estetica hacker-friendly ad alto contrasto con font monospace e testi in stampatello maiuscolo:
+1. **Font Monospace di Sistema**: `Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' })`.
+2. **Stampatello Maiuscolo (Caps Lock)**: Tutti i titoli, etichette, pulsanti, chip e informazioni sono renderizzati con `textTransform: 'uppercase'`.
+3. **Bottom Tabs Solo Icone**: I pulsanti della barra inferiore non mostrano testo (`tabBarShowLabel: false`), lasciando spazio ad icone touch centrate e minimali.
+
+---
+
+## ⚙️ Schermata Impostazioni Minimale
+
+La schermata impostazioni è strutturata per la massima essenzialità visiva:
+- **Tema**: Griglia di pulsanti quadrati a sole icone SVG, priva di etichette testuali o descrizioni prolisse. Il tocco sul tema attivo inverte istantaneamente la modalità tra Scuro e Chiaro, con badge indicatore e contrasto YIQ automatico.
+- **Sorgente**: Selezione immediata del dominio AnimeWorld tramite chip rapidi `.AC`, `.SO`, `.TV` o inserimento di un URL manuale completo.
+- **Cronologia & Slider Retention**: Componente interattivo a 5 step (`OFF`, `30gg`, `60gg`, `90gg`, `ON`) per la conservazione dello storico con occultamento dinamico della tab in `OFF` (`href: null`), abbinato al pulsante di svuotamento rapido della cronologia protetto da modale in-app a tema.
+- **Informazioni & Changelog Scrollabile**: Dettagli su Nome, Stack, Package, Versione, Build e Architettura, accompagnati da un box del changelog scrollabile (`nestedScrollEnabled`, `maxHeight: 220`) per consultare le novità della versione corrente o in arrivo senza troncamenti.
+- **Updater OTA Unificato**: Pulsante integrato in fondo alla sezione per verificare e scaricare gli aggiornamenti direttamente in-app, senza esporre URL di rete o utilizzare finestre di dialogo bloccanti.
+
+---
+
 ## ⚡ Come Usare i Temi Dinamici (`useTheme()`)
 
 I componenti React consumano il tema attivo tramite l'hook reattivo [`useTheme()`](file:///home/g4s/VSCode/KuroM/src/theme/unistyles.ts):
 
-### Esempio di Utilizzo Corretto
+### Esempio di Utilizzo Corretto con Contrasto Dinamico
 
 ```tsx
 import React from 'react';
 import { StyleSheet, Text, View, Pressable } from 'react-native';
-import { oledTheme, useTheme } from '@/theme';
+import { oledTheme, useTheme, getContrastTextColor } from '@/theme';
 
 export const ActionCard = () => {
   // L'hook si aggiorna istantaneamente quando l'utente cambia tema
   const { theme } = useTheme();
+  // Calcolo automatico testo chiaro/scuro in base alla luminanza YIQ dell'accento
+  const textColor = getContrastTextColor(theme.colors.primary);
 
   return (
-    <View style={styles.card}>
-      <Text style={styles.title}>Kuro Mobile</Text>
+    <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+      <Text style={[styles.title, { color: theme.colors.text }]}>KURO MOBILE</Text>
       
-      {/* Applicazione dinamica della tinta primaria */}
+      {/* Applicazione dinamica della tinta primaria con testo sempre leggibile */}
       <Pressable style={[styles.button, { backgroundColor: theme.colors.primary }]}>
-        <Text style={styles.buttonText}>Inizia la Visione</Text>
+        <Text style={[styles.buttonText, { color: textColor }]}>INIZIA LA VISIONE</Text>
       </Pressable>
     </View>
   );
@@ -83,10 +105,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: oledTheme.colors.border,
   },
+    borderWidth: 1,
+    borderColor: oledTheme.colors.border,
+  },
   title: {
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '700',
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
     marginBottom: 12,
   },
   button: {
@@ -99,6 +126,8 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '700',
     fontSize: 14,
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
   },
 });
 ```
@@ -107,3 +136,19 @@ const styles = StyleSheet.create({
 In precedenza, valutare i colori direttamente all'interno di `StyleSheet.create({ container: { backgroundColor: oledTheme.colors.primary } })` fissava la proprietà al valore iniziale del modulo senza consentire a React di recepire le modifiche.
 
 Con `useTheme()` associato al clone di riferimento nel `ThemeProvider`, ogni tap sul selettore dei temi scatena il re-render immediato delle parti colorate (bottoni, barre di avanzamento, badge e icone selezionate).
+
+---
+
+## 💀 Linee Guida per Animazioni Skeleton & Stati di Caricamento OLED
+
+Gli stati di caricamento adottano scheletri pulsanti invece di spinner o schermate nere:
+
+1. **Colori & Contrasto per Display AMOLED**:
+   - **Base Surface**: `#161616` (grigio scurissimo coordinato con lo sfondo `#000000`).
+   - **Bordi Strutturali**: `#262626` (sottile bordo da 1dp per definire le sagome).
+2. **Animazione Pulsante a 60/120 FPS**:
+   - `Animated.timing` con oscillazione di opacità continua tra $0.35$ e $0.85$ (ciclo di 850ms).
+   - Esecuzione vincolata al thread nativo (`useNativeDriver: true`) per non impattare né bloccare il thread JavaScript.
+3. **Regola Zero Cumulative Layout Shift (CLS) & Gestione Risorse**:
+   - È vietato l'uso di skeleton con dimensioni arbitrarie. Ogni componente skeleton (`AnimeCardSkeleton`, `HomeScreenSkeleton`, `ExploreScreenSkeleton`, `AnimeDetailScreenSkeleton`, `EpisodeItemSkeleton`, `PlayerSkeleton`) deve calcolare ed ereditare le dimensioni, i margini e i border radius identici a quelli della vista effettiva.
+   - Tutti i cicli `Animated.loop` devono rilasciare le risorse e arrestare l'animazione allo smontaggio del componente (`useEffect` cleanup) e all'evento `onLoad` delle immagini, per evitare consumo di batteria e cicli CPU in background.

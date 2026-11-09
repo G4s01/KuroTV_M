@@ -3,7 +3,7 @@ import { StyleSheet, Text, View, Pressable, ScrollView } from 'react-native';
 import { BottomSheet } from '@expo/ui';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
-import { oledTheme } from '@/theme';
+import { oledTheme, useTheme, getContrastTextColor } from '@/theme';
 
 export interface FilterState {
   genre?: string;
@@ -38,22 +38,22 @@ const GENRES = [
 ];
 
 const TYPES = [
-  { label: 'Tutti i tipi', value: '' },
-  { label: 'Serie TV', value: 'tv' },
-  { label: 'Film Anime', value: 'movie' },
-  { label: 'OAV / Special', value: 'ova' },
+  { label: 'TUTTI I TIPI', value: '' },
+  { label: 'SERIE TV', value: 'tv' },
+  { label: 'FILM ANIME', value: 'movie' },
+  { label: 'OAV / SPECIAL', value: 'ova' },
 ];
 
 const STATUSES = [
-  { label: 'Tutti gli stati', value: '' },
-  { label: 'In corso', value: 'ongoing' },
-  { label: 'Completato', value: 'completed' },
+  { label: 'TUTTI GLI STATI', value: '' },
+  { label: 'IN CORSO', value: 'ongoing' },
+  { label: 'COMPLETATO', value: 'completed' },
 ];
 
 const SORTS = [
-  { label: 'Più popolari', value: 'popular' },
-  { label: 'Più recenti', value: 'recent' },
-  { label: 'Valutazione', value: 'rating' },
+  { label: 'PIÙ POPOLARI', value: 'popular' },
+  { label: 'PIÙ RECENTI', value: 'recent' },
+  { label: 'VALUTAZIONE', value: 'rating' },
 ];
 
 export const FilterBottomSheet: React.FC<FilterBottomSheetProps> = ({
@@ -63,6 +63,7 @@ export const FilterBottomSheet: React.FC<FilterBottomSheetProps> = ({
   onApply,
   onReset,
 }) => {
+  const { theme } = useTheme();
   const [selectedGenre, setSelectedGenre] = React.useState<string | undefined>(filters.genre);
   const [selectedType, setSelectedType] = React.useState<string | undefined>(filters.type);
   const [selectedStatus, setSelectedStatus] = React.useState<string | undefined>(filters.status);
@@ -101,32 +102,45 @@ export const FilterBottomSheet: React.FC<FilterBottomSheetProps> = ({
       isPresented={isVisible}
       onDismiss={onClose}
       showDragIndicator={true}
-      containerColor={oledTheme.colors.card}
+      containerColor={theme.colors.card}
     >
-      <View style={styles.content}>
+      <View style={[styles.content, { backgroundColor: theme.colors.card }]}>
         <View style={styles.header}>
-          <Text style={styles.title}>Filtri di Ricerca</Text>
+          <Text style={[styles.title, { color: theme.colors.text }]}>FILTRI DI RICERCA</Text>
           <Pressable onPress={handleReset} hitSlop={12} style={styles.resetBtn}>
-            <Text style={styles.resetText}>Reimposta</Text>
+            <Text style={[styles.resetText, { color: theme.colors.textMuted }]}>REIMPOSTA</Text>
           </Pressable>
         </View>
 
         <ScrollView style={styles.scrollArea} showsVerticalScrollIndicator={false}>
           {/* Tipo */}
-          <Text style={styles.sectionTitle}>Formato</Text>
+          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>FORMATO</Text>
           <View style={styles.chipRow}>
             {TYPES.map((item) => {
               const active = selectedType === item.value || (!selectedType && !item.value);
               return (
                 <Pressable
                   key={item.label}
-                  style={[styles.chip, active && styles.chipActive]}
+                  style={[
+                    styles.chip,
+                    { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+                    active && [
+                      styles.chipActive,
+                      { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
+                    ],
+                  ]}
                   onPress={() => {
                     Haptics.selectionAsync().catch(() => {});
                     setSelectedType(item.value || undefined);
                   }}
                 >
-                  <Text style={[styles.chipText, active && styles.chipTextActive]}>
+                  <Text
+                    style={[
+                      styles.chipText,
+                      { color: active ? getContrastTextColor(theme.colors.primary) : theme.colors.textSecondary },
+                      active && styles.chipTextActive,
+                    ]}
+                  >
                     {item.label}
                   </Text>
                 </Pressable>
@@ -135,20 +149,33 @@ export const FilterBottomSheet: React.FC<FilterBottomSheetProps> = ({
           </View>
 
           {/* Stato */}
-          <Text style={styles.sectionTitle}>Stato di Uscita</Text>
+          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>STATO DI USCITA</Text>
           <View style={styles.chipRow}>
             {STATUSES.map((item) => {
               const active = selectedStatus === item.value || (!selectedStatus && !item.value);
               return (
                 <Pressable
                   key={item.label}
-                  style={[styles.chip, active && styles.chipActive]}
+                  style={[
+                    styles.chip,
+                    { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+                    active && [
+                      styles.chipActive,
+                      { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
+                    ],
+                  ]}
                   onPress={() => {
                     Haptics.selectionAsync().catch(() => {});
                     setSelectedStatus(item.value || undefined);
                   }}
                 >
-                  <Text style={[styles.chipText, active && styles.chipTextActive]}>
+                  <Text
+                    style={[
+                      styles.chipText,
+                      { color: active ? getContrastTextColor(theme.colors.primary) : theme.colors.textSecondary },
+                      active && styles.chipTextActive,
+                    ]}
+                  >
                     {item.label}
                   </Text>
                 </Pressable>
@@ -157,20 +184,33 @@ export const FilterBottomSheet: React.FC<FilterBottomSheetProps> = ({
           </View>
 
           {/* Ordinamento */}
-          <Text style={styles.sectionTitle}>Ordina per</Text>
+          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>ORDINA PER</Text>
           <View style={styles.chipRow}>
             {SORTS.map((item) => {
               const active = selectedSort === item.value;
               return (
                 <Pressable
                   key={item.label}
-                  style={[styles.chip, active && styles.chipActive]}
+                  style={[
+                    styles.chip,
+                    { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+                    active && [
+                      styles.chipActive,
+                      { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
+                    ],
+                  ]}
                   onPress={() => {
                     Haptics.selectionAsync().catch(() => {});
                     setSelectedSort(item.value);
                   }}
                 >
-                  <Text style={[styles.chipText, active && styles.chipTextActive]}>
+                  <Text
+                    style={[
+                      styles.chipText,
+                      { color: active ? getContrastTextColor(theme.colors.primary) : theme.colors.textSecondary },
+                      active && styles.chipTextActive,
+                    ]}
+                  >
                     {item.label}
                   </Text>
                 </Pressable>
@@ -179,20 +219,33 @@ export const FilterBottomSheet: React.FC<FilterBottomSheetProps> = ({
           </View>
 
           {/* Generi */}
-          <Text style={styles.sectionTitle}>Generi</Text>
+          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>GENERI</Text>
           <View style={styles.chipRow}>
             {GENRES.map((g) => {
               const active = selectedGenre === g;
               return (
                 <Pressable
                   key={g}
-                  style={[styles.chip, active && styles.chipActive]}
+                  style={[
+                    styles.chip,
+                    { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+                    active && [
+                      styles.chipActive,
+                      { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
+                    ],
+                  ]}
                   onPress={() => {
                     Haptics.selectionAsync().catch(() => {});
                     setSelectedGenre(active ? undefined : g);
                   }}
                 >
-                  <Text style={[styles.chipText, active && styles.chipTextActive]}>
+                  <Text
+                    style={[
+                      styles.chipText,
+                      { color: active ? getContrastTextColor(theme.colors.primary) : theme.colors.textSecondary },
+                      active && styles.chipTextActive,
+                    ]}
+                  >
                     {g}
                   </Text>
                 </Pressable>
@@ -202,9 +255,12 @@ export const FilterBottomSheet: React.FC<FilterBottomSheetProps> = ({
         </ScrollView>
 
         <View style={styles.footer}>
-          <Pressable style={styles.applyBtn} onPress={handleApply}>
-            <Ionicons name="checkmark-sharp" size={18} color="#FFFFFF" />
-            <Text style={styles.applyBtnText}>Applica Filtri</Text>
+          <Pressable
+            style={[styles.applyBtn, { backgroundColor: theme.colors.primary }]}
+            onPress={handleApply}
+          >
+            <Ionicons name="checkmark-sharp" size={18} color={getContrastTextColor(theme.colors.primary)} />
+            <Text style={[styles.applyBtnText, { color: getContrastTextColor(theme.colors.primary) }]}>APPLICA FILTRI</Text>
           </Pressable>
         </View>
       </View>
@@ -227,9 +283,11 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   title: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '700',
     color: oledTheme.colors.text,
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
   },
   resetBtn: {
     minHeight: 44,
@@ -237,19 +295,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   resetText: {
-    fontSize: 13,
+    fontSize: 12,
     color: oledTheme.colors.textMuted,
     fontWeight: '600',
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
   },
   scrollArea: {
     maxHeight: 380,
   },
   sectionTitle: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
     color: oledTheme.colors.textSecondary,
     marginTop: 14,
     marginBottom: 8,
+    fontFamily: 'monospace',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
@@ -274,13 +335,17 @@ const styles = StyleSheet.create({
     borderColor: oledTheme.colors.primary,
   },
   chipText: {
-    fontSize: 13,
+    fontSize: 12,
     color: oledTheme.colors.textSecondary,
     fontWeight: '500',
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
   },
   chipTextActive: {
     color: '#FFFFFF',
     fontWeight: '700',
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
   },
   footer: {
     marginTop: 16,
@@ -296,7 +361,9 @@ const styles = StyleSheet.create({
   },
   applyBtnText: {
     color: '#FFFFFF',
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '700',
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
   },
 });

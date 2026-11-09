@@ -111,8 +111,8 @@ export function parseDetailPage(
     });
   }
 
-  // Fallback: index-based mapping matching the Dart scraper if DT didn't populate category
-  if (!category && ddElements.length > 0) {
+  // Fallback: index-based mapping matching the Dart scraper if no DT elements were found
+  if (dtElements.length === 0 && ddElements.length > 0) {
     category = sanitizeText(ddElements.eq(0).text());
     audio = sanitizeText(ddElements.eq(1).text());
     releaseDate = sanitizeText(ddElements.eq(2).text());
@@ -162,6 +162,28 @@ export function parseDetailPage(
     malEl.attr("href") || malEl.find("a").attr("href") || undefined;
   const malDataId = malEl.attr("data-id") || malEl.attr("data-mal-id");
   const malId = malDataId ? parseInt(malDataId, 10) : extractMalId(malHref);
+
+  // 6b. Trailer extraction
+  let trailerUrl: string | undefined = undefined;
+
+  const trailerIframe = $("iframe[src*='youtube'], iframe[src*='youtu.be'], #trailer iframe, #modal-trailer iframe, .trailer iframe");
+  if (trailerIframe.length > 0) {
+    trailerUrl = trailerIframe.attr("src") || trailerIframe.attr("data-src") || undefined;
+  }
+
+  if (!trailerUrl) {
+    const trailerAnchor = $("a#trailer, a.trailer, a[data-target='#trailer'], a[href*='youtube.com'], a[href*='youtu.be']");
+    if (trailerAnchor.length > 0) {
+      trailerUrl = trailerAnchor.attr("href") || trailerAnchor.attr("data-video") || trailerAnchor.attr("data-url") || undefined;
+    }
+  }
+
+  if (!trailerUrl) {
+    const dataTrailerEl = $("[data-trailer], [data-youtube], [data-video*='youtube']");
+    if (dataTrailerEl.length > 0) {
+      trailerUrl = dataTrailerEl.attr("data-trailer") || dataTrailerEl.attr("data-youtube") || dataTrailerEl.attr("data-video") || undefined;
+    }
+  }
 
   // 7. Next Episode Calendar Info
   const nextEpEl = $("#next-episode");
@@ -338,6 +360,33 @@ export function parseDetailPage(
   // Parse total episodes
   const totalEpisodes = !isNaN(totalEpCount) ? totalEpCount : undefined;
 
+  // Fallback to Server 4 (YouTube) if trailer was not in dedicated markup
+  if (!trailerUrl) {
+    const ytServer = servers.find((s) => s.id === "4");
+    if (ytServer && ytServer.episodes && ytServer.episodes.length > 0) {
+      const firstEp = ytServer.episodes[0];
+      if (firstEp.videoUrl) {
+        trailerUrl = firstEp.videoUrl;
+      } else if (
+        firstEp.referer &&
+        (firstEp.referer.includes("youtube") || firstEp.referer.includes("youtu.be"))
+      ) {
+        trailerUrl = firstEp.referer;
+      }
+    }
+  }
+
+  // Normalize embed URL (e.g. //www.youtube.com/embed/xyz -> https://www.youtube.com/watch?v=xyz)
+  if (trailerUrl) {
+    if (trailerUrl.startsWith("//")) {
+      trailerUrl = `https:${trailerUrl}`;
+    }
+    const embedMatch = trailerUrl.match(/youtube\.com\/embed\/([a-zA-Z0-9_-]+)/);
+    if (embedMatch && embedMatch[1]) {
+      trailerUrl = `https://www.youtube.com/watch?v=${embedMatch[1]}`;
+    }
+  }
+
   return {
     id: animeId,
     title,
@@ -365,6 +414,8 @@ export function parseDetailPage(
     anilistLink: anilistHref,
     malId,
     myanimelistLink: malHref,
+    trailer: trailerUrl,
+    trailerUrl,
     commentInfo,
     similar,
     related,

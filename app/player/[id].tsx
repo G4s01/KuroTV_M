@@ -5,9 +5,9 @@ import {
   View,
   Pressable,
   useWindowDimensions,
-  ActivityIndicator,
   Animated,
   Platform,
+  AppState,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -22,26 +22,23 @@ import {
 } from 'react-native-gesture-handler';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
-import { AnimeWorldScraper } from '@/services/scraper';
+import { AnimeWorldScraper, ProviderRegistry } from '@/services/scraper';
 import { AniSkipService } from '@/services/aniskip';
 import { AppStorage } from '@/services/storage';
-import { oledTheme, useTheme } from '@/theme';
+import { oledTheme, useTheme, getContrastTextColor } from '@/theme';
 import { AniSkipButton } from '@/components/AniSkipButton';
+import { PlayerSkeleton } from '@/components/skeleton';
 import { ServerBottomSheet } from '@/components/ServerBottomSheet';
-import type { AniSkipResult } from '@/types';
+import {
+  PlayerHeader,
+  PlayerFooter,
+  PlayerEpisodesCarouselSheet,
+  PlayerInfoSheet,
+  formatTime,
+} from '@/components/player';
+import type { AniSkipResult, AnimeDetail, Episode } from '@/types';
 
-function formatTime(seconds: number): string {
-  if (isNaN(seconds) || seconds < 0) return '00:00';
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  const hrs = Math.floor(mins / 60);
-
-  if (hrs > 0) {
-    const remMins = mins % 60;
-    return `${hrs}:${remMins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  }
-  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-}
+const SPEED_OPTIONS = [0.75, 1.0, 1.25, 1.5, 2.0];
 
 export default function VideoPlayerScreen() {
   const router = useRouter();
@@ -57,6 +54,9 @@ export default function VideoPlayerScreen() {
     episodeDataId?: string;
     animeTitle?: string;
     serverId?: string;
+    thumbnail?: string;
+    position?: string;
+    totalEpisodes?: string;
   }>();
 
   const episodeId = params.id || '';
@@ -73,22 +73,98 @@ export default function VideoPlayerScreen() {
   // OSD controls
   const [showControls, setShowControls] = React.useState(true);
   const [isPlaying, setIsPlaying] = React.useState(true);
-  const [currentTime, setCurrentTime] = React.useState(0);
   const [duration, setDuration] = React.useState(0);
   const [playbackSpeed, setPlaybackSpeed] = React.useState(1.0);
+  const playbackSpeedRef = React.useRef(1.0);
   const [isServerSheetVisible, setIsServerSheetVisible] = React.useState(false);
-  const [timelineWidth, setTimelineWidth] = React.useState(1);
+  const [isEpisodesSheetVisible, setIsEpisodesSheetVisible] = React.useState(false);
+  const [isInfoSheetVisible, setIsInfoSheetVisible] = React.useState(false);
+  const [animeDetail, setAnimeDetail] = React.useState<AnimeDetail | null>(null);
+  const [episodesList, setEpisodesList] = React.useState<Episode[]>([]);
 
-  // Skip feedback animation
-  const [seekFeedback, setSeekFeedback] = React.useState<'left' | 'right' | null>(null);
-  const [seekFeedbackAnim] = React.useState(new Animated.Value(0));
+  // Picture-in-picture tracking ref
+  const isInPiPRef = React.useRef(false);
 
-  // Volume / Brightness indicator
-  const [hudIndicator, setHudIndicator] = React.useState<{
-    type: 'volume' | 'brightness';
-    value: number;
+  // Next episode & total episodes metadata refs
+  const totalEpisodesRef = React.useRef<number | undefined>(
+    params.totalEpisodes ? parseInt(params.totalEpisodes, 10) : undefined
+  );
+  const nextEpisodeRef = React.useRef<{ id: string; number: number; dataId?: string } | null>(null);
+  const hasResumedRef = React.useRef(false);
+  const detailLoadedRef = React.useRef(false);
+  const malIdRef = React.useRef<number | null>(null);
+
+  // Resume from saved position or navigation param
+  const initialResumePosition = React.useMemo(() => {
+    const fromParam = params.position ? parseFloat(params.position) : 0;
+    if (fromParam > 5) return fromParam;
+    const fromStorage = AppStorage.getWatchProgress(animeId, episodeNumber);
+    if (fromStorage && fromStorage.currentTime > 5 && !fromStorage.isCompleted) {
+      return fromStorage.currentTime;
+    }
+    return 0;
+  }, [params.position, animeId, episodeNumber]);
+
+  // Refs for tracking playback time & immediate/unmount saving
+  const currentTimeRef = React.useRef(0);
+  const durationRef = React.useRef(0);
+  const lastSavedTimeRef = React.useRef(-1);
+  const [thumbnail, setThumbnail] = React.useState<string>(() => {
+    return params.thumbnail || AppStorage.getWatchProgress(animeId, episodeNumber)?.thumbnail || '';
+  });
+  const thumbnailRef = React.useRef(thumbnail);
+  React.useEffect(() => {
+    thumbnailRef.current = thumbnail;
+  }, [thumbnail]);
+
+  const saveProgress = React.useCallback(
+    (pos: number, dur?: number) => {
+      if (!animeId || !episodeId) return;
+      const currentDuration = dur && dur > 0 ? dur : durationRef.current;
+      const nextEp = nextEpisodeRef.current;
+      AppStorage.saveWatchProgress({
+        animeId,
+        animeTitle,
+        episodeId,
+        episodeNumber,
+        totalEpisodes: totalEpisodesRef.current,
+        currentTime: pos,
+        duration: currentDuration,
+        dataId: episodeDataId,
+        serverId,
+        thumbnail: thumbnailRef.current,
+        nextEpisode: nextEp
+          ? {
+              id: nextEp.id,
+              number: nextEp.number,
+              dataId: nextEp.dataId,
+            }
+          : undefined,
+      });
+      lastSavedTimeRef.current = pos;
+    },
+    [animeId, animeTitle, episodeId, episodeNumber, episodeDataId, serverId]
+  );
+
+  // Cumulative skip feedback
+  const [cumulativeSkip, setCumulativeSkip] = React.useState<{
+    direction: 'left' | 'right';
+    seconds: number;
   } | null>(null);
-  const [screenBrightness, setScreenBrightness] = React.useState(0.8);
+  const accumulatedSkipRef = React.useRef<{
+    direction: 'left' | 'right';
+    seconds: number;
+  } | null>(null);
+  const skipTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [skipAnim] = React.useState(new Animated.Value(0));
+
+  // Volume / Brightness / Speed indicator
+  const [hudIndicator, setHudIndicator] = React.useState<{
+    type: 'volume' | 'brightness' | 'speed';
+    value: string | number;
+  } | null>(null);
+  // screenBrightness: 0.1 .. 1.0 or -1 for 'AUTOMATICA'
+  const [screenBrightness, setScreenBrightness] = React.useState<number>(0.8);
 
   const startVolumeRef = React.useRef(1.0);
   const startBrightnessRef = React.useRef(0.8);
@@ -96,53 +172,137 @@ export default function VideoPlayerScreen() {
 
   // AniSkip intervals
   const [aniSkipResults, setAniSkipResults] = React.useState<AniSkipResult[]>([]);
+  const aniSkipResultsRef = React.useRef<AniSkipResult[]>([]);
+  const [activeSkip, setActiveSkip] = React.useState<AniSkipResult | null>(null);
+  const activeSkipRef = React.useRef<AniSkipResult | null>(null);
 
   const videoViewRef = React.useRef<VideoView>(null);
   const controlsTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Initialize video player with expo-video
+  // staysActiveInBackground: false prevents persistent background playback when app or PiP is dismissed
   const player = useVideoPlayer(videoUrl || '', (p) => {
     p.loop = false;
     p.volume = 1.0;
+    p.staysActiveInBackground = false;
+    p.timeUpdateEventInterval = 0.5; // Starts Android IntervalUpdateClock for timeUpdate
     p.play();
   });
 
   // Track playback time
   useEventListener(player, 'timeUpdate', ({ currentTime: time }) => {
-    setCurrentTime(time);
-    if (player.duration && player.duration > 0 && player.duration !== duration) {
+    currentTimeRef.current = time;
+    if (player.duration && player.duration > 0 && player.duration !== durationRef.current) {
       setDuration(player.duration);
+      durationRef.current = player.duration;
     }
 
-    // Periodically save progress to storage
-    if (animeId && time > 5) {
-      AppStorage.saveWatchProgress({
-        animeId,
-        animeTitle,
-        episodeId,
-        episodeNumber,
-        currentTime: time,
-        duration: player.duration || 0,
-        dataId: episodeDataId,
-        serverId,
-      });
+    // Periodically save progress to storage every ~4 seconds
+    if (animeId && Math.abs(time - lastSavedTimeRef.current) >= 4) {
+      saveProgress(time, player.duration || durationRef.current);
+    }
+
+    // Isolated AniSkip check: only triggers state update when entering or exiting an interval
+    if (aniSkipResultsRef.current.length > 0) {
+      const matchingSkip =
+        aniSkipResultsRef.current.find(
+          (res) => time >= res.interval.startTime && time <= res.interval.endTime
+        ) || null;
+      const currentId = activeSkipRef.current?.skipId;
+      const nextId = matchingSkip?.skipId;
+      if (currentId !== nextId) {
+        activeSkipRef.current = matchingSkip;
+        setActiveSkip(matchingSkip);
+      }
+    } else if (activeSkipRef.current !== null) {
+      activeSkipRef.current = null;
+      setActiveSkip(null);
     }
   });
 
   useEventListener(player, 'playingChange', ({ isPlaying: playing }) => {
     setIsPlaying(playing);
+    if (!playing && animeId) {
+      saveProgress(currentTimeRef.current, durationRef.current);
+    }
   });
 
   useEventListener(player, 'statusChange', ({ status, error }) => {
-    if (status === 'readyToPlay' && player.duration) {
-      setDuration(player.duration);
+    if (status === 'readyToPlay') {
+      const dur = player.duration || durationRef.current;
+      if (dur > 0) {
+        setDuration(dur);
+        durationRef.current = dur;
+      }
+      // Re-apply desired playback rate in case underlying player reset it
+      player.playbackRate = playbackSpeedRef.current;
+
+      if (!hasResumedRef.current && initialResumePosition > 0) {
+        hasResumedRef.current = true;
+        player.currentTime = initialResumePosition;
+        currentTimeRef.current = initialResumePosition;
+        saveProgress(initialResumePosition, dur);
+      } else if (!hasResumedRef.current) {
+        hasResumedRef.current = true;
+        saveProgress(currentTimeRef.current, dur);
+      }
     }
     if (error) {
-      setSourceError(`Errore riproduzione: ${error.message}`);
+      setSourceError(`ERRORE RIPRODUZIONE: ${error.message.toUpperCase()}`);
     }
   });
 
-  // Manage screen orientation and immersive navigation bar
+  useEventListener(player, 'playToEnd', () => {
+    if (animeId && episodeId) {
+      const finalDuration = player.duration || durationRef.current;
+      saveProgress(finalDuration, finalDuration);
+    }
+  });
+
+  // AppState listener: if app goes to background without PiP, pause playback and save progress
+  React.useEffect(() => {
+    const sub = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState === 'background' && !isInPiPRef.current) {
+        player.pause();
+        if (animeId && episodeId) {
+          saveProgress(currentTimeRef.current, durationRef.current);
+        }
+      }
+    });
+
+    return () => {
+      sub.remove();
+    };
+  }, [player, animeId, episodeId, saveProgress]);
+
+  // Save latest progress on exit / screen unmount
+  React.useEffect(() => {
+    return () => {
+      player.pause();
+      if (animeId && episodeId) {
+        saveProgress(currentTimeRef.current, durationRef.current);
+      }
+    };
+  }, [player, animeId, episodeId, saveProgress]);
+
+  // Open in full horizontal screen (landscape) on start & respond to device rotation
+  React.useEffect(() => {
+    // 1. Immediately request landscape fullscreen
+    ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE).catch(() => {});
+
+    if (Platform.OS === 'android') {
+      NavigationBar.setVisibilityAsync('hidden').catch(() => {});
+    }
+
+    return () => {
+      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
+      if (Platform.OS === 'android') {
+        NavigationBar.setVisibilityAsync('visible').catch(() => {});
+      }
+    };
+  }, []);
+
+  // Manage navigation bar visibility based on current orientation state
   React.useEffect(() => {
     if (Platform.OS === 'android') {
       if (isLandscape) {
@@ -152,16 +312,6 @@ export default function VideoPlayerScreen() {
       }
     }
   }, [isLandscape]);
-
-  // Clean up orientation lock on exit
-  React.useEffect(() => {
-    return () => {
-      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
-      if (Platform.OS === 'android') {
-        NavigationBar.setVisibilityAsync('visible').catch(() => {});
-      }
-    };
-  }, []);
 
   const toggleOrientationFullscreen = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
@@ -173,82 +323,124 @@ export default function VideoPlayerScreen() {
   };
 
   // Fetch direct video stream
-  React.useEffect(() => {
-    let isCancelled = false;
+  const loadStream = React.useCallback(async () => {
+    setIsLoadingSource(true);
+    setSourceError(null);
 
-    async function loadStream() {
-      setIsLoadingSource(true);
-      setSourceError(null);
+    try {
+      let directUrl = '';
+      const targetEp = {
+        id: episodeId,
+        number: episodeNumber,
+        dataId: episodeDataId,
+      };
+      // Step 3: Resolve via ProviderRegistry with multi-provider fallback
+      const directSource = await ProviderRegistry.resolveVideoWithFallback(targetEp, serverId);
+      if (directSource?.url) {
+        directUrl = directSource.url;
+      }
 
-      try {
-        let directUrl = '';
-        const targetEp = {
-          id: episodeId,
-          number: episodeNumber,
-          dataId: episodeDataId,
-        };
-        const directSource = await AnimeWorldScraper.resolveEpisodeVideo(targetEp, serverId);
-        if (directSource?.url) {
-          directUrl = directSource.url;
-        }
-
-        if (!directUrl && animeId) {
-          // Fallback to scraping episode directly
-          const detail = await AnimeWorldScraper.getAnimeDetail(animeId);
-          const ep = detail?.episodes?.find((e) => e.id === episodeId || e.number === episodeNumber);
-          if (ep) {
-            const direct = await AnimeWorldScraper.resolveEpisodeVideo(ep, serverId);
-            if (direct?.url) {
-              directUrl = direct.url;
-            }
+      if (!directUrl && animeId) {
+        // Fallback to scraping episode directly from detail page
+        const detail = await AnimeWorldScraper.getAnimeDetail(animeId);
+        const ep = detail?.episodes?.find((e) => e.id === episodeId || e.number === episodeNumber);
+        if (ep) {
+          const direct = await ProviderRegistry.resolveVideoWithFallback(ep, serverId);
+          if (direct?.url) {
+            directUrl = direct.url;
           }
-        }
-
-        if (!isCancelled) {
-          if (directUrl) {
-            setVideoUrl(directUrl);
-            player.replace(directUrl);
-            player.play();
-
-            // Resume from last saved position if available
-            const savedProg = AppStorage.getWatchProgress(animeId, episodeNumber);
-            if (savedProg && savedProg.currentTime > 5 && !savedProg.isCompleted) {
-              player.currentTime = savedProg.currentTime;
-            }
-          } else {
-            setSourceError('Nessun flusso video trovato per questo server.');
-          }
-        }
-      } catch (err: any) {
-        if (!isCancelled) {
-          setSourceError(err.message || 'Errore durante la risoluzione del video.');
-        }
-      } finally {
-        if (!isCancelled) {
-          setIsLoadingSource(false);
         }
       }
-    }
 
-    loadStream();
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [animeId, episodeId, episodeNumber, episodeDataId, serverId]);
-
-  // Fetch AniSkip timestamps
-  React.useEffect(() => {
-    async function loadAniSkip() {
-      try {
-        const detail = await AnimeWorldScraper.getAnimeDetail(animeId);
-        const malId = detail?.malId || detail?.anilistId;
-        if (malId) {
-          const skips = await AniSkipService.getSkipTimes({
-            malId: Number(malId),
-            episodeNumber,
-            episodeLength: duration,
+      if (directUrl) {
+        setVideoUrl(directUrl);
+        if (typeof player.replaceAsync === 'function') {
+          await player.replaceAsync(directUrl).catch((err) => {
+            console.warn('[VideoPlayer] replaceAsync error:', err);
           });
+        } else {
+          player.replace(directUrl);
+        }
+        player.playbackRate = playbackSpeedRef.current;
+        player.play();
+
+        if (initialResumePosition > 0) {
+          player.currentTime = initialResumePosition;
+          currentTimeRef.current = initialResumePosition;
+        }
+      } else {
+        setSourceError('NESSUN FLUSSO VIDEO TROVATO. RIPROVA TRA POCHI SECONDI.');
+      }
+    } catch (err: any) {
+      setSourceError((err.message || 'ERRORE DURANTE LA RISOLUZIONE DEL VIDEO.').toUpperCase());
+    } finally {
+      setIsLoadingSource(false);
+    }
+  }, [episodeId, episodeNumber, episodeDataId, serverId, animeId, player, initialResumePosition]);
+
+  React.useEffect(() => {
+    loadStream();
+  }, [loadStream]);
+
+  // Reset player and metadata states when navigating to a different episode
+  React.useEffect(() => {
+    hasResumedRef.current = false;
+    currentTimeRef.current = 0;
+    durationRef.current = 0;
+    setDuration(0);
+    setVideoUrl(null);
+    setIsLoadingSource(true);
+    setSourceError(null);
+    setAniSkipResults([]);
+    aniSkipResultsRef.current = [];
+    setActiveSkip(null);
+    activeSkipRef.current = null;
+  }, [episodeId, episodeNumber]);
+
+  // Fetch AniSkip timestamps & episode batch metadata for advancing next episode
+  React.useEffect(() => {
+    async function loadMetadataAndAniSkip() {
+      try {
+        if (!detailLoadedRef.current && animeId) {
+          const detail = await AnimeWorldScraper.getAnimeDetail(animeId);
+          detailLoadedRef.current = true;
+          if (detail) {
+            setAnimeDetail(detail);
+            if (detail.image) {
+              thumbnailRef.current = detail.image;
+              setThumbnail((prev) => prev || detail.image || '');
+            }
+            if (detail.episodes && Array.isArray(detail.episodes)) {
+              setEpisodesList(detail.episodes);
+              totalEpisodesRef.current = detail.episodes.length;
+              const currIdx = detail.episodes.findIndex(
+                (e) => e.id === episodeId || e.number === episodeNumber
+              );
+              if (currIdx >= 0 && currIdx + 1 < detail.episodes.length) {
+                const nextEp = detail.episodes[currIdx + 1];
+                nextEpisodeRef.current = {
+                  id: nextEp.id,
+                  number: nextEp.number,
+                  dataId: nextEp.dataId,
+                };
+              } else {
+                nextEpisodeRef.current = null;
+              }
+            }
+            const malId = detail.malId || detail.anilistId;
+            if (malId) {
+              malIdRef.current = Number(malId);
+            }
+          }
+        }
+
+        if (malIdRef.current && aniSkipResultsRef.current.length === 0) {
+          const skips = await AniSkipService.getSkipTimes({
+            malId: malIdRef.current,
+            episodeNumber,
+            episodeLength: durationRef.current || duration,
+          });
+          aniSkipResultsRef.current = skips || [];
           setAniSkipResults(skips || []);
         }
       } catch {
@@ -257,19 +449,38 @@ export default function VideoPlayerScreen() {
     }
 
     if (animeId && episodeNumber) {
-      loadAniSkip();
+      loadMetadataAndAniSkip();
     }
-  }, [animeId, episodeNumber, duration]);
+  }, [animeId, episodeNumber, episodeId]);
+
+  const isScrubbingRef = React.useRef(false);
 
   // Auto-hide controls after 4 seconds of inactivity
   const resetControlsTimer = React.useCallback(() => {
     if (controlsTimeoutRef.current) {
       clearTimeout(controlsTimeoutRef.current);
     }
+    if (isScrubbingRef.current) {
+      return;
+    }
     controlsTimeoutRef.current = setTimeout(() => {
       setShowControls(false);
     }, 4000);
   }, []);
+
+  const handleScrubbingChange = React.useCallback(
+    (scrubbing: boolean) => {
+      isScrubbingRef.current = scrubbing;
+      if (scrubbing) {
+        if (controlsTimeoutRef.current) {
+          clearTimeout(controlsTimeoutRef.current);
+        }
+      } else {
+        resetControlsTimer();
+      }
+    },
+    [resetControlsTimer]
+  );
 
   React.useEffect(() => {
     if (showControls) {
@@ -297,33 +508,112 @@ export default function VideoPlayerScreen() {
     resetControlsTimer();
   };
 
-  const triggerSeekAnimation = (side: 'left' | 'right') => {
-    setSeekFeedback(side);
-    seekFeedbackAnim.setValue(0);
-    Animated.sequence([
-      Animated.timing(seekFeedbackAnim, {
+  const currEpIndex = React.useMemo(() => {
+    return episodesList.findIndex((e) => e.id === episodeId || e.number === episodeNumber);
+  }, [episodesList, episodeId, episodeNumber]);
+
+  const prevEpisode = currEpIndex > 0 ? episodesList[currEpIndex - 1] : null;
+  const nextEpisode =
+    currEpIndex >= 0 && currEpIndex + 1 < episodesList.length
+      ? episodesList[currEpIndex + 1]
+      : null;
+
+  React.useEffect(() => {
+    if (nextEpisode) {
+      nextEpisodeRef.current = {
+        id: nextEpisode.id,
+        number: nextEpisode.number,
+        dataId: nextEpisode.dataId,
+      };
+    } else {
+      nextEpisodeRef.current = null;
+    }
+  }, [nextEpisode]);
+
+  const handleNavigateToEpisode = React.useCallback(
+    (targetEp: Episode) => {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+      saveProgress(currentTimeRef.current, durationRef.current);
+      hasResumedRef.current = false;
+      const nextThumb = targetEp.thumbnail || thumbnailRef.current;
+      setThumbnail(nextThumb);
+      const savedProg = AppStorage.getWatchProgress(animeId, targetEp.number);
+      router.replace({
+        pathname: '/player/[id]',
+        params: {
+          id: targetEp.id,
+          animeId,
+          episodeNumber: String(targetEp.number),
+          episodeDataId: targetEp.dataId || '',
+          animeTitle,
+          serverId,
+          thumbnail: nextThumb,
+          position: String(savedProg && !savedProg.isCompleted ? savedProg.currentTime : 0),
+          totalEpisodes: String(episodesList.length || ''),
+        },
+      });
+    },
+    [animeId, animeTitle, serverId, episodesList.length, router, saveProgress]
+  );
+
+  const handleDoubleTap = (direction: 'left' | 'right') => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    const delta = direction === 'left' ? -10 : 10;
+    player.seekBy(delta);
+    const newPos =
+      direction === 'left'
+        ? Math.max(0, currentTimeRef.current - 10)
+        : currentTimeRef.current + 10;
+    currentTimeRef.current = newPos;
+    saveProgress(newPos, durationRef.current);
+
+    const totalSeconds =
+      accumulatedSkipRef.current && accumulatedSkipRef.current.direction === direction
+        ? accumulatedSkipRef.current.seconds + 10
+        : 10;
+    const isConsecutive = totalSeconds > 10;
+
+    accumulatedSkipRef.current = { direction, seconds: totalSeconds };
+    setCumulativeSkip({ direction, seconds: totalSeconds });
+
+    if (skipTimeoutRef.current) {
+      clearTimeout(skipTimeoutRef.current);
+    }
+
+    if (!isConsecutive) {
+      skipAnim.setValue(0);
+      Animated.spring(skipAnim, {
         toValue: 1,
-        duration: 200,
+        friction: 6,
+        tension: 70,
         useNativeDriver: true,
-      }),
-      Animated.timing(seekFeedbackAnim, {
+      }).start();
+    } else {
+      Animated.sequence([
+        Animated.timing(skipAnim, {
+          toValue: 1.15,
+          duration: 60,
+          useNativeDriver: true,
+        }),
+        Animated.spring(skipAnim, {
+          toValue: 1,
+          friction: 6,
+          tension: 70,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+
+    skipTimeoutRef.current = setTimeout(() => {
+      Animated.timing(skipAnim, {
         toValue: 0,
-        duration: 800,
+        duration: 250,
         useNativeDriver: true,
-      }),
-    ]).start(() => setSeekFeedback(null));
-  };
-
-  const handleDoubleTapLeft = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-    player.seekBy(-10);
-    triggerSeekAnimation('left');
-  };
-
-  const handleDoubleTapRight = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-    player.seekBy(10);
-    triggerSeekAnimation('right');
+      }).start(() => {
+        setCumulativeSkip(null);
+        accumulatedSkipRef.current = null;
+      });
+    }, 900);
   };
 
   const handleStartPiP = async () => {
@@ -340,39 +630,51 @@ export default function VideoPlayerScreen() {
   const handleSpeedChange = (speed: number) => {
     Haptics.selectionAsync().catch(() => {});
     setPlaybackSpeed(speed);
+    playbackSpeedRef.current = speed;
     player.playbackRate = speed;
+    resetControlsTimer();
+    setHudIndicator({ type: 'speed', value: `${speed}X` });
+    if (hudTimeoutRef.current) clearTimeout(hudTimeoutRef.current);
+    hudTimeoutRef.current = setTimeout(() => setHudIndicator(null), 1200);
   };
 
-  // Determine active AniSkip interval
-  const activeSkip = React.useMemo(() => {
-    if (!aniSkipResults.length) return null;
-    return aniSkipResults.find(
-      (res) =>
-        currentTime >= res.interval.startTime &&
-        currentTime <= res.interval.endTime
-    );
-  }, [aniSkipResults, currentTime]);
+  const handleCycleSpeed = () => {
+    resetControlsTimer();
+    const currentIdx = SPEED_OPTIONS.findIndex((s) => Math.abs(s - playbackSpeed) < 0.01);
+    const nextIdx = (currentIdx + 1) % SPEED_OPTIONS.length;
+    handleSpeedChange(SPEED_OPTIONS[nextIdx]);
+  };
 
   const handleAniSkip = () => {
     if (!activeSkip) return;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-    player.currentTime = activeSkip.interval.endTime + 0.5;
+    const target = activeSkip.interval.endTime + 0.5;
+    player.currentTime = target;
+    currentTimeRef.current = target;
+    saveProgress(target, durationRef.current);
+    activeSkipRef.current = null;
+    setActiveSkip(null);
   };
 
   // Timeline scrub seek
-  const handleTimelineSeek = (locationX: number) => {
-    if (duration <= 0 || timelineWidth <= 0) return;
-    const ratio = Math.max(0, Math.min(1, locationX / timelineWidth));
-    const target = ratio * duration;
-    player.currentTime = target;
-    setCurrentTime(target);
+  const handleTimelineSeek = (targetTime: number) => {
+    currentTimeRef.current = targetTime;
+    saveProgress(targetTime, durationRef.current);
     resetControlsTimer();
   };
 
   // Gesture Handlers
   const singleTap = Gesture.Tap()
     .numberOfTaps(1)
-    .onEnd(() => {
+    .onEnd((e) => {
+      // If a cumulative skip is currently active on this side, advance it!
+      if (accumulatedSkipRef.current) {
+        const side = e.x < windowWidth / 2 ? 'left' : 'right';
+        if (accumulatedSkipRef.current.direction === side) {
+          handleDoubleTap(side);
+          return;
+        }
+      }
       toggleControls();
     })
     .runOnJS(true);
@@ -381,9 +683,9 @@ export default function VideoPlayerScreen() {
     .numberOfTaps(2)
     .onEnd((e) => {
       if (e.x < windowWidth / 2) {
-        handleDoubleTapLeft();
+        handleDoubleTap('left');
       } else {
-        handleDoubleTapRight();
+        handleDoubleTap('right');
       }
     })
     .runOnJS(true);
@@ -391,10 +693,12 @@ export default function VideoPlayerScreen() {
   // Exclusive taps: doubleTap takes precedence over singleTap
   const tapGestures = Gesture.Exclusive(doubleTap, singleTap);
 
+  // Pan gesture for volume and brightness: DISABLED while OSD controls are visible
   const panGesture = Gesture.Pan()
+    .enabled(!showControls)
     .onStart(() => {
       startVolumeRef.current = typeof player.volume === 'number' ? player.volume : 1.0;
-      startBrightnessRef.current = screenBrightness;
+      startBrightnessRef.current = screenBrightness === -1 ? 0.08 : screenBrightness;
     })
     .onUpdate((e) => {
       const delta = -e.translationY / 220;
@@ -405,9 +709,16 @@ export default function VideoPlayerScreen() {
         setHudIndicator({ type: 'volume', value: Math.round(newVol * 100) });
       } else {
         // Brightness adjustment (left side)
-        const newBright = Math.max(0.1, Math.min(1, startBrightnessRef.current + delta));
-        setScreenBrightness(newBright);
-        setHudIndicator({ type: 'brightness', value: Math.round(newBright * 100) });
+        // If swiped to the lowest peak, set value to 'AUTOMATICA'
+        const raw = startBrightnessRef.current + delta;
+        if (raw <= 0.08) {
+          setScreenBrightness(-1);
+          setHudIndicator({ type: 'brightness', value: 'AUTOMATICA' });
+        } else {
+          const newBright = Math.max(0.1, Math.min(1, raw));
+          setScreenBrightness(newBright);
+          setHudIndicator({ type: 'brightness', value: Math.round(newBright * 100) });
+        }
       }
     })
     .onEnd(() => {
@@ -423,8 +734,8 @@ export default function VideoPlayerScreen() {
     <View style={styles.root}>
       <StatusBar hidden={true} />
 
-      {/* Screen Brightness Overlay */}
-      {screenBrightness < 1.0 && (
+      {/* Screen Brightness Overlay (hidden when set to 'AUTOMATICA') */}
+      {screenBrightness >= 0 && screenBrightness < 1.0 && (
         <View
           pointerEvents="none"
           style={[
@@ -434,236 +745,281 @@ export default function VideoPlayerScreen() {
         />
       )}
 
-      {/* Gestures Area */}
-      <GestureDetector gesture={composedGestures}>
-        <View style={styles.videoContainer}>
-          {videoUrl ? (
-            <VideoView
-              ref={videoViewRef}
-              style={styles.video}
-              player={player}
-              allowsPictureInPicture={true}
-              startsPictureInPictureAutomatically={true}
-              contentFit="contain"
-              nativeControls={false}
-              fullscreenOptions={{
-                enable: true,
-                orientation: 'landscape',
-                autoExitOnRotate: true,
+      {/* Video Content & Interaction Area */}
+      <View style={styles.videoContainer}>
+        {videoUrl ? (
+          <VideoView
+            ref={videoViewRef}
+            style={styles.video}
+            player={player}
+            allowsPictureInPicture={true}
+            startsPictureInPictureAutomatically={true}
+            contentFit="contain"
+            nativeControls={false}
+            fullscreenOptions={{
+              enable: true,
+              orientation: 'landscape',
+              autoExitOnRotate: true,
+            }}
+            onPictureInPictureStart={() => {
+              isInPiPRef.current = true;
+            }}
+            onPictureInPictureStop={() => {
+              isInPiPRef.current = false;
+              // If user pressed 'X' to close PiP, Android stops the window while app is in background.
+              // Immediately check and pause playback, plus schedule a fallback check.
+              if (AppState.currentState !== 'active') {
+                player.pause();
+                if (animeId && episodeId) {
+                  saveProgress(currentTimeRef.current, durationRef.current);
+                }
+              }
+              setTimeout(() => {
+                if (AppState.currentState !== 'active') {
+                  player.pause();
+                  if (animeId && episodeId) {
+                    saveProgress(currentTimeRef.current, durationRef.current);
+                  }
+                }
+              }, 200);
+            }}
+          />
+        ) : isLoadingSource ? (
+          <PlayerSkeleton animeTitle={animeTitle} episodeNumber={episodeNumber} />
+        ) : (
+          <View style={styles.loadingWrapper}>
+            <Ionicons name="alert-circle-outline" size={48} color={theme.colors.error || oledTheme.colors.error} />
+            <Text style={styles.errorText}>{(sourceError || 'IMPOSSIBILE RIPRODURRE').toUpperCase()}</Text>
+            <Pressable
+              style={[styles.retryBtn, { backgroundColor: theme.colors.primary }]}
+              onPress={loadStream}
+            >
+              <Text style={[styles.retryBtnText, { color: getContrastTextColor(theme.colors.primary) }]}>RIPROVA</Text>
+            </Pressable>
+          </View>
+        )}
+
+        {/* Gesture detector touch surface over video (active when controls hidden) */}
+        {!showControls && (
+          <GestureDetector gesture={composedGestures}>
+            <View style={StyleSheet.absoluteFill} />
+          </GestureDetector>
+        )}
+
+        {/* Cumulative Double-Tap Skip Feedback (centered beside central play/pause symbol) */}
+        {cumulativeSkip && (
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              styles.centerSkipFeedback,
+              cumulativeSkip.direction === 'left' ? styles.centerSkipLeft : styles.centerSkipRight,
+              {
+                opacity: skipAnim.interpolate({
+                  inputRange: [0, 1, 1.15],
+                  outputRange: [0, 1, 1],
+                  extrapolate: 'clamp',
+                }),
+                transform: [
+                  {
+                    scale: skipAnim.interpolate({
+                      inputRange: [0, 1, 1.15],
+                      outputRange: [0.85, 1, 1.15],
+                      extrapolate: 'clamp',
+                    }),
+                  },
+                ],
+              },
+            ]}
+          >
+            <Ionicons
+              name={cumulativeSkip.direction === 'left' ? 'play-back' : 'play-forward'}
+              size={18}
+              color="#FFFFFF"
+            />
+            <Text style={styles.centerSkipText}>
+              {cumulativeSkip.direction === 'left'
+                ? `-${cumulativeSkip.seconds}s`
+                : `+${cumulativeSkip.seconds}s`}
+            </Text>
+          </Animated.View>
+        )}
+
+        {/* HUD Volume / Brightness / Speed Indicator */}
+        {hudIndicator && (
+          <View style={[styles.hudBox, { top: Math.max(24, insets.top + 8) }]}>
+            <Ionicons
+              name={
+                hudIndicator.type === 'volume'
+                  ? 'volume-high'
+                  : hudIndicator.type === 'brightness'
+                  ? hudIndicator.value === 'AUTOMATICA'
+                    ? 'sunny-outline'
+                    : 'sunny'
+                  : 'speedometer'
+              }
+              size={24}
+              color="#FFFFFF"
+            />
+            <Text style={styles.hudText}>
+              {typeof hudIndicator.value === 'string'
+                ? hudIndicator.value
+                : `${hudIndicator.value}%`}
+            </Text>
+          </View>
+        )}
+
+        {/* OSD Controls Overlay */}
+        {showControls && Boolean(videoUrl) && (
+          <View style={styles.osdOverlay}>
+            {/* Background tap handler to dismiss controls */}
+            <Pressable style={StyleSheet.absoluteFill} onPress={toggleControls} />
+
+            {/* OSD Header */}
+            <PlayerHeader
+              animeTitle={animeTitle}
+              episodeNumber={episodeNumber}
+              insets={insets}
+              onBack={() => router.back()}
+              onStartPiP={handleStartPiP}
+              onOpenOptions={() => {
+                resetControlsTimer();
+                setIsServerSheetVisible(true);
+              }}
+              onOpenInfo={() => {
+                resetControlsTimer();
+                setIsInfoSheetVisible(true);
               }}
             />
-          ) : (
-            <View style={styles.loadingWrapper}>
-              {isLoadingSource ? (
-                <>
-                  <ActivityIndicator size="large" color={theme.colors.primary} />
-                  <Text style={styles.loadingText}>Connessione al server video...</Text>
-                </>
+
+            {/* Central Controls: Prev Ep - Play/Pause - Next Ep */}
+            <View
+              style={[
+                styles.osdCenterRow,
+                { gap: isLandscape ? 40 : 24 },
+              ]}
+              pointerEvents="box-none"
+            >
+              {prevEpisode ? (
+                <Pressable
+                  style={styles.navEpBtn}
+                  onPress={() => handleNavigateToEpisode(prevEpisode)}
+                  hitSlop={12}
+                  accessibilityLabel={`EPISODIO PRECEDENTE: ${prevEpisode.number}`}
+                >
+                  <Ionicons name="play-skip-back" size={26} color="#FFFFFF" />
+                </Pressable>
               ) : (
-                <>
-                  <Ionicons name="alert-circle-outline" size={48} color={oledTheme.colors.error} />
-                  <Text style={styles.errorText}>{sourceError || 'Impossibile riprodurre'}</Text>
-                  <Pressable
-                    style={[styles.retryBtn, { backgroundColor: theme.colors.primary }]}
-                    onPress={() => setIsServerSheetVisible(true)}
-                  >
-                    <Text style={styles.retryBtnText}>Scegli un altro server</Text>
-                  </Pressable>
-                </>
+                <View style={styles.navEpBtnSpacer} />
+              )}
+
+              <Pressable
+                style={[styles.centerPlayBtn, { backgroundColor: `${theme.colors.primary}E0` }]}
+                onPress={handlePlayPause}
+                hitSlop={16}
+                accessibilityLabel={isPlaying ? 'PAUSA' : 'RIPRODUCI'}
+              >
+                <Ionicons
+                  name={isPlaying ? 'pause' : 'play'}
+                  size={44}
+                  color={getContrastTextColor(theme.colors.primary)}
+                />
+              </Pressable>
+
+              {nextEpisode ? (
+                <Pressable
+                  style={styles.navEpBtn}
+                  onPress={() => handleNavigateToEpisode(nextEpisode)}
+                  hitSlop={12}
+                  accessibilityLabel={`EPISODIO SUCCESSIVO: ${nextEpisode.number}`}
+                >
+                  <Ionicons name="play-skip-forward" size={26} color="#FFFFFF" />
+                </Pressable>
+              ) : (
+                <View style={styles.navEpBtnSpacer} />
               )}
             </View>
-          )}
 
-          {/* Double Tap Feedback Overlay */}
-          {seekFeedback && (
-            <Animated.View
-              style={[
-                styles.seekFeedbackBox,
-                seekFeedback === 'left' ? styles.seekLeft : styles.seekRight,
-                { opacity: seekFeedbackAnim },
-              ]}
-            >
-              <Ionicons
-                name={seekFeedback === 'left' ? 'play-back' : 'play-forward'}
-                size={36}
-                color="#FFFFFF"
-              />
-              <Text style={styles.seekFeedbackText}>
-                {seekFeedback === 'left' ? '-10s' : '+10s'}
-              </Text>
-            </Animated.View>
-          )}
-
-          {/* HUD Volume / Brightness Indicator */}
-          {hudIndicator && (
-            <View style={styles.hudBox}>
-              <Ionicons
-                name={hudIndicator.type === 'volume' ? 'volume-high' : 'sunny'}
-                size={24}
-                color="#FFFFFF"
-              />
-              <Text style={styles.hudText}>{hudIndicator.value}%</Text>
-            </View>
-          )}
-
-          {/* AniSkip Button */}
-          {activeSkip && (
-            <AniSkipButton
-              skipType={activeSkip.skipType === 'ed' ? 'outro' : 'intro'}
-              onSkip={handleAniSkip}
+            {/* OSD Footer */}
+            <PlayerFooter
+              insets={insets}
+              player={player}
+              duration={duration}
+              initialTime={currentTimeRef.current || initialResumePosition}
+              playbackSpeed={playbackSpeed}
+              isLandscape={isLandscape}
+              primaryColor={theme.colors.primary}
+              cardColor={theme.colors.card}
+              borderColor={theme.colors.border}
+              textColor={theme.colors.text}
+              thumbnail={thumbnail}
+              onSeek={handleTimelineSeek}
+              onCycleSpeed={handleCycleSpeed}
+              onOpenSpeedSheet={() => {
+                resetControlsTimer();
+                setIsServerSheetVisible(true);
+              }}
+              onToggleFullscreen={toggleOrientationFullscreen}
+              onOpenEpisodes={() => {
+                resetControlsTimer();
+                setIsEpisodesSheetVisible(true);
+              }}
+              onScrubbingChange={handleScrubbingChange}
             />
-          )}
+          </View>
+        )}
 
-          {/* OSD Controls Overlay */}
-          {showControls && (
-            <View style={styles.osdOverlay}>
-              {/* OSD Header */}
-              <View
-                style={[
-                  styles.osdHeader,
-                  {
-                    paddingTop: Math.max(16, insets.top),
-                    paddingLeft: Math.max(16, insets.left),
-                    paddingRight: Math.max(16, insets.right),
-                  },
-                ]}
-              >
-                <Pressable
-                  style={styles.osdBackBtn}
-                  onPress={() => router.back()}
-                  hitSlop={12}
-                  accessibilityLabel="Esci dal player"
-                >
-                  <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
-                </Pressable>
+        {/* AniSkip Button (rendered on top of video & OSD, independent of controls touch) */}
+        {activeSkip && (
+          <AniSkipButton
+            skipType={
+              activeSkip.skipType === 'ed' || activeSkip.skipType === 'mixed-ed'
+                ? 'outro'
+                : activeSkip.skipType === 'recap'
+                ? 'recap'
+                : 'intro'
+            }
+            onSkip={handleAniSkip}
+            player={player}
+            startTime={activeSkip.interval.startTime}
+            endTime={activeSkip.interval.endTime}
+            currentTime={currentTimeRef.current}
+          />
+        )}
+      </View>
 
-                <View style={styles.osdTitleWrapper}>
-                  <Text style={styles.osdTitle} numberOfLines={1}>
-                    {animeTitle}
-                  </Text>
-                  <Text style={styles.osdSubtitle}>Episodio {episodeNumber}</Text>
-                </View>
-
-                <View style={styles.osdHeaderActions}>
-                  <Pressable
-                    style={styles.osdIconBtn}
-                    onPress={handleStartPiP}
-                    hitSlop={8}
-                    accessibilityLabel="Picture in Picture"
-                  >
-                    <Ionicons name="open-outline" size={22} color="#FFFFFF" />
-                  </Pressable>
-
-                  <Pressable
-                    style={styles.osdIconBtn}
-                    onPress={() => setIsServerSheetVisible(true)}
-                    hitSlop={8}
-                    accessibilityLabel="Server e opzioni"
-                  >
-                    <Ionicons name="options" size={22} color="#FFFFFF" />
-                  </Pressable>
-                </View>
-              </View>
-
-              {/* Central Play/Pause Button */}
-              <View style={styles.osdCenter}>
-                <Pressable
-                  style={styles.centerPlayBtn}
-                  onPress={handlePlayPause}
-                  hitSlop={16}
-                  accessibilityLabel={isPlaying ? 'Pausa' : 'Riproduci'}
-                >
-                  <Ionicons
-                    name={isPlaying ? 'pause' : 'play'}
-                    size={44}
-                    color="#FFFFFF"
-                  />
-                </Pressable>
-              </View>
-
-              {/* OSD Footer */}
-              <View
-                style={[
-                  styles.osdFooter,
-                  {
-                    paddingBottom: Math.max(16, insets.bottom),
-                    paddingLeft: Math.max(16, insets.left),
-                    paddingRight: Math.max(16, insets.right),
-                  },
-                ]}
-              >
-                {/* Interactive Timeline track */}
-                <Pressable
-                  style={styles.timelineWrapper}
-                  onLayout={(e) => setTimelineWidth(e.nativeEvent.layout.width)}
-                  onPress={(e) => handleTimelineSeek(e.nativeEvent.locationX)}
-                  hitSlop={{ top: 12, bottom: 12 }}
-                >
-                  <View style={styles.timelineTrack}>
-                    <View
-                      style={[
-                        styles.timelineBar,
-                        {
-                          backgroundColor: theme.colors.primary,
-                          width: `${
-                            duration > 0
-                              ? Math.min(100, Math.max(0, (currentTime / duration) * 100))
-                              : 0
-                          }%`,
-                        },
-                      ]}
-                    />
-                  </View>
-                </Pressable>
-
-                {/* Time & Action Controls */}
-                <View style={styles.footerControls}>
-                  <Text style={styles.timeText}>
-                    {formatTime(currentTime)} / {formatTime(duration)}
-                  </Text>
-
-                  <View style={styles.footerRight}>
-                    <Pressable
-                      style={styles.speedBtn}
-                      onPress={() => setIsServerSheetVisible(true)}
-                      hitSlop={8}
-                    >
-                      <Text style={styles.speedBtnText}>{playbackSpeed}x</Text>
-                    </Pressable>
-
-                    <Pressable
-                      style={styles.fullscreenBtn}
-                      onPress={toggleOrientationFullscreen}
-                      hitSlop={8}
-                      accessibilityLabel={isLandscape ? 'Esci da schermo intero' : 'Schermo intero orizzontale'}
-                    >
-                      <Ionicons
-                        name={isLandscape ? 'contract-outline' : 'expand-outline'}
-                        size={22}
-                        color="#FFFFFF"
-                      />
-                    </Pressable>
-                  </View>
-                </View>
-              </View>
-            </View>
-          )}
-        </View>
-      </GestureDetector>
-
-      {/* Server & Speed Sheet */}
+      {/* Playback Options & Speed Sheet (server selection enabled if multiple providers exist) */}
       <ServerBottomSheet
         isVisible={isServerSheetVisible}
         onClose={() => setIsServerSheetVisible(false)}
-        servers={[
-          { id: '9', name: 'AnimeWorld Server (Default)' },
-          { id: '4', name: 'Streamtape' },
-          { id: '8', name: 'Doodstream' },
-        ]}
-        currentServerId={serverId}
-        onSelectServer={(sId) => setServerId(sId)}
         currentSpeed={playbackSpeed}
         onSelectSpeed={handleSpeedChange}
+        showServerSelection={ProviderRegistry.hasMultipleProviders()}
+      />
+
+      {/* Episodes Carousel Bottom Sheet */}
+      <PlayerEpisodesCarouselSheet
+        isVisible={isEpisodesSheetVisible}
+        onClose={() => setIsEpisodesSheetVisible(false)}
+        episodes={episodesList}
+        currentEpisodeNumber={episodeNumber}
+        animeId={animeId}
+        animeImage={thumbnail}
+        onSelectEpisode={handleNavigateToEpisode}
+      />
+
+      {/* Anime & Episode Info Bottom Sheet */}
+      <PlayerInfoSheet
+        isVisible={isInfoSheetVisible}
+        onClose={() => setIsInfoSheetVisible(false)}
+        animeTitle={animeTitle}
+        episodeNumber={episodeNumber}
+        episodeTitle={episodesList[currEpIndex]?.title}
+        episodeDescription={episodesList[currEpIndex]?.description}
+        animeImage={thumbnail || animeDetail?.image || animeDetail?.thumbnail}
+        description={animeDetail?.synopsis || animeDetail?.description}
+        genres={animeDetail?.genres}
+        status={animeDetail?.status}
+        releaseYear={animeDetail?.releaseYear}
       />
     </View>
   );
@@ -700,13 +1056,17 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     color: '#A3A3A3',
-    fontSize: 14,
+    fontSize: 13,
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
   },
   errorText: {
     color: oledTheme.colors.error,
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '700',
     textAlign: 'center',
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
   },
   retryBtn: {
     backgroundColor: oledTheme.colors.primary,
@@ -720,30 +1080,45 @@ const styles = StyleSheet.create({
   retryBtnText: {
     color: '#FFFFFF',
     fontWeight: '700',
-    fontSize: 13,
+    fontSize: 12,
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
   },
-  seekFeedbackBox: {
+  centerSkipFeedback: {
     position: 'absolute',
-    top: '40%',
-    backgroundColor: 'rgba(0,0,0,0.75)',
-    paddingHorizontal: 24,
-    paddingVertical: 16,
-    borderRadius: oledTheme.radius.lg,
+    top: '50%',
+    marginTop: -22,
+    height: 44,
+    paddingHorizontal: 16,
+    borderRadius: 22,
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.25)',
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    zIndex: 5,
+    zIndex: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.6,
+    shadowRadius: 4,
+    elevation: 6,
   },
-  seekLeft: {
-    left: 48,
+  centerSkipLeft: {
+    right: '50%',
+    marginRight: 64,
   },
-  seekRight: {
-    right: 48,
+  centerSkipRight: {
+    left: '50%',
+    marginLeft: 64,
   },
-  seekFeedbackText: {
+  centerSkipText: {
     color: '#FFFFFF',
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '800',
+    fontFamily: oledTheme.typography.caption.fontFamily,
+    letterSpacing: 0.5,
   },
   hudBox: {
     position: 'absolute',
@@ -756,14 +1131,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    zIndex: 5,
+    zIndex: 6,
     borderWidth: 1,
     borderColor: '#333333',
   },
   hudText: {
     color: '#FFFFFF',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
   },
   osdOverlay: {
     ...StyleSheet.absoluteFill,
@@ -771,109 +1148,34 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     zIndex: 4,
   },
-  osdHeader: {
+  osdCenterRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingBottom: 12,
-    backgroundColor: 'rgba(0,0,0,0.65)',
-  },
-  osdBackBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 8,
+    gap: 36,
+    zIndex: 2,
   },
-  osdTitleWrapper: {
-    flex: 1,
-  },
-  osdTitle: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  osdSubtitle: {
-    color: '#A3A3A3',
-    fontSize: 12,
-    marginTop: 2,
-  },
-  osdHeaderActions: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  osdIconBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+  navEpBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  osdCenter: {
-    alignItems: 'center',
-    justifyContent: 'center',
+  navEpBtnSpacer: {
+    width: 48,
+    height: 48,
   },
   centerPlayBtn: {
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: 'rgba(229, 9, 20, 0.88)',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.2)',
-  },
-  osdFooter: {
-    paddingTop: 10,
-    backgroundColor: 'rgba(0,0,0,0.65)',
-  },
-  timelineWrapper: {
-    paddingVertical: 10,
-    justifyContent: 'center',
-  },
-  timelineTrack: {
-    height: 4,
-    backgroundColor: 'rgba(255,255,255,0.25)',
-    borderRadius: 2,
-    overflow: 'hidden',
-  },
-  timelineBar: {
-    height: '100%',
-    backgroundColor: oledTheme.colors.primary,
-  },
-  footerControls: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 6,
-  },
-  timeText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  footerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-  },
-  speedBtn: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
-    backgroundColor: '#262626',
-    minHeight: 32,
-    justifyContent: 'center',
-  },
-  speedBtnText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  fullscreenBtn: {
-    width: 44,
-    height: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 });

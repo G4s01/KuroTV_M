@@ -4,7 +4,8 @@ import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { ThemeProvider } from '@/theme';
+import { ThemeProvider, useTheme } from '@/theme';
+import { AppStorage } from '@/services/storage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -15,37 +16,59 @@ const queryClient = new QueryClient({
   },
 });
 
+function RootNavigation() {
+  const { theme } = useTheme();
+  const isLight = theme.name === 'light';
+
+  return (
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: theme.colors.background }}>
+      <StatusBar style={isLight ? 'dark' : 'light'} />
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: theme.colors.background },
+          animation: 'default',
+        }}
+      >
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen
+          name="anime/[id]"
+          options={{
+            headerShown: false,
+            animation: 'slide_from_right',
+          }}
+        />
+        <Stack.Screen
+          name="player/[id]"
+          options={{
+            headerShown: false,
+            animation: 'fade',
+          }}
+        />
+      </Stack>
+    </GestureHandlerRootView>
+  );
+}
+
 export default function RootLayout() {
+  React.useEffect(() => {
+    // Non-blocking background storage maintenance on startup
+    const timer = setTimeout(() => {
+      try {
+        AppStorage.pruneOldProgress();
+        AppStorage.cleanupExpiredHistory();
+      } catch {
+        // Safe fallback
+      }
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, []);
+
   return (
     <ThemeProvider>
       <QueryClientProvider client={queryClient}>
         <SafeAreaProvider>
-          <GestureHandlerRootView style={{ flex: 1, backgroundColor: '#000000' }}>
-            <StatusBar style="light" />
-            <Stack
-              screenOptions={{
-                headerShown: false,
-                contentStyle: { backgroundColor: '#000000' },
-                animation: 'default',
-              }}
-            >
-              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-              <Stack.Screen
-                name="anime/[id]"
-                options={{
-                  headerShown: false,
-                  animation: 'slide_from_right',
-                }}
-              />
-              <Stack.Screen
-                name="player/[id]"
-                options={{
-                  headerShown: false,
-                  animation: 'fade',
-                }}
-              />
-            </Stack>
-          </GestureHandlerRootView>
+          <RootNavigation />
         </SafeAreaProvider>
       </QueryClientProvider>
     </ThemeProvider>

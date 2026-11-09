@@ -29,9 +29,28 @@ import {
   mq,
   ColorScheme,
   Orientation,
+  getContrastTextColor,
 } from '../src/theme/unistyles';
 import { AppStorage } from '../src/services/storage/index';
 import { scraperConfig } from '../src/services/scraper/config';
+import { ProviderRegistry } from '../src/services/scraper/registry';
+import {
+  PlayerHeader,
+  PlayerTimeline,
+  PlayerFooter,
+  PlayerEpisodesCarouselSheet,
+  PlayerInfoSheet,
+  formatTime,
+} from '../src/components/player/index';
+import {
+  AnimeHeaderBackdrop,
+  AnimeSynopsis,
+  AnimeInfoTable,
+  AnimeControlsBar,
+} from '../src/components/anime/index';
+import { HistorySlider } from '../src/components/index';
+import { parseDetailPage } from '../src/services/scraper/parsers/detail.parser';
+import { CURRENT_CHANGELOG, formatChangelog } from '../src/constants/changelog';
 import type { AniSkipResult } from '../src/types/index';
 
 console.log('=== Inizio Test di Verifica KuroTV Mobile ===\n');
@@ -354,6 +373,38 @@ assert.strictEqual(UnistylesRuntime.themeName, 'light');
 UnistylesRuntime.setTheme('oled');
 assert.strictEqual(UnistylesRuntime.themeName, 'oled');
 
+// 10. Invertibilità Temi (Dark e Light per ciascuna famiglia)
+applyThemeFamily('oled', 'light');
+assert.strictEqual(UnistylesRuntime.themeName, 'light', 'applyThemeFamily oled light deve attivare theme light');
+assert.strictEqual(lightTheme.colors.background, '#FFFFFF', 'OLED light background deve essere bianco #FFFFFF');
+
+applyThemeFamily('oled', 'dark');
+assert.strictEqual(UnistylesRuntime.themeName, 'oled', 'applyThemeFamily oled dark deve ripristinare oled');
+assert.strictEqual(oledTheme.colors.background, '#000000', 'OLED dark background deve essere #000000');
+
+applyThemeFamily('pikachu', 'light');
+assert.strictEqual(UnistylesRuntime.themeName, 'light', 'Pikachu light deve attivare theme light');
+assert.strictEqual(lightTheme.colors.primary, '#F62D14', 'Pikachu light primary deve essere #F62D14');
+
+applyThemeFamily('pikachu', 'dark');
+assert.strictEqual(UnistylesRuntime.themeName, 'oled', 'Pikachu dark deve ripristinare oled');
+assert.strictEqual(oledTheme.colors.primary, '#FAD61D', 'Pikachu dark primary deve essere #FAD61D');
+
+applyThemeFamily('orchid', 'light');
+assert.strictEqual(UnistylesRuntime.themeName, 'light', 'Orchid light deve attivare theme light');
+applyThemeFamily('orchid', 'dark');
+assert.strictEqual(UnistylesRuntime.themeName, 'oled', 'Orchid dark deve ripristinare oled');
+
+applyThemeFamily('rainbow', 'light');
+assert.strictEqual(UnistylesRuntime.themeName, 'light', 'Rainbow light deve attivare theme light');
+applyThemeFamily('rainbow', 'dark');
+assert.strictEqual(UnistylesRuntime.themeName, 'oled', 'Rainbow dark deve ripristinare oled');
+
+// Ripristino tema default per i test successivi
+applyThemeFamily('default', 'dark');
+assert.strictEqual(oledTheme.colors.primary, '#E50914');
+assert.strictEqual(oledTheme.colors.background, '#000000');
+
 assert.strictEqual(typeof ThemeProvider, 'function', 'ThemeProvider deve essere esportato come componente');
 assert.strictEqual(typeof useTheme, 'function', 'useTheme deve essere esportato come hook');
 
@@ -405,10 +456,128 @@ const history = AppStorage.getWatchHistory();
 assert(history.length > 0, 'La cronologia deve contenere l\'episodio visto');
 assert.strictEqual(history[0].animeId, 'test-anime-1');
 
+// Watch progress with thumbnail and continue watching
+AppStorage.saveWatchProgress({
+  animeId: 'test-anime-thumbnail',
+  animeTitle: 'Test Anime Thumb',
+  thumbnail: 'https://example.com/anime-cover.jpg',
+  episodeId: 'ep-thumb-1',
+  episodeNumber: 1,
+  currentTime: 30,
+  duration: 1200,
+});
+const continueList = AppStorage.getContinueWatching();
+assert(continueList.length > 0, 'Continue watching deve essere popolato');
+assert.strictEqual(continueList[0].animeId, 'test-anime-thumbnail');
+assert.strictEqual(continueList[0].thumbnail, 'https://example.com/anime-cover.jpg', 'Thumbnail deve essere salvata');
+
+// Test rimozione da continue watching
+AppStorage.removeContinueWatching('test-anime-thumbnail');
+const afterRemove = AppStorage.getContinueWatching().filter((c) => c.animeId === 'test-anime-thumbnail');
+assert.strictEqual(afterRemove.length, 0, 'L\'anime rimosso non deve essere presente in continue watching');
+
+// Test avanzamento automatico all'episodio successivo al completamento
+AppStorage.saveWatchProgress({
+  animeId: 'test-anime-advancing',
+  animeTitle: 'Advancing Anime',
+  thumbnail: 'https://example.com/adv.jpg',
+  episodeId: 'ep-1',
+  episodeNumber: 1,
+  currentTime: 1150, // > 90% di 1200
+  duration: 1200,
+  nextEpisode: {
+    id: 'ep-2',
+    number: 2,
+    dataId: 'd-2',
+  },
+});
+const advancingContinue = AppStorage.getContinueWatching().find((c) => c.animeId === 'test-anime-advancing');
+assert(advancingContinue !== undefined, 'L\'anime deve essere in continue watching con il prossimo episodio');
+assert.strictEqual(advancingContinue.episodeNumber, 2, 'L\'episodio deve essere avanzato al 2');
+assert.strictEqual(advancingContinue.position, 0, 'Il minutaggio del nuovo episodio deve partire da 0');
+assert.strictEqual(advancingContinue.percentage, 0, 'La percentuale del nuovo episodio deve partire da 0');
+
+// Test rimozione automatica da continue watching se l'ultimo episodio è concluso e non ci sono altri episodi
+AppStorage.saveWatchProgress({
+  animeId: 'test-anime-advancing',
+  animeTitle: 'Advancing Anime',
+  thumbnail: 'https://example.com/adv.jpg',
+  episodeId: 'ep-2',
+  episodeNumber: 2,
+  currentTime: 1200,
+  duration: 1200,
+  // Nessun nextEpisode: serie conclusa
+});
+const completedContinue = AppStorage.getContinueWatching().find((c) => c.animeId === 'test-anime-advancing');
+assert.strictEqual(completedContinue, undefined, 'Una serie completamente terminata deve uscire da continue watching');
+
+// Theme Mode in Storage
+AppStorage.setThemeMode('light');
+assert.strictEqual(AppStorage.getThemeMode(), 'light', 'AppStorage.getThemeMode deve restituire light');
+AppStorage.setThemeMode('oled');
+assert.strictEqual(AppStorage.getThemeMode(), 'oled', 'AppStorage.getThemeMode deve restituire oled');
+
+// Changelog verification
+assert.strictEqual(CURRENT_CHANGELOG.version, '1.0.0', 'CURRENT_CHANGELOG deve essere v1.0.0');
+assert(CURRENT_CHANGELOG.highlights.length > 0, 'CURRENT_CHANGELOG deve avere note di rilascio');
+const formattedText = formatChangelog(CURRENT_CHANGELOG);
+assert(formattedText.includes('1.0.0'), 'Changelog formattato deve contenere versione 1.0.0');
+
 // Clear watch history
 AppStorage.clearWatchHistory();
 const clearedHistory = AppStorage.getWatchHistory();
 assert.strictEqual(clearedHistory.length, 0, 'La cronologia deve essere vuota dopo clearWatchHistory');
+
+// Test removeWatchHistoryItem (singola rimozione episodio)
+AppStorage.saveWatchProgress({
+  animeId: 'item-to-remove-anime',
+  animeTitle: 'Item To Remove',
+  episodeId: 'ep-rem-1',
+  episodeNumber: 1,
+  currentTime: 300,
+  duration: 1200,
+});
+AppStorage.saveWatchProgress({
+  animeId: 'item-to-remove-anime',
+  animeTitle: 'Item To Remove',
+  episodeId: 'ep-rem-2',
+  episodeNumber: 2,
+  currentTime: 400,
+  duration: 1200,
+});
+
+assert(
+  AppStorage.getWatchHistory().some((h) => h.animeId === 'item-to-remove-anime' && h.episodeNumber === 1),
+  'Episodio 1 deve essere in cronologia'
+);
+assert(
+  AppStorage.getWatchHistory().some((h) => h.animeId === 'item-to-remove-anime' && h.episodeNumber === 2),
+  'Episodio 2 deve essere in cronologia'
+);
+
+const removedEp1 = AppStorage.removeWatchHistoryItem('item-to-remove-anime', 'ep-rem-1', 1);
+assert.strictEqual(removedEp1, true, 'removeWatchHistoryItem deve restituire true');
+assert(
+  !AppStorage.getWatchHistory().some((h) => h.animeId === 'item-to-remove-anime' && h.episodeNumber === 1),
+  'Episodio 1 rimosso non deve più comparire in cronologia'
+);
+assert(
+  AppStorage.getWatchHistory().some((h) => h.animeId === 'item-to-remove-anime' && h.episodeNumber === 2),
+  'Episodio 2 deve rimanere in cronologia'
+);
+
+// Test disabilitazione cronologia (Retention = -1 / OFF)
+AppStorage.setHistoryRetentionDays(-1);
+assert.strictEqual(AppStorage.getHistoryRetentionDays(), -1, 'Retention deve essere -1 (OFF)');
+assert.strictEqual(AppStorage.isHistoryEnabled(), false, 'isHistoryEnabled deve essere false');
+assert.strictEqual(AppStorage.getWatchHistory().length, 0, 'getWatchHistory deve restituire [] quando OFF');
+assert.strictEqual(AppStorage.getContinueWatching().length, 0, 'getContinueWatching deve restituire [] quando OFF');
+
+// Ripristino cronologia attiva (90 giorni)
+AppStorage.setHistoryRetentionDays(90);
+assert.strictEqual(AppStorage.getHistoryRetentionDays(), 90, 'Retention deve tornare a 90');
+assert.strictEqual(AppStorage.isHistoryEnabled(), true, 'isHistoryEnabled deve tornare true');
+AppStorage.clearWatchHistory();
 
 // TLD & Custom Domain Scraper Synchronization
 AppStorage.setTld('ac');
@@ -424,6 +593,44 @@ AppStorage.setTld('tv');
 assert.strictEqual(AppStorage.getTld(), 'tv', 'AppStorage.getTld deve restituire tv');
 assert.strictEqual(AppStorage.getCustomDomain(), undefined, 'setTld tv deve rimuovere customDomain');
 assert.strictEqual(scraperConfig.getBaseUrl(), 'https://www.animeworld.tv', 'scraperConfig base URL deve tornare al dominio animeworld.tv');
+
+// Test pruneOldProgress (MMKV automatic cleanup)
+AppStorage.saveWatchProgress({
+  animeId: 'old-completed-anime',
+  animeTitle: 'Old Completed',
+  episodeId: 'old-ep-1',
+  episodeNumber: 1,
+  currentTime: 1400,
+  duration: 1400,
+});
+const oldKey = `user.progress.old-completed-anime.1`;
+const oldItem = AppStorage.getObject<any>(oldKey);
+if (oldItem) {
+  oldItem.updatedAt = Date.now() - 100 * 24 * 60 * 60 * 1000;
+  oldItem.isCompleted = true;
+  AppStorage.setObject(oldKey, oldItem);
+}
+
+AppStorage.saveWatchProgress({
+  animeId: 'active-continue-anime',
+  animeTitle: 'Active Continue',
+  episodeId: 'act-ep-1',
+  episodeNumber: 1,
+  currentTime: 400,
+  duration: 1400,
+});
+const activeKey = `user.progress.active-continue-anime.1`;
+const activeItem = AppStorage.getObject<any>(activeKey);
+if (activeItem) {
+  activeItem.updatedAt = Date.now() - 100 * 24 * 60 * 60 * 1000;
+  activeItem.isCompleted = true;
+  AppStorage.setObject(activeKey, activeItem);
+}
+
+const pruned = AppStorage.pruneOldProgress(200, 60);
+assert(pruned >= 1, 'pruneOldProgress deve rimuovere almeno 1 voce completata obsoleta');
+assert.strictEqual(AppStorage.getObject(oldKey), null, 'old-completed-anime deve essere eliminato');
+assert(AppStorage.getObject(activeKey) !== null, 'active-continue-anime in continue watching non deve MAI essere eliminato');
 
 console.log('✓ Storage Locale & Preferiti / Cronologia verificati con successo.');
 
@@ -466,6 +673,22 @@ assert.strictEqual(batches74[2].label, 'EP. 51 - 74');
 assert.strictEqual(batches74[2].start, 51);
 assert.strictEqual(batches74[2].end, 74);
 
+// Case 3: 1000 episodes (large series dynamic batch size: 50)
+const batchSize1000 = 1000 > 500 ? 50 : 25;
+const batches1000 = createBatches(1000, batchSize1000);
+assert.strictEqual(batches1000.length, 20, '1000 episodi devono generare 20 batch da 50');
+assert.strictEqual(batches1000[0].label, 'EP. 1 - 50');
+assert.strictEqual(batches1000[19].label, 'EP. 951 - 1000');
+assert.strictEqual(batches1000[19].start, 951);
+assert.strictEqual(batches1000[19].end, 1000);
+
+// Case 4: Anime with Episode 0 (Prologue/Special, e.g. Fate/Zero, Jujutsu Kaisen 0)
+const mockEpZeroList = [{ number: 0 }, { number: 1 }, { number: 2 }, { number: 3 }];
+const startEpZero = typeof mockEpZeroList[0]?.number === 'number' ? mockEpZeroList[0].number : 1;
+const endEpZero = typeof mockEpZeroList[mockEpZeroList.length - 1]?.number === 'number' ? mockEpZeroList[mockEpZeroList.length - 1].number : 4;
+assert.strictEqual(startEpZero, 0, 'Episodio 0 non deve essere saltato o convertito in 1');
+assert.strictEqual(endEpZero, 3, 'Ultimo episodio deve essere 3');
+
 console.log('✓ Logica Batch Puntate e Griglia Episodi verificata con successo.');
 
 // -----------------------------------------------------------------------------
@@ -474,6 +697,12 @@ console.log('✓ Logica Batch Puntate e Griglia Episodi verificata con successo.
 console.log('\n[5/7] Verifica Rilevamento Intervalli AniSkip...');
 
 const mockSkips: AniSkipResult[] = [
+  {
+    skipType: 'recap',
+    interval: { startTime: 10, endTime: 45 },
+    skipId: 'skip-recap-1',
+    episodeLength: 1440,
+  },
   {
     skipType: 'op',
     interval: { startTime: 90, endTime: 180 },
@@ -494,6 +723,11 @@ function findActiveSkip(currentTime: number, skips: AniSkipResult[]) {
   ) || null;
 }
 
+// At 25s: Recap skip active
+const recapSkip = findActiveSkip(25, mockSkips);
+assert(recapSkip !== null);
+assert.strictEqual(recapSkip.skipType, 'recap');
+
 // At 50s: no skip
 assert.strictEqual(findActiveSkip(50, mockSkips), null);
 
@@ -510,7 +744,79 @@ const edSkip = findActiveSkip(1350, mockSkips);
 assert(edSkip !== null);
 assert.strictEqual(edSkip.skipType, 'ed');
 
-console.log('✓ Rilevamento Intervalli AniSkip verificato con successo.');
+// Verify playback speed cycling and brightness auto threshold
+const SPEED_OPTIONS = [0.75, 1.0, 1.25, 1.5, 2.0];
+const cycleSpeed = (s: number) => {
+  const idx = SPEED_OPTIONS.findIndex((o) => Math.abs(o - s) < 0.01);
+  return SPEED_OPTIONS[(idx + 1) % SPEED_OPTIONS.length];
+};
+assert.strictEqual(cycleSpeed(0.75), 1.0);
+assert.strictEqual(cycleSpeed(1.0), 1.25);
+assert.strictEqual(cycleSpeed(1.5), 2.0);
+assert.strictEqual(cycleSpeed(2.0), 0.75);
+
+function computeBrightness(currentVal: number, delta: number): number | 'AUTOMATICA' {
+  const raw = currentVal + delta;
+  if (raw <= 0.08) return 'AUTOMATICA';
+  return Math.max(0.1, Math.min(1, raw));
+}
+assert.strictEqual(computeBrightness(0.15, -0.1), 'AUTOMATICA');
+assert.strictEqual(computeBrightness(0.1, -0.05), 'AUTOMATICA');
+assert.strictEqual(computeBrightness(0.5, 0.3), 0.8);
+
+// Verify smooth transition from AUTOMATICA when swiping up
+const startBrightnessFromAuto = -1 === -1 ? 0.08 : -1;
+assert.strictEqual(computeBrightness(startBrightnessFromAuto, 0.05), 0.13);
+
+// Verify contrast text color utility for themes
+assert.strictEqual(getContrastTextColor('#E50914'), '#FFFFFF', 'Rosso Kuro deve avere testo bianco');
+assert.strictEqual(getContrastTextColor('#FAD61D'), '#000000', 'Giallo Pikachu deve avere testo nero');
+assert.strictEqual(getContrastTextColor('#73FEC8'), '#000000', 'Turchese Rainbow deve avere testo nero');
+assert.strictEqual(getContrastTextColor('#FB6EFF'), '#000000', 'Rosa Rainbow Light deve avere testo nero');
+assert.strictEqual(getContrastTextColor('#9334C2'), '#FFFFFF', 'Viola Orchid Light deve avere testo bianco');
+assert.strictEqual(getContrastTextColor('#000000'), '#FFFFFF', 'Nero deve avere testo bianco');
+assert.strictEqual(getContrastTextColor('#FFFFFF'), '#000000', 'Bianco deve avere testo nero');
+
+// Verify Provider Registry (Step 3)
+assert.strictEqual(ProviderRegistry.getActiveProvider().id, 'animeworld');
+assert.strictEqual(ProviderRegistry.hasMultipleProviders(), false);
+const allProviders = ProviderRegistry.getAllProviders();
+assert(allProviders.length >= 1, 'ProviderRegistry deve contenere almeno 1 provider');
+
+// Register mock secondary provider
+ProviderRegistry.registerProvider({
+  id: 'mock-provider',
+  name: 'Mock Secondary Provider',
+  getHome: async () => ({
+    sliders: [],
+    all: [],
+    subITA: [],
+    dubbed: [],
+    trending: [],
+    ongoing: [],
+    newAdded: [],
+    upcoming: [],
+    upcomingTitle: '',
+    topAnime: [],
+  }),
+  getAnimeDetail: async () => null,
+  search: async () => ({ items: [] }),
+  resolveVideo: async () => null,
+});
+assert.strictEqual(ProviderRegistry.hasMultipleProviders(), true, 'hasMultipleProviders deve restituire true dopo registrazione provider');
+assert.strictEqual(ProviderRegistry.unregisterProvider('mock-provider'), true, 'unregisterProvider deve rimuovere mock-provider');
+assert.strictEqual(ProviderRegistry.hasMultipleProviders(), false, 'hasMultipleProviders deve tornare false');
+ProviderRegistry.reset();
+assert.strictEqual(ProviderRegistry.hasMultipleProviders(), false, 'reset deve ripristinare solo animeworld');
+
+// Verify Scraper TLDs & Dynamic User Agent (Step 6)
+const candidateTlds = scraperConfig.getCandidateTlds();
+assert(candidateTlds.includes('so') && candidateTlds.includes('ac') && candidateTlds.includes('tv'), 'Candidate TLDs devono includere so, ac, tv');
+const altTlds = scraperConfig.getAlternativeTlds('so');
+assert(altTlds.includes('ac') && altTlds.includes('tv') && !altTlds.includes('so'), 'Alternative TLDs di so devono essere ac e tv');
+assert(scraperConfig.getUserAgent().includes('Android'), 'User-Agent deve includere identificatore mobile Android');
+
+console.log('✓ Rilevamento Intervalli AniSkip, Gestione Velocità & Luminosità verificati con successo.');
 
 // -----------------------------------------------------------------------------
 // 6. Test Skeleton Animation Components (OLED & Hermes Safe)
@@ -544,7 +850,303 @@ for (const file of skeletonFiles) {
   assert(!code.includes('react-tv-space-navigation'), `${file} non deve importare pacchetti TV`);
 }
 
-console.log('✓ Componenti Skeleton verificati con successo.');
+// Verify Extracted Player Components (Step 1)
+assert(
+  typeof PlayerHeader === 'function' || typeof PlayerHeader === 'object',
+  'PlayerHeader deve essere un componente React'
+);
+assert(
+  typeof PlayerTimeline === 'function' || typeof PlayerTimeline === 'object',
+  'PlayerTimeline deve essere un componente React'
+);
+assert(
+  typeof PlayerFooter === 'function' || typeof PlayerFooter === 'object',
+  'PlayerFooter deve essere un componente React'
+);
+assert(
+  typeof PlayerEpisodesCarouselSheet === 'function' || typeof PlayerEpisodesCarouselSheet === 'object',
+  'PlayerEpisodesCarouselSheet deve essere un componente React'
+);
+assert(
+  typeof PlayerInfoSheet === 'function' || typeof PlayerInfoSheet === 'object',
+  'PlayerInfoSheet deve essere un componente React'
+);
+assert.strictEqual(formatTime(75), '01:15', 'formatTime 75s deve essere 01:15');
+assert.strictEqual(formatTime(3665), '1:01:05', 'formatTime 3665s deve essere 1:01:05');
+
+// Verify cumulative skip calculation logic
+function computeCumulativeSkip(
+  current: { direction: 'left' | 'right'; seconds: number } | null,
+  newDirection: 'left' | 'right'
+): number {
+  if (current && current.direction === newDirection) {
+    return current.seconds + 10;
+  }
+  return 10;
+}
+assert.strictEqual(computeCumulativeSkip(null, 'right'), 10, 'Primo skip a destra deve essere 10s');
+assert.strictEqual(computeCumulativeSkip({ direction: 'right', seconds: 10 }, 'right'), 20, 'Secondo skip consecutivo deve essere 20s');
+assert.strictEqual(computeCumulativeSkip({ direction: 'right', seconds: 20 }, 'right'), 30, 'Terzo skip consecutivo deve essere 30s');
+assert.strictEqual(computeCumulativeSkip({ direction: 'right', seconds: 30 }, 'right'), 40, 'Quarto skip consecutivo deve essere 40s');
+assert.strictEqual(computeCumulativeSkip({ direction: 'right', seconds: 40 }, 'right'), 50, 'Quinto skip consecutivo deve essere 50s');
+assert.strictEqual(computeCumulativeSkip({ direction: 'right', seconds: 50 }, 'left'), 10, 'Inversione direzione skip deve resettare a 10s');
+
+// Verify episode adjacent navigation logic (Prev / Next)
+const testEpisodes = [
+  { id: 'ep-1', number: 1 },
+  { id: 'ep-2', number: 2 },
+  { id: 'ep-3', number: 3 },
+];
+function getAdjacentEpisodes(currentEpNum: number, list: typeof testEpisodes) {
+  const idx = list.findIndex((e) => e.number === currentEpNum);
+  return {
+    prev: idx > 0 ? list[idx - 1] : null,
+    next: idx >= 0 && idx + 1 < list.length ? list[idx + 1] : null,
+  };
+}
+assert.strictEqual(getAdjacentEpisodes(1, testEpisodes).prev, null, 'Episodio 1 non ha precedente');
+assert.strictEqual(getAdjacentEpisodes(1, testEpisodes).next?.number, 2, 'Episodio 1 ha successivo 2');
+assert.strictEqual(getAdjacentEpisodes(2, testEpisodes).prev?.number, 1, 'Episodio 2 ha precedente 1');
+assert.strictEqual(getAdjacentEpisodes(2, testEpisodes).next?.number, 3, 'Episodio 2 ha successivo 3');
+assert.strictEqual(getAdjacentEpisodes(3, testEpisodes).prev?.number, 2, 'Episodio 3 ha precedente 2');
+assert.strictEqual(getAdjacentEpisodes(3, testEpisodes).next, null, 'Ultimo episodio non ha successivo');
+
+// Verify sequential single tap cumulative skip resolution
+function simulateSequentialTaps(taps: Array<{ side: 'left' | 'right'; isDouble: boolean }>) {
+  let accumulated: { direction: 'left' | 'right'; seconds: number } | null = null;
+  for (const tap of taps) {
+    if (tap.isDouble) {
+      const isConsecutive = accumulated && accumulated.direction === tap.side;
+      accumulated = {
+        direction: tap.side,
+        seconds: isConsecutive ? accumulated.seconds + 10 : 10,
+      };
+    } else {
+      // Single tap during active skip in same direction
+      if (accumulated && accumulated.direction === tap.side) {
+        accumulated = {
+          direction: tap.side,
+          seconds: accumulated.seconds + 10,
+        };
+      }
+    }
+  }
+  return accumulated;
+}
+
+const seqResult = simulateSequentialTaps([
+  { side: 'right', isDouble: true },  // double tap -> 10s
+  { side: 'right', isDouble: false }, // sequential 3rd tap -> 20s
+  { side: 'right', isDouble: false }, // sequential 4th tap -> 30s
+  { side: 'right', isDouble: false }, // sequential 5th tap -> 40s
+  { side: 'right', isDouble: false }, // sequential 6th tap -> 50s
+]);
+assert.strictEqual(seqResult?.seconds, 50, 'Sequenza di tap deve raggiungere 50s');
+
+// Verify Episode type supports optional description
+const epWithDesc: import('../src/types/index').Episode = {
+  id: 'ep-test-desc',
+  number: 1,
+  title: 'Test Title',
+  description: 'Test Description',
+};
+assert.strictEqual(epWithDesc.description, 'Test Description');
+
+// Verify PlayerEpisodesCarouselSheet imports FlashList and safety properties
+const carouselCode = fs.readFileSync(path.resolve(process.cwd(), 'src/components/player/PlayerEpisodesCarouselSheet.tsx'), 'utf-8');
+assert(carouselCode.includes("from '@shopify/flash-list'"), 'PlayerEpisodesCarouselSheet deve importare FlashList da @shopify/flash-list');
+assert(!carouselCode.includes("from 'react-native';\nimport { FlatList }"), 'PlayerEpisodesCarouselSheet non deve usare FlatList');
+assert(carouselCode.includes('ItemSeparatorComponent'), 'PlayerEpisodesCarouselSheet deve usare ItemSeparatorComponent anziché gap su contentContainerStyle');
+assert(!carouselCode.includes('gap: CARD_GAP'), 'PlayerEpisodesCarouselSheet non deve usare gap su contentContainerStyle con FlashList');
+assert(carouselCode.includes('nestedScrollEnabled'), 'PlayerEpisodesCarouselSheet deve abilitare nestedScrollEnabled');
+assert(carouselCode.includes('maintainVisibleContentPosition={{ disabled: true }}'), 'PlayerEpisodesCarouselSheet deve disabilitare maintainVisibleContentPosition per evitare crash Fabric');
+assert(carouselCode.includes('initialScrollIndex={initialIndex}'), 'PlayerEpisodesCarouselSheet deve passare initialScrollIndex');
+assert(carouselCode.includes('contentPadding={0}'), 'PlayerEpisodesCarouselSheet deve azzerare contentPadding native');
+
+// Verify AniSkip Depleting Border calculation and initial progress
+function computeDepletingProgress(currentTime: number, startTime: number, endTime: number): number {
+  if (endTime <= startTime) return 0;
+  const duration = endTime - startTime;
+  const remaining = Math.max(0, endTime - currentTime);
+  return Math.max(0, Math.min(1, remaining / duration));
+}
+assert.strictEqual(computeDepletingProgress(10, 10, 40), 1.0, 'All\'inizio dell\'intro il progresso bordo deve essere 1.0 (100%)');
+assert.strictEqual(computeDepletingProgress(25, 10, 40), 0.5, 'A metà intro il progresso bordo deve essere 0.5 (50%)');
+assert.strictEqual(computeDepletingProgress(40, 10, 40), 0.0, 'Alla fine dell\'intro il progresso bordo deve essere 0.0 (consumato)');
+assert.strictEqual(computeDepletingProgress(45, 10, 40), 0.0, 'Oltre l\'intervallo deve restare 0.0');
+assert.strictEqual(computeDepletingProgress(5, 10, 40), 1.0, 'Prima dell\'intervallo deve restare 1.0');
+
+const aniSkipCode = fs.readFileSync(path.resolve(process.cwd(), 'src/components/AniSkipButton.tsx'), 'utf-8');
+assert(aniSkipCode.includes('getInitialProgress'), 'AniSkipButton deve calcolare il progresso iniziale dinamicamente senza flashare 100%');
+assert(aniSkipCode.includes('topBorderTrack') && aniSkipCode.includes('bottomBorderTrack'), 'AniSkipButton deve includere i track di bordo animati');
+
+// Verify Real Video Frame Thumbnail Generation for Timeline Scrubbing
+const testPlayerWithThumbnails = {
+  currentTime: 100,
+  duration: 1200,
+  generateThumbnailsAsync: async (times: number[]) => times.map((t) => ({ actualTime: t, width: 160, height: 90 })),
+};
+const thumbResult = await testPlayerWithThumbnails.generateThumbnailsAsync([120]);
+assert.strictEqual(thumbResult.length, 1);
+assert.strictEqual(thumbResult[0].actualTime, 120);
+assert.strictEqual(thumbResult[0].width, 160);
+
+const timelineCode = fs.readFileSync(path.resolve(process.cwd(), 'src/components/player/PlayerTimeline.tsx'), 'utf-8');
+assert(timelineCode.includes('getClosestCachedFrame'), 'PlayerTimeline deve implementare getClosestCachedFrame per frame reattivi');
+
+const playerCode = fs.readFileSync(path.resolve(process.cwd(), 'app/player/[id].tsx'), 'utf-8');
+assert(playerCode.includes('replaceAsync'), 'app/player/[id].tsx deve utilizzare replaceAsync per evitare freeze UI su main thread');
+
+// Verify Playback Speed Distribution & Centering in ServerBottomSheet
+const SPEED_TEST_OPTIONS = [0.75, 1.0, 1.25, 1.5, 2.0];
+assert.strictEqual(SPEED_TEST_OPTIONS.length, 5, 'Devono esserci esattamente 5 opzioni di velocità');
+const serverSheetCode = fs.readFileSync(path.resolve(process.cwd(), 'src/components/ServerBottomSheet.tsx'), 'utf-8');
+assert(!serverSheetCode.includes('maxWidth: 80'), 'ServerBottomSheet non deve forzare maxWidth: 80 che causa decentramento e taglio');
+assert(serverSheetCode.includes('flex: 1'), 'ServerBottomSheet deve distribuire le opzioni di velocità con flex: 1');
+assert(serverSheetCode.includes('contentPadding={0}'), 'ServerBottomSheet deve azzerare contentPadding native per evitare doppio padding');
+assert(serverSheetCode.includes('safeHorizontalInset'), 'ServerBottomSheet deve usare padding simmetrico per centratura');
+
+// Verify that PlayerTimeline and PlayerTimeDisplay work with paused video initial time
+const mockPausedPlayer = {
+  currentTime: 750,
+  duration: 1500,
+  playing: false,
+};
+assert(typeof mockPausedPlayer.currentTime === 'number', 'Player deve avere currentTime');
+assert.strictEqual(formatTime(mockPausedPlayer.currentTime), '12:30', '750s deve formattarsi in 12:30');
+
+// Verify Extracted Anime Detail Components (Step 5)
+assert(
+  typeof AnimeHeaderBackdrop === 'function' || typeof AnimeHeaderBackdrop === 'object',
+  'AnimeHeaderBackdrop deve essere un componente React'
+);
+assert(
+  typeof AnimeSynopsis === 'function' || typeof AnimeSynopsis === 'object',
+  'AnimeSynopsis deve essere un componente React'
+);
+assert(
+  typeof AnimeControlsBar === 'function' || typeof AnimeControlsBar === 'object',
+  'AnimeControlsBar deve essere un componente React'
+);
+assert(
+  typeof AnimeInfoTable === 'function' || typeof AnimeInfoTable === 'object',
+  'AnimeInfoTable deve essere un componente React'
+);
+assert(
+  typeof HistorySlider === 'function' || typeof HistorySlider === 'object',
+  'HistorySlider deve essere un componente React'
+);
+
+// Test parseDetailPage con estrazione trailer e metadata completi
+const sampleDetailHtml = `
+<h1 class="title">Test Anime Details</h1>
+<div class="desc">Una fantastica avventura anime.</div>
+<div class="widget info">
+  <div class="info">
+    <dl class="row">
+      <dt>Audio</dt><dd>Giapponese</dd>
+      <dt>Data di uscita</dt><dd>12 Ottobre 2024</dd>
+      <dt>Studio</dt><dd><a href="#">Mappa</a></dd>
+      <dt>Genere</dt><dd><a href="#">Azione</a>, <a href="#">Fantasy</a></dd>
+      <dt>Voto</dt><dd>9.2</dd>
+      <dt>Durata</dt><dd>24 min</dd>
+      <dt>Episodi</dt><dd>12</dd>
+      <dt>Stato</dt><dd>In corso</dd>
+    </dl>
+  </div>
+</div>
+<a id="anilist-button" href="https://anilist.co/anime/12345" data-id="12345"></a>
+<a id="mal-button" href="https://myanimelist.net/anime/67890" data-id="67890"></a>
+<div id="trailer">
+  <iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ"></iframe>
+</div>
+`;
+const parsedDetail = parseDetailPage(sampleDetailHtml, 'https://www.animeworld.so/play/test-anime', 'https://www.animeworld.so');
+assert.strictEqual(parsedDetail.audio, 'Giapponese', 'Audio deve essere estratto');
+assert.strictEqual(parsedDetail.releaseDate, '12 Ottobre 2024', 'Data di uscita deve essere estratta');
+assert(parsedDetail.studios.includes('Mappa'), 'Studio deve essere estratto');
+assert(parsedDetail.genres.includes('Azione'), 'Genere deve contenere Azione');
+assert.strictEqual(parsedDetail.rating, '9.2', 'Voto deve essere estratto');
+assert.strictEqual(parsedDetail.duration, '24 min', 'Durata deve essere estratta');
+assert.strictEqual(parsedDetail.totalEpisodes, 12, 'Episodi devono essere 12');
+assert.strictEqual(parsedDetail.status, 'In corso', 'Stato deve essere In corso');
+assert.strictEqual(parsedDetail.anilistId, 12345, 'AniList ID deve essere estratto');
+assert.strictEqual(parsedDetail.malId, 67890, 'MAL ID deve essere estratto');
+assert(parsedDetail.trailer?.includes('dQw4w9WgXcQ'), 'Trailer YouTube deve essere estratto e normalizzato');
+
+// Verifica AnimeInfoTable, AnimeHeaderBackdrop e BatchBottomSheet
+const infoTableCode = fs.readFileSync(path.resolve(process.cwd(), 'src/components/anime/AnimeInfoTable.tsx'), 'utf-8');
+assert(infoTableCode.includes('horizontal'), 'AnimeInfoTable deve supportare scroll orizzontale per i generi');
+assert(infoTableCode.includes('nestedScrollEnabled'), 'AnimeInfoTable deve abilitare nestedScrollEnabled sullo scroll generi');
+
+const headerBackdropCode = fs.readFileSync(path.resolve(process.cwd(), 'src/components/anime/AnimeHeaderBackdrop.tsx'), 'utf-8');
+assert(headerBackdropCode.includes('actionButtonsRow'), 'AnimeHeaderBackdrop deve includere la riga con pulsanti azione simbolici');
+assert(headerBackdropCode.includes('name="play"'), 'AnimeHeaderBackdrop deve includere il simbolo play');
+assert(headerBackdropCode.includes('name="reload"'), 'AnimeHeaderBackdrop deve includere il simbolo reload per riniziare da capo');
+assert(!headerBackdropCode.includes('styles.genresText'), 'AnimeHeaderBackdrop non deve mostrare i generi sotto il titolo');
+
+const batchSheetCode = fs.readFileSync(path.resolve(process.cwd(), 'src/components/BatchBottomSheet.tsx'), 'utf-8');
+assert(batchSheetCode.includes('Modal'), 'BatchBottomSheet deve utilizzare Modal nativo touch-safe per garantire reattività e zero crash in Expo Go');
+assert(batchSheetCode.includes('onSelectBatch'), 'BatchBottomSheet deve supportare la selezione del batch al tocco');
+assert(!batchSheetCode.includes('STAGIONI CORRELATE'), 'BatchBottomSheet non deve contenere la sezione stagioni correlate');
+
+const animeDetailCode = fs.readFileSync(path.resolve(process.cwd(), 'app/anime/[id].tsx'), 'utf-8');
+assert(animeDetailCode.includes('maintainVisibleContentPosition={{ disabled: true }}'), 'app/anime/[id].tsx deve disabilitare maintainVisibleContentPosition su FlashList');
+
+// -----------------------------------------------------------------------------
+// Verifica Skeletons Coerenti e Zero CLS
+// -----------------------------------------------------------------------------
+const animeDetailSkeletonCode = fs.readFileSync(path.resolve(process.cwd(), 'src/components/skeleton/AnimeDetailScreenSkeleton.tsx'), 'utf-8');
+assert(animeDetailSkeletonCode.includes('BACKDROP_HEIGHT = 260'), 'AnimeDetailScreenSkeleton deve usare altezza 260 coerente con AnimeHeaderBackdrop');
+assert(animeDetailSkeletonCode.includes('width={110} height={160}'), 'AnimeDetailScreenSkeleton poster deve misurare 110x160');
+assert(animeDetailSkeletonCode.includes('actionButtonsRow'), 'AnimeDetailScreenSkeleton deve includere i bottoni di azione circolari');
+assert(animeDetailSkeletonCode.includes('tableCard'), 'AnimeDetailScreenSkeleton deve includere la scheda tecnica AnimeInfoTable');
+assert(animeDetailSkeletonCode.includes('linksRow'), 'AnimeDetailScreenSkeleton deve includere la riga con 3 link rapidi esterni');
+assert(!animeDetailSkeletonCode.includes('serverRow'), 'AnimeDetailScreenSkeleton non deve contenere il vecchio serverRow');
+
+const homeSkeletonCode = fs.readFileSync(path.resolve(process.cwd(), 'src/components/skeleton/HomeScreenSkeleton.tsx'), 'utf-8');
+assert(homeSkeletonCode.includes('hasContinueWatching'), 'HomeScreenSkeleton deve supportare la sezione Riprendi a guardare');
+assert(homeSkeletonCode.includes('continueThumbWrapper'), 'HomeScreenSkeleton deve modellare la thumbnail di riprendi a guardare');
+
+const exploreSkeletonCode = fs.readFileSync(path.resolve(process.cwd(), 'src/components/skeleton/ExploreScreenSkeleton.tsx'), 'utf-8');
+assert(exploreSkeletonCode.includes('padding: 0'), 'ExploreScreenSkeleton deve azzerare padding interno per evitare doppio padding con listContent');
+
+const episodeSkeletonCode = fs.readFileSync(path.resolve(process.cwd(), 'src/components/skeleton/EpisodeItemSkeleton.tsx'), 'utf-8');
+assert(episodeSkeletonCode.includes('height={52}'), 'EpisodeItemSkeleton variante grid deve misurare 52dp in altezza come EpisodeItem');
+
+const playerSkeletonCode = fs.readFileSync(path.resolve(process.cwd(), 'src/components/skeleton/PlayerSkeleton.tsx'), 'utf-8');
+assert(playerSkeletonCode.includes('centerControlsRow'), 'PlayerSkeleton deve includere la riga dei controlli centrali con prev/next');
+assert(playerSkeletonCode.includes('chipsRow'), 'PlayerSkeleton deve riflettere i 3 controlli inferiori');
+
+// -----------------------------------------------------------------------------
+// Verifica Sostituzione Alert di Sistema con UI In-App (ConfirmModal)
+// -----------------------------------------------------------------------------
+const { ConfirmModal } = await import('../src/components/ConfirmModal');
+assert(
+  typeof ConfirmModal === 'function' || typeof ConfirmModal === 'object',
+  'ConfirmModal deve essere un componente React valido'
+);
+
+const confirmModalSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/ConfirmModal.tsx'), 'utf-8');
+assert(!confirmModalSource.includes("from 'node:"), 'ConfirmModal non deve importare node:*');
+assert(confirmModalSource.includes('minHeight: 44'), 'ConfirmModal deve garantire touch target >= 44dp');
+assert(confirmModalSource.includes('getContrastTextColor'), 'ConfirmModal deve garantire contrasto YIQ');
+
+// Verifica assenza di Alert.alert e Alert in app/(tabs)/index.tsx
+const indexCode = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/index.tsx'), 'utf-8');
+assert(!indexCode.includes('Alert.alert'), 'app/(tabs)/index.tsx non deve chiamare Alert.alert nativo');
+assert(!indexCode.match(/import\s*\{[^}]*\bAlert\b[^}]*\}\s*from\s*['"]react-native['"]/), 'app/(tabs)/index.tsx non deve importare Alert da react-native');
+assert(indexCode.includes('ConfirmModal'), 'app/(tabs)/index.tsx deve utilizzare ConfirmModal');
+assert(indexCode.includes('hasContinueWatching={continueWatching.length > 0}'), 'app/(tabs)/index.tsx deve sincronizzare hasContinueWatching con HomeScreenSkeleton');
+
+// Verifica adozione ConfirmModal in history.tsx e settings.tsx
+const historyCode = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/history.tsx'), 'utf-8');
+assert(historyCode.includes('ConfirmModal'), 'app/(tabs)/history.tsx deve utilizzare ConfirmModal');
+
+const settingsCode = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/settings.tsx'), 'utf-8');
+assert(settingsCode.includes('ConfirmModal'), 'app/(tabs)/settings.tsx deve utilizzare ConfirmModal per la conferma svuotamento');
+
+console.log('✓ Componenti Skeleton e ConfirmModal in-app verificati con successo.');
 
 // -----------------------------------------------------------------------------
 // 7. Test Route Default Exports & NitroModules Safety

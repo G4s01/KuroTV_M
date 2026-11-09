@@ -3,7 +3,7 @@ import { StyleSheet, Text, View, Pressable } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import type { Episode } from '@/types';
-import { oledTheme, useTheme } from '@/theme';
+import { oledTheme, useTheme, getContrastTextColor } from '@/theme';
 
 interface EpisodeItemProps {
   episode: Episode;
@@ -13,7 +13,7 @@ interface EpisodeItemProps {
   onPress: () => void;
 }
 
-export const EpisodeItem: React.FC<EpisodeItemProps> = ({
+export const EpisodeItem: React.FC<EpisodeItemProps> = React.memo(({
   episode,
   isCurrent = false,
   progressPercent = 0,
@@ -33,21 +33,22 @@ export const EpisodeItem: React.FC<EpisodeItemProps> = ({
       <Pressable
         style={({ pressed }) => [
           styles.gridContainer,
+          { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
           isCurrent && [styles.activeGridContainer, { borderColor: theme.colors.primary, backgroundColor: theme.colors.primary }],
           pressed && styles.pressed,
         ]}
         onPress={handlePress}
         hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
         accessibilityRole="button"
-        accessibilityLabel={`Episodio ${episode.number}`}
+        accessibilityLabel={`EPISODIO ${episode.number}`}
       >
         <View style={styles.gridContent}>
           {isCurrent ? (
-            <Ionicons name="play" size={16} color="#FFFFFF" />
+            <Ionicons name="play" size={16} color={getContrastTextColor(theme.colors.primary)} />
           ) : isCompleted ? (
-            <Ionicons name="checkmark" size={16} color={oledTheme.colors.success} />
+            <Ionicons name="checkmark" size={16} color={theme.colors.success || oledTheme.colors.success} />
           ) : (
-            <Text style={[styles.gridNumber, isCurrent && styles.activeGridNumber]}>
+            <Text style={[styles.gridNumber, { color: theme.colors.text }, isCurrent && styles.activeGridNumber]}>
               {episode.number}
             </Text>
           )}
@@ -58,7 +59,10 @@ export const EpisodeItem: React.FC<EpisodeItemProps> = ({
             <View
               style={[
                 styles.gridProgressBar,
-                { width: `${Math.min(100, progressPercent)}%` },
+                {
+                  width: `${Math.min(100, progressPercent)}%`,
+                  backgroundColor: theme.colors.primary,
+                },
               ]}
             />
           </View>
@@ -71,35 +75,49 @@ export const EpisodeItem: React.FC<EpisodeItemProps> = ({
     <Pressable
       style={({ pressed }) => [
         styles.container,
-        isCurrent && styles.activeContainer,
+        { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+        isCurrent && [
+          styles.activeContainer,
+          { borderColor: theme.colors.primary, backgroundColor: `${theme.colors.primary}18` },
+        ],
         pressed && styles.pressed,
       ]}
       onPress={handlePress}
       hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
       accessibilityRole="button"
-      accessibilityLabel={`Episodio ${episode.number}`}
+      accessibilityLabel={`EPISODIO ${episode.number}`}
     >
       <View style={styles.left}>
-        <View style={[styles.numberBadge, isCurrent && styles.activeBadge]}>
+        <View
+          style={[
+            styles.numberBadge,
+            { backgroundColor: theme.colors.card, borderColor: theme.colors.border, borderWidth: 1 },
+            isCurrent && [styles.activeBadge, { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary }],
+          ]}
+        >
           {isCurrent ? (
-            <Ionicons name="play" size={14} color="#FFFFFF" />
+            <Ionicons name="play" size={14} color={getContrastTextColor(theme.colors.primary)} />
           ) : isCompleted ? (
-            <Ionicons name="checkmark" size={14} color={oledTheme.colors.success} />
+            <Ionicons name="checkmark" size={14} color={theme.colors.success || oledTheme.colors.success} />
           ) : (
-            <Text style={styles.numberText}>{episode.number}</Text>
+            <Text style={[styles.numberText, { color: theme.colors.text }]}>{episode.number}</Text>
           )}
         </View>
 
         <View style={styles.info}>
           <Text
-            style={[styles.title, isCurrent && styles.activeText]}
+            style={[
+              styles.title,
+              { color: theme.colors.text },
+              isCurrent && [styles.activeText, { color: theme.colors.primary }],
+            ]}
             numberOfLines={1}
           >
-            {episode.title || `Episodio ${episode.number}`}
+            {episode.title || `EPISODIO ${episode.number}`}
           </Text>
           {progressPercent > 0 && (
-            <Text style={styles.progressText}>
-              {isCompleted ? 'Completato' : `Visto ${progressPercent}%`}
+            <Text style={[styles.progressText, { color: theme.colors.textMuted }]}>
+              {isCompleted ? 'COMPLETATO' : `VISTO ${progressPercent}%`}
             </Text>
           )}
         </View>
@@ -108,7 +126,7 @@ export const EpisodeItem: React.FC<EpisodeItemProps> = ({
       <Ionicons
         name={isCurrent ? 'pause-circle-outline' : 'play-circle-outline'}
         size={24}
-        color={isCurrent ? theme.colors.primary : oledTheme.colors.textMuted}
+        color={isCurrent ? theme.colors.primary : theme.colors.textMuted}
       />
 
       {progressPercent > 0 && (
@@ -116,7 +134,10 @@ export const EpisodeItem: React.FC<EpisodeItemProps> = ({
           <View
             style={[
               styles.progressBar,
-              { width: `${Math.min(100, progressPercent)}%` },
+              {
+                width: `${Math.min(100, progressPercent)}%`,
+                backgroundColor: theme.colors.primary,
+              },
               isCompleted && styles.completedBar,
             ]}
           />
@@ -124,7 +145,7 @@ export const EpisodeItem: React.FC<EpisodeItemProps> = ({
       )}
     </Pressable>
   );
-};
+});
 
 const styles = StyleSheet.create({
   // List styles
@@ -173,14 +194,18 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 12,
     fontWeight: '700',
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
   },
   info: {
     flex: 1,
   },
   title: {
     color: '#FFFFFF',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
   },
   activeText: {
     color: oledTheme.colors.primary,
@@ -188,6 +213,8 @@ const styles = StyleSheet.create({
   progressText: {
     color: oledTheme.colors.textMuted,
     fontSize: 11,
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
     marginTop: 2,
   },
   progressTrack: {
@@ -231,8 +258,10 @@ const styles = StyleSheet.create({
   },
   gridNumber: {
     color: '#FFFFFF',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
   },
   activeGridNumber: {
     color: '#FFFFFF',

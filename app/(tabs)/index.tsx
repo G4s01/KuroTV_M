@@ -7,18 +7,19 @@ import {
   RefreshControl,
   Pressable,
   useWindowDimensions,
-  ActivityIndicator,
 } from 'react-native';
 import { Image } from 'expo-image';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { homeQueryOptions, animeQueryKeys } from '@/services/queries';
 import { AppStorage } from '@/services/storage';
-import { oledTheme, useTheme } from '@/theme';
+import { oledTheme, useTheme, getContrastTextColor } from '@/theme';
 import { AnimeCard } from '@/components/AnimeCard';
+import { ConfirmModal } from '@/components/ConfirmModal';
+import { HomeScreenSkeleton } from '@/components/skeleton';
 import type { AnimeItem, ContinueWatchingItem } from '@/types';
 
 const HERO_HEIGHT = 280;
@@ -31,10 +32,37 @@ export default function HomeScreen() {
 
   const { data: homeData, isLoading, isError, refetch, isRefetching } = useQuery(homeQueryOptions());
   const [continueWatching, setContinueWatching] = React.useState<ContinueWatchingItem[]>([]);
+  const [itemToRemove, setItemToRemove] = React.useState<ContinueWatchingItem | null>(null);
+
+  // Proactive pre-fetching of top images to eliminate visual loading latency on scroll
+  React.useEffect(() => {
+    if (!homeData) return;
+    const urls: string[] = [];
+    if (homeData.sliders && homeData.sliders.length > 0) {
+      urls.push(...homeData.sliders.slice(0, 3).map((item) => item.image || item.thumbnail || '').filter(Boolean));
+    }
+    if (homeData.trending && homeData.trending.length > 0) {
+      urls.push(...homeData.trending.slice(0, 6).map((item) => item.image || item.thumbnail || '').filter(Boolean));
+    }
+    if (homeData.newAdded && homeData.newAdded.length > 0) {
+      urls.push(...homeData.newAdded.slice(0, 6).map((item) => item.image || item.thumbnail || '').filter(Boolean));
+    }
+    if (urls.length > 0) {
+      Image.prefetch(urls).catch(() => {});
+    }
+  }, [homeData]);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      setContinueWatching(AppStorage.getContinueWatching());
+    }, [])
+  );
 
   React.useEffect(() => {
-    const list = AppStorage.getContinueWatching();
-    setContinueWatching(list);
+    const unsub = AppStorage.addSettingsListener(() => {
+      setContinueWatching(AppStorage.getContinueWatching());
+    });
+    return unsub;
   }, []);
 
   const handleRefresh = React.useCallback(async () => {
@@ -63,31 +91,47 @@ export default function HomeScreen() {
         animeId: item.animeId,
         episodeNumber: String(item.episodeNumber),
         animeTitle: item.title,
+        thumbnail: item.thumbnail || '',
+        episodeDataId: item.dataId || '',
+        serverId: item.serverId || '',
+        position: String(item.position || 0),
       },
     });
+  };
+
+  const handleRemoveContinue = (item: ContinueWatchingItem) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    setItemToRemove(item);
+  };
+
+  const handleConfirmRemoveContinue = () => {
+    if (!itemToRemove) return;
+    AppStorage.removeContinueWatching(itemToRemove.animeId);
+    setContinueWatching(AppStorage.getContinueWatching());
+    setItemToRemove(null);
   };
 
   const heroItem = homeData?.sliders?.[0] || homeData?.trending?.[0];
 
   return (
-    <View style={[styles.root, { paddingTop: insets.top }]}>
+    <View style={[styles.root, { paddingTop: insets.top, backgroundColor: theme.colors.background }]}>
       {/* App Bar */}
-      <View style={styles.appBar}>
+      <View style={[styles.appBar, { backgroundColor: theme.colors.background, borderBottomColor: theme.colors.border }]}>
         <View style={styles.brandRow}>
-          <Text style={styles.brandPrefix}>KURO</Text>
-          <Text style={styles.brandSuffix}>TV</Text>
-          <View style={styles.mobileBadge}>
-            <Text style={styles.mobileBadgeText}>MOBILE</Text>
+          <Text style={[styles.brandPrefix, { color: theme.colors.text }]}>KURO</Text>
+          <Text style={[styles.brandSuffix, { color: theme.colors.primary }]}>TV</Text>
+          <View style={[styles.mobileBadge, { backgroundColor: theme.colors.surface }]}>
+            <Text style={[styles.mobileBadgeText, { color: theme.colors.textSecondary }]}>MOBILE</Text>
           </View>
         </View>
 
         <Pressable
-          style={styles.searchButton}
+          style={[styles.searchButton, { backgroundColor: theme.colors.card, borderColor: theme.colors.border, borderWidth: 1 }]}
           onPress={() => router.push('/(tabs)/explore')}
           hitSlop={8}
-          accessibilityLabel="Cerca anime"
+          accessibilityLabel="CERCA ANIME"
         >
-          <Ionicons name="search" size={20} color={oledTheme.colors.text} />
+          <Ionicons name="search" size={20} color={theme.colors.text} />
         </Pressable>
       </View>
 
@@ -105,17 +149,14 @@ export default function HomeScreen() {
         }
       >
         {isLoading && !homeData ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={theme.colors.primary} />
-            <Text style={styles.loadingText}>Caricamento catalogo...</Text>
-          </View>
+          <HomeScreenSkeleton hasContinueWatching={continueWatching.length > 0} />
         ) : isError && !homeData ? (
           <View style={styles.errorContainer}>
             <Ionicons name="alert-circle-outline" size={48} color={oledTheme.colors.error} />
-            <Text style={styles.errorTitle}>Impossibile connettersi ad AnimeWorld</Text>
-            <Text style={styles.errorSubtitle}>Verifica la connessione o cambia dominio nelle impostazioni</Text>
+            <Text style={styles.errorTitle}>IMPOSSIBILE CONNETTERSI AD ANIMEWORLD</Text>
+            <Text style={styles.errorSubtitle}>VERIFICA LA CONNESSIONE O CAMBIA DOMINIO NELLE IMPOSTAZIONI</Text>
             <Pressable style={[styles.retryBtn, { backgroundColor: theme.colors.primary }]} onPress={() => refetch()}>
-              <Text style={styles.retryBtnText}>Riprova</Text>
+              <Text style={styles.retryBtnText}>RIPROVA</Text>
             </Pressable>
           </View>
         ) : (
@@ -137,7 +178,7 @@ export default function HomeScreen() {
                 <View style={styles.heroContent}>
                   {heroItem.subOrDub && (
                     <View style={[styles.heroBadge, { backgroundColor: theme.colors.primary }]}>
-                      <Text style={styles.heroBadgeText}>{heroItem.subOrDub}</Text>
+                      <Text style={[styles.heroBadgeText, { color: getContrastTextColor(theme.colors.primary) }]}>{heroItem.subOrDub}</Text>
                     </View>
                   )}
                   <Text style={styles.heroTitle} numberOfLines={2}>
@@ -148,19 +189,19 @@ export default function HomeScreen() {
                     style={[styles.heroActionBtn, { backgroundColor: theme.colors.primary }]}
                     onPress={() => navigateToAnime(heroItem.id, heroItem.title)}
                   >
-                    <Ionicons name="play" size={16} color="#FFFFFF" />
-                    <Text style={styles.heroActionBtnText}>Guarda Ora</Text>
+                    <Ionicons name="play" size={16} color={getContrastTextColor(theme.colors.primary)} />
+                    <Text style={[styles.heroActionBtnText, { color: getContrastTextColor(theme.colors.primary) }]}>GUARDA ORA</Text>
                   </Pressable>
                 </View>
               </Pressable>
             )}
 
-            {/* Continua a guardare */}
+            {/* Riprendi a guardare - Visibile SOLO quando vi sono serie con visione in corso */}
             {continueWatching.length > 0 && (
               <View style={styles.section}>
                 <View style={styles.sectionHeader}>
-                  <Text style={styles.sectionTitle}>Continua a guardare</Text>
-                  <Text style={[styles.sectionBadge, { backgroundColor: theme.colors.primary }]}>{continueWatching.length}</Text>
+                  <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>RIPRENDI A GUARDARE</Text>
+                  <Text style={[styles.sectionBadge, { backgroundColor: theme.colors.primary, color: getContrastTextColor(theme.colors.primary) }]}>{continueWatching.length}</Text>
                 </View>
 
                 <ScrollView
@@ -174,7 +215,7 @@ export default function HomeScreen() {
                       style={styles.continueCard}
                       onPress={() => navigateToPlayer(item)}
                     >
-                      <View style={styles.continueThumbWrapper}>
+                      <View style={[styles.continueThumbWrapper, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
                         {item.thumbnail ? (
                           <Image
                             source={{ uri: item.thumbnail }}
@@ -183,10 +224,27 @@ export default function HomeScreen() {
                             transition={200}
                           />
                         ) : (
-                          <View style={[styles.continueThumb, styles.continueFallback]}>
-                            <Ionicons name="film" size={24} color="#666" />
+                          <View style={[styles.continueThumb, styles.continueFallback, { backgroundColor: theme.colors.card }]}>
+                            <Ionicons name="film" size={24} color={theme.colors.textMuted} />
                           </View>
                         )}
+
+                        {/* Tasto meno in alto a destra per rimuovere da 'riprendi a guardare' con conferma */}
+                        <Pressable
+                          style={styles.removeContinueBtn}
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            handleRemoveContinue(item);
+                          }}
+                          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                          accessibilityRole="button"
+                          accessibilityLabel={`RIMUOVI ${item.title.toUpperCase()} DA RIPRENDI A GUARDARE`}
+                        >
+                          <View style={styles.removeContinueIconWrapper}>
+                            <Ionicons name="remove" size={14} color="#FFFFFF" />
+                          </View>
+                        </Pressable>
+
                         <View style={styles.playOverlay}>
                           <Ionicons name="play-circle" size={32} color="#FFFFFF" />
                         </View>
@@ -202,11 +260,11 @@ export default function HomeScreen() {
                           />
                         </View>
                       </View>
-                      <Text style={styles.continueTitle} numberOfLines={1}>
+                      <Text style={[styles.continueTitle, { color: theme.colors.text }]} numberOfLines={1}>
                         {item.title}
                       </Text>
-                      <Text style={styles.continueSubtitle}>
-                        Episodio {item.episodeNumber} ({item.percentage}%)
+                      <Text style={[styles.continueSubtitle, { color: theme.colors.textMuted }]}>
+                        EPISODIO {item.episodeNumber} ({item.percentage}%)
                       </Text>
                     </Pressable>
                   ))}
@@ -218,9 +276,9 @@ export default function HomeScreen() {
             {homeData?.all && homeData.all.length > 0 && (
               <View style={styles.section}>
                 <View style={styles.sectionHeader}>
-                  <Text style={styles.sectionTitle}>Ultime Uscite</Text>
+                  <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>ULTIME USCITE</Text>
                   <Pressable onPress={() => router.push('/(tabs)/explore')}>
-                    <Text style={[styles.seeAllText, { color: theme.colors.primary }]}>Vedi tutti</Text>
+                    <Text style={[styles.seeAllText, { color: theme.colors.primary }]}>VEDI TUTTI</Text>
                   </Pressable>
                 </View>
 
@@ -244,7 +302,7 @@ export default function HomeScreen() {
             {homeData?.trending && homeData.trending.length > 0 && (
               <View style={styles.section}>
                 <View style={styles.sectionHeader}>
-                  <Text style={styles.sectionTitle}>I Più Popolari</Text>
+                  <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>I PIÙ POPOLARI</Text>
                 </View>
 
                 <ScrollView
@@ -267,7 +325,7 @@ export default function HomeScreen() {
             {homeData?.newAdded && homeData.newAdded.length > 0 && (
               <View style={styles.section}>
                 <View style={styles.sectionHeader}>
-                  <Text style={styles.sectionTitle}>Nuove Aggiunte</Text>
+                  <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>NUOVE AGGIUNTE</Text>
                 </View>
 
                 <ScrollView
@@ -288,6 +346,21 @@ export default function HomeScreen() {
           </>
         )}
       </ScrollView>
+
+      {/* Modal di Conferma Rimozione In-App (Zero Alert nativo Android) */}
+      <ConfirmModal
+        visible={itemToRemove !== null}
+        title="RIMUOVI DA RIPRENDI A GUARDARE"
+        message={
+          itemToRemove
+            ? `VUOI RIMUOVERE "${itemToRemove.title.toUpperCase()}" DALLA VISIONE IN CORSO?`
+            : ''
+        }
+        icon="remove-circle-outline"
+        confirmText="RIMUOVI"
+        onConfirm={handleConfirmRemoveContinue}
+        onCancel={() => setItemToRemove(null)}
+      />
     </View>
   );
 }
@@ -316,12 +389,16 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 20,
     fontWeight: '900',
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
     letterSpacing: -0.5,
   },
   brandSuffix: {
     color: oledTheme.colors.primary,
     fontSize: 20,
     fontWeight: '900',
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
     letterSpacing: -0.5,
   },
   mobileBadge: {
@@ -335,6 +412,8 @@ const styles = StyleSheet.create({
     color: '#A3A3A3',
     fontSize: 9,
     fontWeight: '700',
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   searchButton: {
@@ -360,6 +439,8 @@ const styles = StyleSheet.create({
   loadingText: {
     color: oledTheme.colors.textMuted,
     fontSize: 14,
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
   },
   errorContainer: {
     padding: 32,
@@ -372,11 +453,15 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     textAlign: 'center',
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
   },
   errorSubtitle: {
     color: oledTheme.colors.textMuted,
     fontSize: 13,
     textAlign: 'center',
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
   },
   retryBtn: {
     marginTop: 12,
@@ -391,6 +476,8 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '700',
     fontSize: 14,
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
   },
   heroContainer: {
     width: '100%',
@@ -424,6 +511,7 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 10,
     fontWeight: '800',
+    fontFamily: 'monospace',
     textTransform: 'uppercase',
   },
   heroTitle: {
@@ -431,6 +519,8 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '800',
     lineHeight: 26,
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
     textShadowColor: 'rgba(0,0,0,0.8)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 6,
@@ -450,6 +540,8 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '700',
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
   },
   section: {
     marginTop: 24,
@@ -465,12 +557,16 @@ const styles = StyleSheet.create({
     color: oledTheme.colors.text,
     fontSize: 18,
     fontWeight: '700',
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
   },
   sectionBadge: {
     backgroundColor: '#262626',
     color: '#FFFFFF',
     fontSize: 11,
     fontWeight: '700',
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
     paddingHorizontal: 6,
     paddingVertical: 1,
     borderRadius: 8,
@@ -479,6 +575,8 @@ const styles = StyleSheet.create({
     color: oledTheme.colors.primary,
     fontSize: 13,
     fontWeight: '600',
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
   },
   horizontalScroll: {
     paddingLeft: 16,
@@ -529,11 +627,36 @@ const styles = StyleSheet.create({
     color: oledTheme.colors.text,
     fontSize: 13,
     fontWeight: '600',
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
     marginTop: 6,
   },
   continueSubtitle: {
     color: oledTheme.colors.textMuted,
     fontSize: 11,
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
     marginTop: 2,
+  },
+  removeContinueBtn: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    zIndex: 10,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  removeContinueIconWrapper: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
   },
 });

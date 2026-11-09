@@ -25,6 +25,17 @@ export const useRouter = () => ({
   back: () => {},
 });
 
+export const useFocusEffect = (cb) => {
+  if (typeof cb === 'function') {
+    try {
+      const res = cb();
+      if (typeof res === 'function') res();
+    } catch {
+      // ignore
+    }
+  }
+};
+
 export const useLocalSearchParams = () => ({ id: '1' });
 
 export const StatusBar = () => null;
@@ -35,7 +46,10 @@ export const useVideoPlayer = () => ({
   play: () => {},
   pause: () => {},
   replace: () => {},
+  replaceAsync: async () => {},
   addListener: () => ({ remove: () => {} }),
+  generateThumbnailsAsync: async (times) =>
+    (Array.isArray(times) ? times : [times]).map((t) => ({ actualTime: t, width: 160, height: 90 })),
   currentTime: 0,
   duration: 0,
   playing: false,
@@ -59,6 +73,7 @@ export default {
   Stack,
   Tabs,
   useRouter,
+  useFocusEffect,
   useLocalSearchParams,
   StatusBar,
   Image,

@@ -1,0 +1,139 @@
+<div align="center">
+
+# 📱 KURO MOBILE
+
+### *Client Android touch-native per lo streaming anime, ad altissime prestazioni e nero assoluto OLED.*
+
+[![Expo SDK 58](https://img.shields.io/badge/Expo-SDK%2058-000000?style=for-the-badge&logo=expo&logoColor=white)](https://expo.dev/)
+[![React Native 0.88](https://img.shields.io/badge/React%20Native-0.88-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://reactnative.dev/)
+[![React 19](https://img.shields.io/badge/React-19-23272F?style=for-the-badge&logo=react&logoColor=61DAFB)](https://react.dev/)
+[![Hermes](https://img.shields.io/badge/Engine-Hermes-9B59B6?style=for-the-badge)](https://hermesengine.dev/)
+[![FlashList v2](https://img.shields.io/badge/List-FlashList%20v2-2ECC71?style=for-the-badge&logo=shopify&logoColor=white)](https://shopify.github.io/flash-list/)
+[![MMKV v3](https://img.shields.io/badge/Storage-MMKV%20v3-E67E22?style=for-the-badge)](https://github.com/mrousavy/react-native-mmkv)
+[![Target Android](https://img.shields.io/badge/Arch-arm64--v8a-E50914?style=for-the-badge&logo=android&logoColor=white)](https://android.com)
+
+</div>
+
+---
+
+## ✨ Perché Kuro Mobile?
+
+**Kuro Mobile** è un client mobile moderno per smartphone Android, progettato da zero con un approccio **100% touch-native** e **Zero-TV residue**. Combina l'estetica **OLED puro (`#000000`)** e la **tipografia monospace in CAPS LOCK** con un motore di riproduzione video all'avanguardia a 60/120 FPS.
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│  🎬 LIVE FRAME SCRUBBING  │  ⏭️ ANISKIP PROGRESS  │  🖤 OLED PURE BLACK │
+│  ⚡ MMKV ZERO LATENCY     │  📑 FLASHLIST CAROUSEL│  🚀 IN-APP OTA      │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 🔥 Caratteristiche Principali
+
+### 🎬 Player Video Touch di Nuova Generazione
+- **⚡ Streaming Asincrono (`replaceAsync`)**: Risoluzione del flusso video off-thread (`expo-video`) senza blocchi sincroni sul Main Thread, garantendo caricamento immediato e zero freeze dell'interfaccia.
+- **🎞️ Live Real-Frame Scrubbing**: Trascina la timeline per visualizzare in tempo reale i veri fotogrammi video estratti dallo stream (`expo-video`), con cache in memoria e proximity matching a 60 FPS senza lag.
+- **⏭️ AniSkip con Bordo a Consumo**: Rilevamento automatico delle sigle (`OP`/`ED`/`Recap`) con indicatore animato superiore e inferiore che si consuma in tempo reale riflettendo il tempo residuo.
+- **⏩ Skip Sequenziale Intelligente**: Doppio tap $\pm 10$s con accumulo cumulativo (`+20s`, `+30s`, `+50s`, `-30s`) e pill di feedback compatto centrato accanto al tasto Play/Pausa.
+- **⏮️ Comandi Centrali Bilanciati**: Pulsante Play/Pausa circolare affiancato dai comandi per episodio precedente (`play-skip-back`) e successivo (`play-skip-forward`).
+- **📑 Carosello Episodi Virtualizzato**: BottomSheet nativo con `@shopify/flash-list` per navigare istantaneamente centinaia di episodi con auto-scroll alla puntata corrente e zero consumo di memoria.
+- **ℹ️ Scheda Info & Trama**: Accesso rapido a locandina, badge puntata, dettagli della serie e sinossi completa scrollabile.
+- **☀️ Gesture HUD Volume & Luminosità**: Swipe verticale destro per il volume e sinistro per la luminosità, con modalità `AUTOMATICA` agganciata al sensore di sistema.
+- **📺 Picture-in-Picture Pulito**: Supporto nativo PiP con chiusura anti-zombie playback (pausa e salvataggio automatico se chiuso in background).
+
+### 📋 Scheda Tecnica Dettaglio & Controlli Rapidi
+- **🎞️ Cella Generi a Scorrimento Orizzontale**: Consultazione dell'elenco completo dei generi senza espansioni verticali o troncamenti grafici.
+- **▶️ Controlli di Avvio Rapido Simbolici**: Header compatto con pulsanti Play (`play`) e Riavvia da capo (`reload`) a soli simboli ($\ge 44$dp), con eliminazione del tasto ridondante a fondo pagina.
+- **📑 Selettore Batch Touch-Native**: Bottom sheet modale basato su React Native `Modal` touch-safe, ripulito da contenuti correlati per garantire selezione istantanea ad ogni tocco e zero crash.
+
+### 🖤 Design System & Esperienza Touch
+- **Nero Assoluto OLED (`#000000`)**: Spegnimento fisico dei pixel sui display AMOLED per azzerare i consumi energetici e massimizzare il contrasto.
+- **Tipografia Monospace & CAPS LOCK**: Identità coerente su tutta l'app con font monospace di sistema e testi in maiuscolo.
+- **Zero Alert di Sistema & Modal In-App Unificato (`ConfirmModal`)**: Sostituzione integrale degli alert nativi grezzi di Android con modali a tema OLED, contrasto dinamico YIQ, feedback aptico e touch target $\ge 44$dp.
+- **Bottom Tabs Solo Icone**: Barra inferiore pulita ed ergonomica senza etichette testuali ridondanti e con touch target minimi $\ge 44$dp.
+- **Temi Reattivi al Click**: Quattro palette d'accento (**OLED Puro**, **Pikachu**, **Orchidea**, **Rainbow**) con toggle scuro/chiaro al click e contrasto dinamico YIQ del testo.
+
+### ⚡ Prestazioni Estreme & Architettura Safe
+- **Storage Sincrono MMKV v3**: Cronologia, preferiti e avanzamento secondi memorizzati con letture e scritture a latenza zero.
+- **Skeleton Animati a Zero CLS**: Primitive e layout dedicati che rispecchiano al millimetro le geometrie reali (scheda tecnica metadati, pulsanti rapidi, hero spotlight, griglie senza doppio padding e sezioni condizionali sincronizzate) azzerando il Cumulative Layout Shift (CLS).
+- **Scraper 100% Hermes Safe**: Web scraper nativo basato su `cheerio/slim` ed `htmlparser2`, privo di moduli pesanti `node:*` incompatibili con il runtime mobile.
+- **Updater OTA Integrato**: Verifica e download degli aggiornamenti in-app tramite Cloudflare Workers ed R2 (`/mobile/manifest.json`), con changelog scrollabile e zero alert bloccanti.
+
+---
+
+## 🛠️ Stack Tecnologico
+
+| Livello | Tecnologia | Descrizione |
+|---|---|---|
+| **Framework** | **Expo SDK 58** & **React Native 0.88.1** | Nuova architettura TurboModules & Fabric |
+| **Linguaggio & Engine** | **TypeScript 5.3** & **Hermes Engine** | Compilazione bytecode nativa ultra-veloce |
+| **Routing** | **Expo Router v58** | File-based routing dichiarativo |
+| **Virtualizzazione** | **@shopify/flash-list v2** | Rendering ottimizzato per cataloghi infiniti |
+| **Native UI** | **@expo/ui** | BottomSheet nativi Jetpack Compose con insets simmetrici |
+| **Video & Multimedialità** | **expo-video** & **ScreenOrientation** | Player HLS avanzato, PiP e rotazione a 180° |
+| **Data Fetching** | **@tanstack/react-query v5** | Caching, deduplicazione e reattività |
+| **Local Storage** | **react-native-mmkv v3** | Key-value store sincrono C++ ad alta velocità |
+
+---
+
+## 🚀 Guida Rapida
+
+### 1. Installazione
+```bash
+git clone https://github.com/user/KuroM.git
+cd KuroM
+npm install
+```
+
+### 2. Test di Qualità (7 Stadi)
+```bash
+npm test
+```
+*Valida SemVer, regole OLED, storage MMKV, batch puntate, intervalli AniSkip, skeleton animation ed export delle rotte.*
+
+### 3. Build & Verifica Bytecode Hermes
+```bash
+npx expo export --platform android
+```
+
+### 4. Avvio su Dispositivo Android
+```bash
+npm run android
+```
+
+---
+
+## 📦 Pipeline di Rilascio & Tooling
+
+Gli script operativi in [`scripts/`](./scripts) gestiscono l'intera filiera di build e distribuzione:
+
+```bash
+# Compilazione APK release arm64-v8a e pubblicazione OTA su R2 + GitHub Releases
+./scripts/build-release.sh
+
+# Finalizzazione rapida di un binario già compilato:
+./scripts/build-release.sh --skip-build
+
+# Backup sicuro dei segreti e keystore cifrati con AES-256-CBC su R2:
+./scripts/backup-secrets-r2.sh
+```
+
+---
+
+## 📚 Documentazione
+
+Approfondimenti e specifiche tecniche complete:
+- 🏛️ [**Architettura del Progetto**](./docs/ARCHITECTURE.md)
+- 🎬 [**Specifiche Video Player**](./docs/VIDEO_PLAYER.md)
+- 🎨 [**Temi & Design System**](./docs/THEMES_AND_STYLING.md)
+- 🚀 [**Pipeline OTA & Rilascio**](./docs/OTA_AND_RELEASES.md)
+- 📱 [**Regole Architetturali Tassative (AGENTS.md)**](./AGENTS.md)
+
+---
+
+<div align="center">
+
+*Sviluppato con passione per l'ecosistema Kuro • Mobile-First & Touch-Native*
+
+</div>

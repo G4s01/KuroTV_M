@@ -92,35 +92,59 @@ check_cmd() {
 
 main() {
   SKIP_BUILD=0
-  for arg in "$@"; do
-    case "${arg}" in
+  CLI_VERSION=""
+  CLI_BUILD_NUMBER=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
       --skip-build|--no-build)
         SKIP_BUILD=1
+        shift
+        ;;
+      -v|--version)
+        CLI_VERSION="$2"
+        shift 2
+        ;;
+      --version=*)
+        CLI_VERSION="${1#*=}"
+        shift
+        ;;
+      -b|--build-number|--build)
+        CLI_BUILD_NUMBER="$2"
+        shift 2
+        ;;
+      --build-number=*|--build=*)
+        CLI_BUILD_NUMBER="${1#*=}"
+        shift
         ;;
       -h|--help)
         banner
-        echo "Uso: ./build-release.sh [opzioni]"
-        echo "     oppure ./scripts/build-release.sh [opzioni]"
+        echo "Uso: ./build-release.sh [opzioni] [versione]"
+        echo "     oppure ./scripts/build-release.sh [opzioni] [versione]"
         echo ""
         echo "Opzioni:"
-        echo "  --skip-build  Salta la compilazione Gradle e riutilizza l'APK già presente in android/app/build/outputs/apk/release"
-        echo "  -h, --help    Mostra questa guida ed esce"
+        echo "  -v, --version <ver>         Specifica direttamente la nuova versione (es. 1.2.0)"
+        echo "  -b, --build-number <num>    Specifica direttamente il numero di build (versionCode)"
+        echo "  --skip-build                Salta la compilazione Gradle e riutilizza l'APK già presente in android/app/build/outputs/apk/release"
+        echo "  -h, --help                  Mostra questa guida ed esce"
         echo ""
         echo "Variabili d'ambiente supportate in .env.local o .env:"
-        echo "  EXPO_PUBLIC_UPDATE_MANIFEST_URL  URL del manifest.json (es. https://r2.kurotv.app/manifest.json)"
-        echo "  R2_BUCKET_NAME                   Nome del bucket R2 legacy (default: kurotv-releases)"
         echo "  R2_PRIVATE_BUCKET_NAME           Nome del bucket R2 privato per Worker (default: kuro-tv)"
         echo "  OTA_WORKER_URL                   URL del Cloudflare Worker kuro-tv (default: https://kuro-tv.g4s01.workers.dev)"
         echo "  OTA_SECRET_TOKEN                 Token segreto per l'accesso autenticato agli OTA"
-        echo "  R2_PUBLIC_URL                    URL pubblico R2 legacy (default: https://r2.kurotv.app)"
         echo "  R2_ACCOUNT_ID                    ID Account Cloudflare"
         echo "  R2_ACCESS_KEY_ID                 Access Key ID Cloudflare R2"
         echo "  R2_SECRET_ACCESS_KEY             Secret Access Key Cloudflare R2"
         echo "  R2_ENDPOINT_URL                  Endpoint S3 R2 (https://<ACCOUNT_ID>.r2.cloudflarestorage.com)"
-        echo "  R2_BACKUP_BUCKET_NAME            Nome del bucket R2 isolato per backup credenziali (default: kurotv-backups)"
+        echo "  R2_BACKUP_BUCKET_NAME            Nome del bucket R2 per backup credenziali (default: kurotv-backups o kuro-tv)"
         echo "  BACKUP_ENCRYPTION_PASSPHRASE     Passphrase master per cifratura AES-256 dei backup"
         echo ""
         exit 0
+        ;;
+      *)
+        if [[ "$1" =~ ^v?[0-9]+\.[0-9]+ ]]; then
+          CLI_VERSION="$1"
+        fi
+        shift
         ;;
     esac
   done
@@ -193,22 +217,31 @@ else
   log_warn "Nessun file .env.local o .env trovato. Creane uno basandoti su .env.example."
 fi
 
-R2_BUCKET_NAME="${R2_BUCKET_NAME:-kurotv-releases}"
-R2_PUBLIC_URL="${R2_PUBLIC_URL:-https://r2.kurotv.app}"
 R2_PRIVATE_BUCKET_NAME="${R2_PRIVATE_BUCKET_NAME:-kuro-tv}"
 OTA_WORKER_URL="${OTA_WORKER_URL:-https://kuro-tv.g4s01.workers.dev}"
 OTA_SECRET_TOKEN="${OTA_SECRET_TOKEN:-${KURO_TV_SECRET_TOKEN:-}}"
 
-log_info "Bucket R2 legacy (pubblico): ${R2_BUCKET_NAME}"
 log_info "Bucket R2 privato (Worker kuro-tv): ${R2_PRIVATE_BUCKET_NAME}"
 log_info "URL Cloudflare Worker kuro-tv: ${OTA_WORKER_URL}"
-log_info "URL pubblico R2 legacy: ${R2_PUBLIC_URL}"
 
 # ------------------------------------------------------------------------------
 # 3. Determine Current & Next Version
 # ------------------------------------------------------------------------------
 CURRENT_VERSION=$(node -p "try { require('./app.json').expo.version || require('./package.json').version || '1.0.0' } catch { '1.0.0' }")
-CURRENT_VERSION_CODE=$(node -p "try { require('./app.json').expo.android.versionCode || 1 } catch { 1 }")
+CURRENT_VERSION_CODE=$(node -e '
+  const fs = require("fs");
+  let code = 1;
+  try {
+    const app = JSON.parse(fs.readFileSync("./app.json", "utf8"));
+    if (app?.expo?.android?.versionCode) code = Math.max(code, parseInt(app.expo.android.versionCode, 10));
+  } catch {}
+  try {
+    const gradle = fs.readFileSync("./android/app/build.gradle", "utf8");
+    const m = gradle.match(/versionCode\s+(\d+)/);
+    if (m) code = Math.max(code, parseInt(m[1], 10));
+  } catch {}
+  console.log(code);
+')
 
 log_info "Versione corrente da app.json: ${BOLD}v${CURRENT_VERSION}${NC} (Build ${CURRENT_VERSION_CODE})"
 
@@ -228,21 +261,24 @@ echo ""
 if [ "${SKIP_BUILD}" -eq 1 ]; then
   echo -e "${BOLD}Modalità --skip-build attiva (riutilizzo binario APK esistente):${NC}"
   echo "  0) Mantieni v${CURRENT_VERSION} ->  v${CURRENT_VERSION} (Build ${CURRENT_VERSION_CODE}) [Default con --skip-build - premi INVIO]"
-  echo "  1) +0.0.1             ->  v${NEXT_PATCH}"
-  echo "  2) +0.1.0             ->  v${NEXT_MINOR}"
+  echo "  1) +0.0.1             ->  v${NEXT_PATCH} (Build $((CURRENT_VERSION_CODE + 1)))"
+  echo "  2) +0.1.0             ->  v${NEXT_MINOR} (Build $((CURRENT_VERSION_CODE + 1)))"
 else
   echo -e "${BOLD}Seleziona la nuova versione (corrente da app.json: v${CURRENT_VERSION}, build ${CURRENT_VERSION_CODE}):${NC}"
   echo "  0) Mantieni v${CURRENT_VERSION} ->  v${CURRENT_VERSION} (Build ${CURRENT_VERSION_CODE})"
-  echo "  1) +0.0.1             ->  v${NEXT_PATCH} [Default - premi INVIO]"
-  echo "  2) +0.1.0             ->  v${NEXT_MINOR}"
+  echo "  1) +0.0.1             ->  v${NEXT_PATCH} (Build $((CURRENT_VERSION_CODE + 1))) [Default - premi INVIO]"
+  echo "  2) +0.1.0             ->  v${NEXT_MINOR} (Build $((CURRENT_VERSION_CODE + 1)))"
 fi
-echo "  Oppure digita direttamente la versione manuale (es. 1.2.0)"
+echo "  Oppure digita direttamente la versione manuale (es. 1.2.0 o 1.2.0:4 per build specifica)"
 echo ""
 
 NEW_VERSION=""
 NEW_VERSION_CODE=""
 while true; do
-  if [ "${SKIP_BUILD}" -eq 1 ]; then
+  if [ -n "${CLI_VERSION:-}" ]; then
+    VERSION_INPUT="${CLI_VERSION}"
+    CLI_VERSION="" # consumata
+  elif [ "${SKIP_BUILD}" -eq 1 ]; then
     read -rp "Scelta [INVIO=0 / 1 / 2 / versione manuale]: " VERSION_INPUT || true
   else
     read -rp "Scelta [INVIO=1 / 0 / 2 / versione manuale]: " VERSION_INPUT || true
@@ -252,36 +288,47 @@ while true; do
   if [ -z "${VERSION_INPUT}" ]; then
     if [ "${SKIP_BUILD}" -eq 1 ]; then
       NEW_VERSION="${CURRENT_VERSION}"
-      NEW_VERSION_CODE="${CURRENT_VERSION_CODE}"
+      NEW_VERSION_CODE="${CLI_BUILD_NUMBER:-${CURRENT_VERSION_CODE}}"
     else
       NEW_VERSION="${NEXT_PATCH}"
-      NEW_VERSION_CODE=$((CURRENT_VERSION_CODE + 1))
+      NEW_VERSION_CODE="${CLI_BUILD_NUMBER:-$((CURRENT_VERSION_CODE + 1))}"
     fi
     break
   elif [ "${VERSION_INPUT}" = "0" ]; then
     NEW_VERSION="${CURRENT_VERSION}"
-    NEW_VERSION_CODE="${CURRENT_VERSION_CODE}"
+    NEW_VERSION_CODE="${CLI_BUILD_NUMBER:-${CURRENT_VERSION_CODE}}"
     break
   elif [ "${VERSION_INPUT}" = "1" ]; then
     NEW_VERSION="${NEXT_PATCH}"
-    NEW_VERSION_CODE=$((CURRENT_VERSION_CODE + 1))
+    NEW_VERSION_CODE="${CLI_BUILD_NUMBER:-$((CURRENT_VERSION_CODE + 1))}"
     break
   elif [ "${VERSION_INPUT}" = "2" ]; then
     NEW_VERSION="${NEXT_MINOR}"
-    NEW_VERSION_CODE=$((CURRENT_VERSION_CODE + 1))
+    NEW_VERSION_CODE="${CLI_BUILD_NUMBER:-$((CURRENT_VERSION_CODE + 1))}"
     break
   else
-    CLEAN_VERSION="${VERSION_INPUT#v}"
-    if [[ "${CLEAN_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-      NEW_VERSION="${CLEAN_VERSION}"
-      if [ "${NEW_VERSION}" = "${CURRENT_VERSION}" ]; then
-        NEW_VERSION_CODE="${CURRENT_VERSION_CODE}"
+    RAW_MANUAL="${VERSION_INPUT#v}"
+    EXPLICIT_BUILD=""
+    TARGET_VER="${RAW_MANUAL}"
+
+    if [[ "${RAW_MANUAL}" =~ [:+#] ]]; then
+      TARGET_VER=$(echo "${RAW_MANUAL}" | sed -E 's/[:+#].*$//')
+      EXPLICIT_BUILD=$(echo "${RAW_MANUAL}" | sed -E 's/^.*[:+#]//')
+    fi
+
+    if [[ "${TARGET_VER}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+      NEW_VERSION="${TARGET_VER}"
+      if [ -n "${CLI_BUILD_NUMBER:-}" ]; then
+        NEW_VERSION_CODE="${CLI_BUILD_NUMBER}"
+      elif [ -n "${EXPLICIT_BUILD}" ] && [[ "${EXPLICIT_BUILD}" =~ ^[0-9]+$ ]]; then
+        NEW_VERSION_CODE="${EXPLICIT_BUILD}"
       else
+        # Inserimento manuale: incrementa SEMPRE il numero di build rispetto alla corrente
         NEW_VERSION_CODE=$((CURRENT_VERSION_CODE + 1))
       fi
       break
     else
-      log_error "Versione '${VERSION_INPUT}' non valida. Usa il formato SemVer X.Y.Z (es. 1.2.0) o premi INVIO per default (+0.0.1)."
+      log_error "Versione '${VERSION_INPUT}' non valida. Usa il formato SemVer X.Y.Z (es. 1.2.0) o X.Y.Z:B (es. 1.2.0:4) o premi INVIO per default (+0.0.1)."
     fi
   fi
 done
@@ -657,76 +704,59 @@ fi
 # ------------------------------------------------------------------------------
 # 7. Generate Cloudflare R2 manifest.json
 # ------------------------------------------------------------------------------
-log_info "Generazione manifest.json per Cloudflare R2..."
+ensure_manifest() {
+  log_info "Generazione/Sincronizzazione manifest.json per Cloudflare R2..."
 
-MANIFEST_FILE="${ROOT_DIR}/dist/manifest.json"
-MANIFEST_WORKER_FILE="${ROOT_DIR}/dist/manifest-worker.json"
-mkdir -p "${ROOT_DIR}/dist"
+  MANIFEST_FILE="${ROOT_DIR}/dist/manifest.json"
+  mkdir -p "${ROOT_DIR}/dist"
+  mkdir -p "${APK_OUTPUT_DIR}"
 
-# 1. Legacy manifest for public R2 bucket (arm64-v8a primary, universal fallback)
-# shellcheck disable=SC2016
-node -e '
-  const fs = require("fs");
-  const [,, manifestPath, notesPath, version, vCode, r2Url, sha256, sizeBytes, isoDate] = process.argv;
-  const notes = fs.readFileSync(notesPath, "utf8").trim();
-  const manifest = {
-    version: version,
-    versionCode: parseInt(vCode, 10),
-    apkUrl: `${r2Url}/latest.apk`,
-    apks: {
+  local notes_content=""
+  if [ -n "${TMP_NOTES:-}" ] && [ -f "${TMP_NOTES}" ]; then
+    notes_content=$(cat "${TMP_NOTES}")
+  fi
+  if [ -z "${notes_content}" ]; then
+    notes_content="Aggiornamento Kuro Mobile v${APP_JSON_VERSION} (Build ${APP_JSON_VERSION_CODE})"
+  fi
+
+  # shellcheck disable=SC2016
+  node -e '
+    const fs = require("fs");
+    const [manifestPath, backupPath, notes, version, vCode, workerUrl, sha256, sizeBytes, isoDate] = process.argv.slice(1);
+    const workerBase = workerUrl.replace(/\/+$/, "");
+    const apks = {
       "arm64-v8a": {
-        url: `${r2Url}/latest-arm64-v8a.apk`,
+        url: `${workerBase}/mobile/latest.apk`,
         sha256: sha256,
         size: parseInt(sizeBytes, 10)
       },
       universal: {
-        url: `${r2Url}/latest.apk`,
+        url: `${workerBase}/mobile/latest.apk`,
         sha256: sha256,
         size: parseInt(sizeBytes, 10)
       }
-    },
-    releaseNotes: notes,
-    sha256: sha256,
-    mandatory: false,
-    publishedAt: isoDate
-  };
-  fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
-' "${MANIFEST_FILE}" "${TMP_NOTES}" "${APP_JSON_VERSION}" "${APP_JSON_VERSION_CODE}" "${R2_PUBLIC_URL}" "${APK_SHA256}" "${APK_SIZE_BYTES}" "${ISO_DATE}"
-
-# 2. Worker manifest for private R2 bucket (kuro-tv worker - arm64-v8a primary under /mobile/)
-# shellcheck disable=SC2016
-node -e '
-  const fs = require("fs");
-  const [,, workerManifestPath, notesPath, version, vCode, workerUrl, sha256, sizeBytes, isoDate] = process.argv;
-  const notes = fs.readFileSync(notesPath, "utf8").trim();
-  const workerBase = workerUrl.replace(/\/+$/, "");
-  const apks = {
-    "arm64-v8a": {
-      url: `${workerBase}/mobile/latest-arm64-v8a.apk`,
+    };
+    const manifest = {
+      version: version,
+      versionCode: parseInt(vCode, 10),
+      apkUrl: `${workerBase}/mobile/latest.apk`,
+      apks,
+      releaseNotes: (notes || "").trim(),
       sha256: sha256,
-      size: parseInt(sizeBytes, 10)
-    },
-    universal: {
-      url: `${workerBase}/mobile/latest.apk`,
-      sha256: sha256,
-      size: parseInt(sizeBytes, 10)
+      mandatory: false,
+      publishedAt: isoDate
+    };
+    const manifestJson = JSON.stringify(manifest, null, 2) + "\n";
+    fs.writeFileSync(manifestPath, manifestJson);
+    if (backupPath) {
+      try { fs.writeFileSync(backupPath, manifestJson); } catch {}
     }
-  };
-  const manifest = {
-    version: version,
-    versionCode: parseInt(vCode, 10),
-    apkUrl: `${workerBase}/mobile/latest.apk`,
-    apks,
-    releaseNotes: notes,
-    sha256: sha256,
-    mandatory: false,
-    publishedAt: isoDate
-  };
-  fs.writeFileSync(workerManifestPath, JSON.stringify(manifest, null, 2) + "\n");
-' "${MANIFEST_WORKER_FILE}" "${TMP_NOTES}" "${APP_JSON_VERSION}" "${APP_JSON_VERSION_CODE}" "${OTA_WORKER_URL}" "${APK_SHA256}" "${APK_SIZE_BYTES}" "${ISO_DATE}"
+  ' "${MANIFEST_FILE}" "${APK_OUTPUT_DIR}/manifest.json" "${notes_content}" "${APP_JSON_VERSION}" "${APP_JSON_VERSION_CODE}" "${OTA_WORKER_URL}" "${APK_SHA256}" "${APK_SIZE_BYTES}" "${ISO_DATE}"
 
-log_success "Manifest legacy generato in: ${MANIFEST_FILE}"
-log_success "Manifest Worker kuro-tv generato in: ${MANIFEST_WORKER_FILE}"
+  log_success "Manifest Cloudflare R2 generato in: ${MANIFEST_FILE}"
+}
+
+ensure_manifest
 cat "${MANIFEST_FILE}"
 
 # ------------------------------------------------------------------------------
@@ -821,94 +851,40 @@ if [[ "${R2_CONFIRM}" =~ ^[Yy]$ ]]; then
 
   # 1. Caricamento su bucket privato per Cloudflare Worker kuro-tv sotto prefisso mobile/ con barra di progresso
   if [ -n "${R2_PRIVATE_BUCKET_NAME:-}" ]; then
-    log_info "Upload su bucket privato R2 (${R2_PRIVATE_BUCKET_NAME}) per Worker kuro-tv sotto 'mobile/' (sola architettura arm64-v8a)..."
-    VERSIONED_MOBILE_KEY="mobile/kurotv-mobile-v${APP_JSON_VERSION}-${APP_JSON_VERSION_CODE}-arm64-v8a.apk"
+    log_info "Upload su bucket privato R2 (${R2_PRIVATE_BUCKET_NAME}) per Worker kuro-tv sotto 'mobile/' (sovrascrittura del solo latest.apk)..."
+
+    # Pre-upload check: se dist/manifest.json è stato rimosso (ad es. da un expo export o clean), ripristinalo o rigeneralo
+    if [ ! -f "${MANIFEST_FILE}" ]; then
+      if [ -f "${APK_OUTPUT_DIR}/manifest.json" ]; then
+        log_warn "File ${MANIFEST_FILE} non trovato. Ripristino da ${APK_OUTPUT_DIR}/manifest.json..."
+        mkdir -p "${ROOT_DIR}/dist"
+        cp -f "${APK_OUTPUT_DIR}/manifest.json" "${MANIFEST_FILE}"
+      else
+        log_warn "File ${MANIFEST_FILE} non trovato. Rigenerazione in corso..."
+        ensure_manifest
+      fi
+    fi
 
     if [ -f "${SCRIPTS_DIR}/upload-r2.mjs" ]; then
-      # Universal default APK (latest.apk contiene l'APK arm64-v8a per smartphone)
+      # Singolo APK per smartphone arm64-v8a: sovrascrive sempre mobile/latest.apk
       node "${SCRIPTS_DIR}/upload-r2.mjs" "${R2_PRIVATE_BUCKET_NAME}" "mobile/latest.apk" "${APK_PATH}" "application/vnd.android.package-archive" || {
         log_warn "Upload APK con upload-r2.mjs non riuscito. Fallback su Cloudflare Wrangler..."
         npm --prefix "${ROOT_DIR}/workers/kuro-tv" exec -- wrangler r2 object put "${R2_PRIVATE_BUCKET_NAME}/mobile/latest.apk" --file="${APK_PATH}" --content-type="application/vnd.android.package-archive" --remote
       }
 
-      # Architecture-specific APK (latest-arm64-v8a.apk)
-      node "${SCRIPTS_DIR}/upload-r2.mjs" "${R2_PRIVATE_BUCKET_NAME}" "mobile/latest-arm64-v8a.apk" "${APK_PATH}" "application/vnd.android.package-archive" || {
-        log_warn "Upload latest-arm64-v8a.apk con upload-r2.mjs non riuscito. Fallback su Cloudflare Wrangler..."
-        npm --prefix "${ROOT_DIR}/workers/kuro-tv" exec -- wrangler r2 object put "${R2_PRIVATE_BUCKET_NAME}/mobile/latest-arm64-v8a.apk" --file="${APK_PATH}" --content-type="application/vnd.android.package-archive" --remote || true
-      }
-
-      # Versioned mobile APK: mobile/kurotv-mobile-v*-arm64-v8a.apk
-      node "${SCRIPTS_DIR}/upload-r2.mjs" "${R2_PRIVATE_BUCKET_NAME}" "${VERSIONED_MOBILE_KEY}" "${APK_PATH}" "application/vnd.android.package-archive" || true
-
       # Manifest for private bucket worker (sovrascrive sempre mobile/manifest.json)
-      node "${SCRIPTS_DIR}/upload-r2.mjs" "${R2_PRIVATE_BUCKET_NAME}" "mobile/manifest.json" "${MANIFEST_WORKER_FILE}" "application/json" || {
+      node "${SCRIPTS_DIR}/upload-r2.mjs" "${R2_PRIVATE_BUCKET_NAME}" "mobile/manifest.json" "${MANIFEST_FILE}" "application/json" || {
         log_warn "Upload manifest con upload-r2.mjs non riuscito. Fallback su Cloudflare Wrangler..."
-        npm --prefix "${ROOT_DIR}/workers/kuro-tv" exec -- wrangler r2 object put "${R2_PRIVATE_BUCKET_NAME}/mobile/manifest.json" --file="${MANIFEST_WORKER_FILE}" --content-type="application/json" --remote
+        npm --prefix "${ROOT_DIR}/workers/kuro-tv" exec -- wrangler r2 object put "${R2_PRIVATE_BUCKET_NAME}/mobile/manifest.json" --file="${MANIFEST_FILE}" --content-type="application/json" --remote
       }
-      log_success "File mobile/ arm64-v8a caricati su bucket privato (${R2_PRIVATE_BUCKET_NAME}) con successo!"
+      log_success "File mobile/ (latest.apk e manifest.json) caricati su bucket privato (${R2_PRIVATE_BUCKET_NAME}) con successo!"
     else
       log_info "Upload su bucket privato R2 (${R2_PRIVATE_BUCKET_NAME}) tramite Wrangler..."
       npm --prefix "${ROOT_DIR}/workers/kuro-tv" exec -- wrangler r2 object put "${R2_PRIVATE_BUCKET_NAME}/mobile/latest.apk" --file="${APK_PATH}" --content-type="application/vnd.android.package-archive" --remote
-      npm --prefix "${ROOT_DIR}/workers/kuro-tv" exec -- wrangler r2 object put "${R2_PRIVATE_BUCKET_NAME}/mobile/latest-arm64-v8a.apk" --file="${APK_PATH}" --content-type="application/vnd.android.package-archive" --remote
-      npm --prefix "${ROOT_DIR}/workers/kuro-tv" exec -- wrangler r2 object put "${R2_PRIVATE_BUCKET_NAME}/${VERSIONED_MOBILE_KEY}" --file="${APK_PATH}" --content-type="application/vnd.android.package-archive" --remote || true
-      npm --prefix "${ROOT_DIR}/workers/kuro-tv" exec -- wrangler r2 object put "${R2_PRIVATE_BUCKET_NAME}/mobile/manifest.json" --file="${MANIFEST_WORKER_FILE}" --content-type="application/json" --remote
-      log_success "File mobile/ arm64-v8a caricati su bucket privato (${R2_PRIVATE_BUCKET_NAME}) con Wrangler!"
+      npm --prefix "${ROOT_DIR}/workers/kuro-tv" exec -- wrangler r2 object put "${R2_PRIVATE_BUCKET_NAME}/mobile/manifest.json" --file="${MANIFEST_FILE}" --content-type="application/json" --remote
+      log_success "File mobile/ (latest.apk e manifest.json) caricati su bucket privato (${R2_PRIVATE_BUCKET_NAME}) con Wrangler!"
     fi
   fi
-
-  # ==============================================================================
-  # [SEZIONE TRANSITORIA FACOLTATIVA: BUCKET PUBBLICO LEGACY (kurotv-releases)]
-  # Questa sezione è transitoria. Carichiamo l'APK arm64-v8a e il relativo manifest di compatibilità.
-  # ==============================================================================
-  if [ -n "${R2_BUCKET_NAME:-}" ]; then
-    echo ""
-    UPLOAD_LEGACY_CONFIRM="n"
-    read -rp "Desideri caricare anche sul bucket legacy pubblico '${R2_BUCKET_NAME}'? [y/N]: " UPLOAD_LEGACY_CONFIRM || true
-    if [[ "${UPLOAD_LEGACY_CONFIRM:-n}" =~ ^[Yy]$ ]]; then
-      log_info "Upload di compatibilità transitoria su bucket legacy (${R2_BUCKET_NAME}) con APK arm64-v8a..."
-      if [ -f "${SCRIPTS_DIR}/upload-r2.mjs" ]; then
-        node "${SCRIPTS_DIR}/upload-r2.mjs" "${R2_BUCKET_NAME}" "latest.apk" "${APK_PATH}" "application/vnd.android.package-archive" || {
-          log_warn "Upload legacy con upload-r2.mjs non riuscito. Tentativo tramite Wrangler..."
-          npm --prefix "${ROOT_DIR}/workers/kuro-tv" exec -- wrangler r2 object put "${R2_BUCKET_NAME}/latest.apk" --file="${APK_PATH}" --content-type="application/vnd.android.package-archive" --remote
-        }
-        node "${SCRIPTS_DIR}/upload-r2.mjs" "${R2_BUCKET_NAME}" "latest-arm64-v8a.apk" "${APK_PATH}" "application/vnd.android.package-archive" || true
-        node "${SCRIPTS_DIR}/upload-r2.mjs" "${R2_BUCKET_NAME}" "manifest.json" "${MANIFEST_FILE}" "application/json" || {
-          log_warn "Upload manifest legacy con upload-r2.mjs non riuscito. Tentativo tramite Wrangler..."
-          npm --prefix "${ROOT_DIR}/workers/kuro-tv" exec -- wrangler r2 object put "${R2_BUCKET_NAME}/manifest.json" --file="${MANIFEST_FILE}" --content-type="application/json" --remote
-        }
-        log_success "APK arm64-v8a e manifest legacy caricati su R2 legacy (${R2_BUCKET_NAME}) con successo!"
-      elif [ -d "${ROOT_DIR}/workers/kuro-tv" ]; then
-        log_info "Upload su bucket legacy (${R2_BUCKET_NAME}) tramite Cloudflare Wrangler..."
-        npm --prefix "${ROOT_DIR}/workers/kuro-tv" exec -- wrangler r2 object put "${R2_BUCKET_NAME}/latest.apk" --file="${APK_PATH}" --content-type="application/vnd.android.package-archive" --remote
-        npm --prefix "${ROOT_DIR}/workers/kuro-tv" exec -- wrangler r2 object put "${R2_BUCKET_NAME}/latest-arm64-v8a.apk" --file="${APK_PATH}" --content-type="application/vnd.android.package-archive" --remote
-        npm --prefix "${ROOT_DIR}/workers/kuro-tv" exec -- wrangler r2 object put "${R2_BUCKET_NAME}/manifest.json" --file="${MANIFEST_FILE}" --content-type="application/json" --remote
-        log_success "APK arm64-v8a e manifest legacy caricati su R2 legacy (${R2_BUCKET_NAME}) con Wrangler!"
-      elif command -v aws >/dev/null 2>&1 && [ -n "${R2_ENDPOINT_URL:-}" ]; then
-        log_info "Caricamento legacy tramite AWS CLI S3 endpoint..."
-        AWS_DEFAULT_REGION="${AWS_DEFAULT_REGION:-auto}" \
-        AWS_ACCESS_KEY_ID="${R2_ACCESS_KEY_ID:-}" \
-        AWS_SECRET_ACCESS_KEY="${R2_SECRET_ACCESS_KEY:-}" \
-        aws s3 cp "${APK_PATH}" "s3://${R2_BUCKET_NAME}/latest.apk" \
-          --endpoint-url "${R2_ENDPOINT_URL}" \
-          --content-type "application/vnd.android.package-archive"
-
-        AWS_DEFAULT_REGION="${AWS_DEFAULT_REGION:-auto}" \
-        AWS_ACCESS_KEY_ID="${R2_ACCESS_KEY_ID:-}" \
-        AWS_SECRET_ACCESS_KEY="${R2_SECRET_ACCESS_KEY:-}" \
-        aws s3 cp "${MANIFEST_FILE}" "s3://${R2_BUCKET_NAME}/manifest.json" \
-          --endpoint-url "${R2_ENDPOINT_URL}" \
-          --content-type "application/json"
-        log_success "APK arm64-v8a e manifest caricati su R2 legacy con AWS CLI!"
-      else
-        log_warn "Credenziali o client R2 legacy non configurati. Puoi caricare manualmente '${MANIFEST_FILE}' e '${APK_PATH}' sul bucket '${R2_BUCKET_NAME}'."
-      fi
-    else
-      log_info "Caricamento sul bucket legacy '${R2_BUCKET_NAME}' ignorato."
-    fi
-  fi
-  # ==============================================================================
-  # [FINE SEZIONE TRANSITORIA BUCKET LEGACY]
-  # ==============================================================================
 
   # Prune automatico di eventuali file versionati legacy rimasti nello storage R2
   if [ -f "${SCRIPTS_DIR}/clean-r2-old-versions.mjs" ]; then
@@ -946,10 +922,7 @@ echo " - Architettura Target: arm64-v8a (Smartphone Android)"
 echo " - APK: ${APK_PATH} (${APK_SIZE})"
 echo " - SHA256: ${APK_SHA256}"
 echo " - Worker kuro-tv Manifest: ${OTA_WORKER_URL}/mobile/manifest.json"
-echo " - Worker kuro-tv APK Default: ${OTA_WORKER_URL}/mobile/latest.apk"
-echo " - Worker kuro-tv APK arm64-v8a: ${OTA_WORKER_URL}/mobile/latest-arm64-v8a.apk"
-echo " - R2 Legacy Manifest: ${R2_PUBLIC_URL}/manifest.json"
-echo " - R2 Legacy APK: ${R2_PUBLIC_URL}/latest.apk"
+echo " - Worker kuro-tv APK: ${OTA_WORKER_URL}/mobile/latest.apk"
 echo ""
 }
 

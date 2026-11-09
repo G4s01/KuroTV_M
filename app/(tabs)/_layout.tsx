@@ -4,29 +4,41 @@ import { Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/theme';
+import { AppStorage } from '@/services/storage';
 
 export default function TabLayout() {
   const { theme } = useTheme();
+  const isLight = theme.name === 'light';
+
+  const [isHistoryEnabled, setIsHistoryEnabled] = React.useState<boolean>(() => {
+    return AppStorage.isHistoryEnabled();
+  });
+
+  React.useEffect(() => {
+    const unsubscribe = AppStorage.addSettingsListener(() => {
+      setIsHistoryEnabled(AppStorage.isHistoryEnabled());
+    });
+    return unsubscribe;
+  }, []);
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
+        tabBarShowLabel: false,
         tabBarActiveTintColor: theme.colors.primary,
-        tabBarInactiveTintColor: '#737373',
+        tabBarInactiveTintColor: theme.colors.textMuted,
         tabBarStyle: {
-          backgroundColor: '#000000',
-          borderTopColor: '#1A1A1A',
+          backgroundColor: theme.colors.background,
+          borderTopColor: theme.colors.border,
           borderTopWidth: 1,
-          height: Platform.OS === 'android' ? 64 : 84,
-          paddingBottom: Platform.OS === 'android' ? 10 : 28,
-          paddingTop: 8,
-        },
-        tabBarLabelStyle: {
-          fontSize: 11,
-          fontWeight: '600',
+          height: Platform.OS === 'android' ? 56 : 78,
+          paddingBottom: Platform.OS === 'android' ? 0 : 20,
+          paddingTop: 0,
         },
         tabBarItemStyle: {
           minHeight: 44,
+          justifyContent: 'center',
+          alignItems: 'center',
         },
       }}
       screenListeners={{
@@ -38,11 +50,13 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Home',
+          title: 'HOME',
+          tabBarShowLabel: false,
+          tabBarLabel: () => null,
           tabBarIcon: ({ color, focused }) => (
             <Ionicons
               name={focused ? 'home' : 'home-outline'}
-              size={22}
+              size={24}
               color={color as string}
             />
           ),
@@ -51,11 +65,13 @@ export default function TabLayout() {
       <Tabs.Screen
         name="explore"
         options={{
-          title: 'Esplora',
+          title: 'ESPLORA',
+          tabBarShowLabel: false,
+          tabBarLabel: () => null,
           tabBarIcon: ({ color, focused }) => (
             <Ionicons
               name={focused ? 'compass' : 'compass-outline'}
-              size={22}
+              size={24}
               color={color as string}
             />
           ),
@@ -64,11 +80,13 @@ export default function TabLayout() {
       <Tabs.Screen
         name="favorites"
         options={{
-          title: 'Preferiti',
+          title: 'PREFERITI',
+          tabBarShowLabel: false,
+          tabBarLabel: () => null,
           tabBarIcon: ({ color, focused }) => (
             <Ionicons
               name={focused ? 'heart' : 'heart-outline'}
-              size={22}
+              size={24}
               color={color as string}
             />
           ),
@@ -77,11 +95,14 @@ export default function TabLayout() {
       <Tabs.Screen
         name="history"
         options={{
-          title: 'Cronologia',
+          href: isHistoryEnabled ? '/(tabs)/history' : null,
+          title: 'CRONOLOGIA',
+          tabBarShowLabel: false,
+          tabBarLabel: () => null,
           tabBarIcon: ({ color, focused }) => (
             <Ionicons
               name={focused ? 'time' : 'time-outline'}
-              size={22}
+              size={24}
               color={color as string}
             />
           ),
@@ -90,11 +111,13 @@ export default function TabLayout() {
       <Tabs.Screen
         name="settings"
         options={{
-          title: 'Impostazioni',
+          title: 'IMPOSTAZIONI',
+          tabBarShowLabel: false,
+          tabBarLabel: () => null,
           tabBarIcon: ({ color, focused }) => (
             <Ionicons
               name={focused ? 'settings' : 'settings-outline'}
-              size={22}
+              size={24}
               color={color as string}
             />
           ),

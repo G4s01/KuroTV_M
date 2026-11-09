@@ -489,6 +489,10 @@ class UpdaterServiceImpl {
       }
     }
 
+    // Add timestamp to bypass edge / intermediate caching
+    const cacheBuster = `_t=${Date.now()}`;
+    url = `${url}${url.includes('?') ? '&' : '?'}${cacheBuster}`;
+
     try {
       const response = await axios.get(url, {
         timeout: 8000,

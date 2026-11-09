@@ -1,6 +1,15 @@
 import React from 'react';
-import { StyleSheet, Text, View, Pressable, ScrollView } from 'react-native';
-import { BottomSheet } from '@expo/ui';
+import {
+  StyleSheet,
+  Text,
+  View,
+  Pressable,
+  ScrollView,
+  Modal,
+  TouchableWithoutFeedback,
+  useWindowDimensions,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { oledTheme, useTheme } from '@/theme';
@@ -10,6 +19,8 @@ export interface EpisodeBatch {
   label: string;
   start: number;
   end: number;
+  startIndex?: number;
+  endIndex?: number;
 }
 
 export interface RelatedSeason {
@@ -18,7 +29,7 @@ export interface RelatedSeason {
   badge?: string;
 }
 
-interface BatchBottomSheetProps {
+export interface BatchBottomSheetProps {
   isVisible: boolean;
   onClose: () => void;
   batches: EpisodeBatch[];
@@ -35,159 +46,190 @@ export const BatchBottomSheet: React.FC<BatchBottomSheetProps> = ({
   batches,
   currentBatchId,
   onSelectBatch,
-  seasons = [],
-  currentSeasonId,
-  onSelectSeason,
 }) => {
   const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const isLandscape = windowWidth > windowHeight;
+
+  const safeHorizontalInset = Math.max(insets.left, insets.right);
+  const horizontalPadding = Math.max(20, safeHorizontalInset);
+
+  const handleSelectBatch = (batchId: string) => {
+    Haptics.selectionAsync().catch(() => {});
+    onSelectBatch(batchId);
+    onClose();
+  };
 
   return (
-    <BottomSheet
-      isPresented={isVisible}
-      onDismiss={onClose}
-      showDragIndicator={true}
-      containerColor={theme.colors.card}
+    <Modal
+      visible={isVisible}
+      transparent={true}
+      animationType="slide"
+      onRequestClose={onClose}
+      statusBarTranslucent={true}
     >
-      <View style={styles.container}>
-        <Text style={styles.title}>Stagioni & Batch Episodi</Text>
+      <View style={styles.modalOverlay}>
+        <TouchableWithoutFeedback onPress={onClose}>
+          <View style={styles.backdrop} />
+        </TouchableWithoutFeedback>
 
-        {/* Stagioni correlate (se disponibili) */}
-        {seasons.length > 0 && onSelectSeason && (
-          <View style={styles.section}>
-            <Text style={styles.sectionHeader}>Stagioni Correlate</Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.seasonsScroll}
+        <View
+          style={[
+            styles.sheetContainer,
+            {
+              backgroundColor: theme.colors.card,
+              borderColor: theme.colors.border,
+              paddingLeft: horizontalPadding,
+              paddingRight: horizontalPadding,
+              paddingBottom: Math.max(28, insets.bottom + 16),
+            },
+          ]}
+        >
+          {/* Drag Handle Indicator */}
+          <View style={styles.dragIndicatorWrapper}>
+            <View style={styles.dragIndicator} />
+          </View>
+
+          {/* Header Row with Title & Close Icon */}
+          <View style={styles.headerRow}>
+            <Text style={[styles.title, { color: theme.colors.text }]}>
+              SELEZIONA BATCH EPISODI
+            </Text>
+            <Pressable
+              onPress={onClose}
+              hitSlop={12}
+              style={styles.closeBtn}
+              accessibilityRole="button"
+              accessibilityLabel="CHIUDI SELEZIONE BATCH"
             >
-              {seasons.map((season) => {
-                const isSelected = season.id === currentSeasonId;
+              <Ionicons name="close" size={20} color={theme.colors.textMuted} />
+            </Pressable>
+          </View>
+
+          <View style={styles.section}>
+            <Text style={[styles.sectionHeader, { color: theme.colors.textSecondary }]}>
+              INTERVALLO PUNTATE
+            </Text>
+            <ScrollView
+              style={[styles.batchScroll, { maxHeight: isLandscape ? 220 : 380 }]}
+              contentContainerStyle={styles.batchGrid}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
+              {batches.map((batch) => {
+                const isSelected = batch.id === currentBatchId;
                 return (
                   <Pressable
-                    key={season.id}
+                    key={batch.id}
                     style={[
-                      styles.seasonChip,
+                      styles.batchItem,
+                      {
+                        backgroundColor: theme.colors.surface,
+                        borderColor: theme.colors.border,
+                      },
                       isSelected && [
-                        styles.seasonChipActive,
-                        { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
+                        styles.batchItemActive,
+                        {
+                          borderColor: theme.colors.primary,
+                          backgroundColor: `${theme.colors.primary}18`,
+                        },
                       ],
                     ]}
-                    onPress={() => {
-                      Haptics.selectionAsync().catch(() => {});
-                      onSelectSeason(season.id);
-                      onClose();
-                    }}
+                    onPress={() => handleSelectBatch(batch.id)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`SELEZIONA BATCH ${batch.label}`}
                   >
-                    <Ionicons
-                      name="layers-outline"
-                      size={14}
-                      color={isSelected ? '#FFFFFF' : oledTheme.colors.textMuted}
-                    />
                     <Text
-                      style={[styles.seasonText, isSelected && styles.seasonTextActive]}
-                      numberOfLines={1}
+                      style={[
+                        styles.batchText,
+                        { color: theme.colors.text },
+                        isSelected && [
+                          styles.batchTextActive,
+                          { color: theme.colors.primary },
+                        ],
+                      ]}
                     >
-                      {season.title}
+                      {batch.label}
                     </Text>
+                    {isSelected && (
+                      <Ionicons
+                        name="checkmark-circle"
+                        size={18}
+                        color={theme.colors.primary}
+                      />
+                    )}
                   </Pressable>
                 );
               })}
             </ScrollView>
           </View>
-        )}
-
-        {/* Batch di puntate */}
-        <View style={styles.section}>
-          <Text style={styles.sectionHeader}>Intervallo Puntate</Text>
-          <View style={styles.batchGrid}>
-            {batches.map((batch) => {
-              const isSelected = batch.id === currentBatchId;
-              return (
-                <Pressable
-                  key={batch.id}
-                  style={[
-                    styles.batchItem,
-                    isSelected && [styles.batchItemActive, { borderColor: theme.colors.primary }],
-                  ]}
-                  onPress={() => {
-                    Haptics.selectionAsync().catch(() => {});
-                    onSelectBatch(batch.id);
-                    onClose();
-                  }}
-                >
-                  <Text
-                    style={[
-                      styles.batchText,
-                      isSelected && [styles.batchTextActive, { color: theme.colors.primary }],
-                    ]}
-                  >
-                    {batch.label}
-                  </Text>
-                  {isSelected && (
-                    <Ionicons name="checkmark-circle" size={16} color={theme.colors.primary} />
-                  )}
-                </Pressable>
-              );
-            })}
-          </View>
         </View>
       </View>
-    </BottomSheet>
+    </Modal>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    paddingHorizontal: 20,
-    paddingTop: 8,
-    paddingBottom: 28,
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
   },
-  title: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '700',
+  backdrop: {
+    ...StyleSheet.absoluteFill,
+  },
+  sheetContainer: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    borderTopWidth: 1,
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    paddingTop: 10,
+  },
+  dragIndicatorWrapper: {
+    alignItems: 'center',
+    paddingVertical: 4,
+    marginBottom: 8,
+  },
+  dragIndicator: {
+    width: 38,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+  },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 16,
   },
+  title: {
+    fontSize: 15,
+    fontWeight: '700',
+    fontFamily: oledTheme.typography.title.fontFamily,
+    textTransform: 'uppercase',
+  },
+  closeBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   section: {
-    marginBottom: 20,
+    marginBottom: 12,
   },
   sectionHeader: {
-    color: oledTheme.colors.textMuted,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
+    fontFamily: oledTheme.typography.caption.fontFamily,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     marginBottom: 10,
   },
-  seasonsScroll: {
-    gap: 8,
-    paddingVertical: 4,
-  },
-  seasonChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#1E1E1E',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: oledTheme.radius.full,
-    borderWidth: 1,
-    borderColor: '#333333',
-    minHeight: oledTheme.spacing.minTouchTarget,
-    maxWidth: 220,
-  },
-  seasonChipActive: {
-    backgroundColor: oledTheme.colors.primary,
-    borderColor: oledTheme.colors.primary,
-  },
-  seasonText: {
-    color: oledTheme.colors.textSecondary,
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  seasonTextActive: {
-    color: '#FFFFFF',
-    fontWeight: '700',
+  batchScroll: {
+    maxHeight: 380,
   },
   batchGrid: {
     flexDirection: 'row',
@@ -198,26 +240,25 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#1E1E1E',
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderRadius: oledTheme.radius.md,
     borderWidth: 1,
-    borderColor: '#333333',
     minWidth: '47%',
     minHeight: oledTheme.spacing.minTouchTarget,
   },
   batchItemActive: {
-    borderColor: oledTheme.colors.primary,
-    backgroundColor: 'rgba(229, 9, 20, 0.15)',
+    borderWidth: 1,
   },
   batchText: {
-    color: '#FFFFFF',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
+    fontFamily: oledTheme.typography.body.fontFamily,
+    textTransform: 'uppercase',
   },
   batchTextActive: {
-    color: oledTheme.colors.primary,
     fontWeight: '700',
+    fontFamily: oledTheme.typography.body.fontFamily,
+    textTransform: 'uppercase',
   },
 });
