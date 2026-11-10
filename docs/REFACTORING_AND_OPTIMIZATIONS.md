@@ -252,6 +252,26 @@ Esporre la programmazione settimanale completa delle uscite con gli orari previs
 
 ---
 
+---
+
+## 🏎️ Step 12: Ottimizzazione Carosello Raccomandati, Risoluzione Scroll Deadlock & Layout Stabile
+
+### 🎯 Obiettivo
+Risolvere il blocco e crash immediato dell'applicazione durante lo scorrimento del carosello nella schermata Home, ridenominare la sezione da `TOP RACCOMANDATI` a `RACCOMANDATI`, stabilizzare la sincronizzazione bi-direzionale tramite settling differito ed eliminare il layout thrashing su Android Fabric.
+
+### 🛠️ Piano di Refactor & Implementazione
+1. **Ridenominazione Sezione `RACCOMANDATI`**:
+   - Aggiornamento dell'intestazione grafica da `TOP RACCOMANDATI` a `RACCOMANDATI` in `app/(tabs)/index.tsx`, e aggiornamento degli assert nei test di integrazione (`tests/core-verification.test.ts`).
+2. **Sincronizzazione allo Settling (Anti Ping-Pong Loop)**:
+   - Eliminazione dell'animazione incrociata a 60 FPS durante `onScroll`: `heroScrollRef` non viene più forzato a scorrere a ogni fotogramma intermedio del trascinamento del carosello.
+   - Introduzione di `settleRecommendedScroll` e `settleHeroScroll`, invocati unicamente quando il movimento si ferma (gestione combinata di `onMomentumScrollEnd` e `onScrollEndDrag` con verifica di velocità per Android).
+   - Estensione del lock `activeScrollSourceRef` con timeout protetto a 450ms (`resetSourceTimeoutRef`) per coprire l'intera durata dell'animazione programmata ed evitare rimbalzi inversi.
+   - Pulizia dei timer pendenti in `useEffect` in fase di unmount.
+3. **Memoizzazione Stabile `snapToOffsets`**:
+   - Creazione di `recommendedSnapOffsets` con `useMemo` per azzerare il re-istanziamento dell'array di snapping su React Native Fabric.
+4. **Bordo Stabile a 2dp & Zero `requestLayout`**:
+   - `styles.recommendedCard` fissa `borderWidth: 2` a livello statico, variando esclusivamente `borderColor` al cambio focus per eliminare le invalidazioni di layout del motore Android durante lo scroll inerziale.
+
 ## 📋 Checklist di Verifica per Ogni Step
 
 Prima di considerare concluso uno step della roadmap, l'agente deve verificare:

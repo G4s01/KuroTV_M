@@ -101,19 +101,24 @@ La schermata Home (`app/(tabs)/index.tsx`) è strutturata per replicare fedelmen
   - `INFO`: Navigazione diretta alla scheda tecnica e trama completa (`/anime/[id]`), attivabile anche toccando qualsiasi area libera del banner.
 
 ### 2. Sincronizzazione Bi-direzionale Hero Banner ⇄ Carosello Raccomandati
-- **Bi-directional Focus Sync**:
-  - Scorrendo il carosello dei raccomandati numerati (`#1` ... `#8`), l'evento `handleRecommendedScroll` calcola l'indice di destinazione e anima lo slider Hero (`heroScrollRef.current.scrollTo`).
-  - Scorrendo lo slider Hero a swipe orizzontale, l'evento `handleHeroScroll` calcola la pagina corrente e sincronizza il carosello compatto sottostante (`recommendedScrollRef.current.scrollTo`).
-- **Loop-Guard contro Feedback Loop Infiniti**:
-  - Un riferimento mutabile `activeScrollSourceRef` (`'hero' | 'recommended' | 'tap' | null`) traccia l'origine della gesture in tempo reale, azzerando qualsiasi scatto, jitter o re-triggering incrociato degli eventi di scroll.
-- **Snapping Touch Nativo & Dynamic Right Padding**:
-  - Il carosello numerato adotta `snapToOffsets` calcolato sulla larghezza di ciascun blocco (`124dp = 112 + 12`).
-  - Il padding destro del contenitore è calcolato dinamicamente con `Math.max(16, windowWidth - RECOMMENDED_ITEM_WIDTH - 16)`, permettendo alle ultime due schede (#7 e #8) di scorrere liberamente fino al punto di focus senza essere respinte dal limite dello scroll.
+- **Sincronizzazione allo Settling (Zero Ping-Pong & Zero Deadlock)**:
+  - Per evitare loop ricorsivi tra scrollview, scatti e saturazione del thread JS/UI, la sincronizzazione non avviene a ogni tick continuo di `onScroll`, bensì unicamente all'assestamento dello scorrimento (**settling**):
+    - **Scorrimento Carosello Raccomandati**: quando il carosello si arresta (`onMomentumScrollEnd` o `onScrollEndDrag` con `|velocity| < 0.1` per rilasci lenti senza inerzia su Android), viene invocato `settleRecommendedScroll`, aggiornato l'indice e animato lo slider Hero (`heroScrollRef.current.scrollTo`).
+    - **Scorrimento Slider Hero**: quando la pagina si arresta, viene invocato `settleHeroScroll`, aggiornato l'indice e sincronizzato il carosello raccomandati (`recommendedScrollRef.current.scrollTo`).
+    - **Selezione Rapida (Tap)**: toccando direttamente una scheda in `RACCOMANDATI` (`handleSelectRecommended`), entrambe le viste animano fluidamente all'indice selezionato.
+- **Protezione Anti-Loop Differita via `activeScrollSourceRef` & Timeout Safe**:
+  - Il lock `activeScrollSourceRef` (`'hero' | 'recommended' | 'tap' | null`) blocca qualsiasi re-triggering durante la gesture.
+  - Per prevenire che i fotogrammi dell'animazione nativa innescata sull'altra scrollview scatenino a loro volta una risposta inversa non appena terminata la gesture dell'utente, lo sblocco di `activeScrollSourceRef.current = null` è differito tramite un timeout protetto a 450ms (`resetSourceTimeoutRef`), con cleanup automatico in unmount.
+- **Snapping Nativo Memoizzato (`snapToOffsets`) & Dynamic Right Padding**:
+  - `snapToOffsets` adotta l'array stabile memoizzato `recommendedSnapOffsets` (`useMemo`), eliminando la ricreazione dell'istanza dell'array ad ogni re-render e proteggendo i listener nativi Fabric di Android.
+  - Il padding destro del contenitore è calcolato dinamicamente con `Math.max(16, windowWidth - RECOMMENDED_ITEM_WIDTH - 16)`, permettendo alle ultime due schede (#7 e #8) di scorrere liberamente fino al punto di focus senza blocco del clamp.
+- **Bordo Fisso a 2dp (Zero Layout Invalidation / Zero `requestLayout`)**:
+  - `styles.recommendedCard` adotta `borderWidth: 2` fisso. Al variare dello stato `isFocused`, varia unicamente la tinta `borderColor`, preservando le dimensioni esatte del box model e azzerando le chiamate native a `requestLayout()` durante lo scorrimento.
 
 ### 3. Organizzazione delle Sezioni & Scraper Stagionale (`/upcoming`)
 - **Sezioni Verticali**:
   1. Hero Banner Spotlight (Top 8).
-  2. Carosello Raccomandati numerati progressivamente (`#1` ... `#8`).
+  2. Carosello `RACCOMANDATI` numerati progressivamente (`#1` ... `#8`).
   3. *Riprendi a Guardare* (condizionale, sincronizzato con MMKV).
   4. *Ultimi Episodi Usciti* (con pulsante `VEDI TUTTI`).
   5. *Tendenze*.

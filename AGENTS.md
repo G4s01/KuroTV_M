@@ -20,6 +20,12 @@ Kuro Mobile è un'applicazione concepita **esclusivamente per smartphone Android
 4. **Divieto Assoluto di Alert di Sistema (`Alert.alert`)**:
    - È tassativamente vietato importare `Alert` da `react-native` o chiamare `Alert.alert(...)` per conferme, avvisi o rimozioni.
    - Ogni richiesta di conferma (cancellazioni, rimozione da *Riprendi a guardare*, svuotamento cronologia, azioni irreversibili) deve utilizzare esclusivamente il componente in-app unificato `ConfirmModal` (`src/components/ConfirmModal.tsx`), preservando l'estetica OLED, il contrasto dinamico YIQ e la tipografia monospace.
+5. **Divieto Assoluto di Chiamate Incrociate `scrollTo` su Eventi Continui `onScroll` (Prevenzione Deadlock & Ping-Pong)**:
+   - È severamente vietato invocare `scrollTo` o avviare animazioni programmatiche su una `ScrollView` all'interno dell'evento continuo `onScroll` di un'altra `ScrollView`.
+   - La sincronizzazione bi-direzionale tra slider e caroselli (es. Hero Banner e Carosello Raccomandati) deve avvenire tassativamente unicamente all'assestamento della gesture (**settling**) tramite `onMomentumScrollEnd` e `onScrollEndDrag` con verifica di velocità (`Math.abs(velocity) < 0.1`).
+   - Gli stati di origine scorrimento (`activeScrollSourceRef`) devono essere protetti da timeout asincroni (~450ms) per coprire l'intera transizione nativa prima di sbloccare la sincronizzazione inversa.
+   - Tutti gli array passati a `snapToOffsets` devono essere rigorosamente memoizzati (`useMemo`) per prevenire la ricreazione dei listener di snapping nativi su Fabric / Android ad ogni re-render.
+   - Nessun elemento soggetto a focus dinamico in una lista scorrevole deve mutare il suo `borderWidth` al cambio stato: la geometria del box model deve rimanere fissa (es. 2dp) variando la sola tinta `borderColor`, azzerando le chiamate native a `requestLayout()` nel thread UI durante lo scorrimento inerziale.
 
 ---
 
