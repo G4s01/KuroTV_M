@@ -567,59 +567,66 @@ export default function SettingsScreen() {
             settings={aniSkipSettings}
           />
 
-          <Text style={[styles.aniskipSubTitle, { color: theme.colors.textSecondary, marginTop: 14, marginBottom: 8 }]}>
-            DURATA PULSANTE &apos;SALTA&apos;
-          </Text>
-          <AniSkipDurationSlider
-            value={aniSkipSettings.buttonDuration ?? 10}
-            onChange={handleUpdateAniSkipDuration}
-            theme={theme}
-            disabled={aniSkipSettings.mode === 'disabled'}
-          />
+          {aniSkipSettings.mode === 'manual' && (
+            <>
+              <Text style={[styles.aniskipSubTitle, { color: theme.colors.textSecondary, marginTop: 14, marginBottom: 8 }]}>
+                DURATA PULSANTE &apos;SALTA&apos;
+              </Text>
+              <AniSkipDurationSlider
+                value={aniSkipSettings.buttonDuration ?? 10}
+                onChange={handleUpdateAniSkipDuration}
+                theme={theme}
+              />
+            </>
+          )}
 
-          <Text style={[styles.aniskipSubTitle, { color: theme.colors.textSecondary, marginTop: 14 }]}>
-            COSA SALTARE
-          </Text>
-          <View style={styles.aniskipRow}>
-            {[
-              { key: 'enableOpening' as const, label: 'INTRO' },
-              { key: 'enableRecap' as const, label: 'RECAP' },
-              { key: 'enableEnding' as const, label: 'OUTRO' },
-            ].map((item) => {
-              const active = aniSkipSettings[item.key];
-              const contrastColor = active ? getContrastTextColor(theme.colors.primary) : theme.colors.text;
-              return (
-                <Pressable
-                  key={item.key}
-                  style={[
-                    styles.aniskipChip,
-                    {
-                      backgroundColor: active ? theme.colors.primary : theme.colors.card,
-                      borderColor: active ? theme.colors.primary : theme.colors.border,
-                    },
-                  ]}
-                  onPress={() => handleToggleAniSkipType(item.key)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`SALTA ${item.label}: ${active ? 'ATTIVO' : 'DISATTIVATO'}`}
-                >
-                  <Ionicons
-                    name={active ? 'checkmark-circle' : 'ellipse-outline'}
-                    size={14}
-                    color={contrastColor}
-                  />
-                  <Text
-                    style={[
-                      styles.aniskipChipText,
-                      { color: contrastColor },
-                      active && styles.aniskipChipTextActive,
-                    ]}
-                  >
-                    {item.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
+          {aniSkipSettings.mode !== 'disabled' && (
+            <>
+              <Text style={[styles.aniskipSubTitle, { color: theme.colors.textSecondary, marginTop: 14 }]}>
+                COSA SALTARE
+              </Text>
+              <View style={styles.aniskipRow}>
+                {[
+                  { key: 'enableOpening' as const, label: 'INTRO' },
+                  { key: 'enableRecap' as const, label: 'RECAP' },
+                  { key: 'enableEnding' as const, label: 'OUTRO' },
+                ].map((item) => {
+                  const active = aniSkipSettings[item.key];
+                  const contrastColor = active ? getContrastTextColor(theme.colors.primary) : theme.colors.text;
+                  return (
+                    <Pressable
+                      key={item.key}
+                      style={[
+                        styles.aniskipChip,
+                        {
+                          backgroundColor: active ? theme.colors.primary : theme.colors.card,
+                          borderColor: active ? theme.colors.primary : theme.colors.border,
+                        },
+                      ]}
+                      onPress={() => handleToggleAniSkipType(item.key)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`SALTA ${item.label}: ${active ? 'ATTIVO' : 'DISATTIVATO'}`}
+                    >
+                      <Ionicons
+                        name={active ? 'checkmark-circle' : 'ellipse-outline'}
+                        size={14}
+                        color={contrastColor}
+                      />
+                      <Text
+                        style={[
+                          styles.aniskipChipText,
+                          { color: contrastColor },
+                          active && styles.aniskipChipTextActive,
+                        ]}
+                      >
+                        {item.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </>
+          )}
         </View>
 
         {/* NAVBAR DI SISTEMA ANDROID */}

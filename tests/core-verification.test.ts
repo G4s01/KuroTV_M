@@ -1663,6 +1663,11 @@ assert(typeof AniSkipDurationSlider === 'function' || typeof AniSkipDurationSlid
 const settingsCodeFinal = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/settings.tsx'), 'utf-8');
 assert(settingsCodeFinal.includes('AniSkipDurationSlider'), 'settings.tsx deve importare e usare AniSkipDurationSlider');
 assert(settingsCodeFinal.includes("newSettings.mode = 'disabled'"), 'settings.tsx deve impostare mode su disabled se tutti gli intervalli sono deselezionati');
+assert(
+  settingsCodeFinal.includes("aniSkipSettings.mode === 'manual'") &&
+  settingsCodeFinal.includes("aniSkipSettings.mode !== 'disabled'"),
+  'settings.tsx deve mostrare la durata solo in modalità manuale e COSA SALTARE solo quando non in OFF (disabled)'
+);
 
 // 5. Defensive Updater checks: selectApkForDevice with undefined/empty manifest
 const emptyManifest: any = { version: '1.0.0', versionCode: 2 };
