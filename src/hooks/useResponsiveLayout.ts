@@ -29,12 +29,9 @@ export interface ResponsiveLayout {
 }
 
 /**
- * Responsive layout hook for Kuro Mobile / Tablet
- * Enforces Android `sw600dp` standard for true tablets and foldables.
+ * Pure calculation function for responsive layout (Android sw600dp standard)
  */
-export function useResponsiveLayout(): ResponsiveLayout {
-  const { width, height } = useWindowDimensions();
-
+export function computeResponsiveLayout(width: number, height: number): ResponsiveLayout {
   // True tablet / foldable qualification (Android sw600dp equivalent)
   // Ensures standard phones rotated in landscape remain in phone layout.
   const isTablet = Math.min(width, height) >= 600;
@@ -97,4 +94,12 @@ export function useResponsiveLayout(): ResponsiveLayout {
     episodeColumns,
     getCardDimensions,
   };
+}
+
+/**
+ * Responsive layout hook for Kuro Mobile / Tablet
+ */
+export function useResponsiveLayout(): ResponsiveLayout {
+  const { width, height } = useWindowDimensions();
+  return computeResponsiveLayout(width, height);
 }

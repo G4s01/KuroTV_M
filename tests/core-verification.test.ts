@@ -60,6 +60,7 @@ import {
 import { UpdateStore, usePendingUpdate } from '../src/services/updater/index';
 import { parseDetailPage } from '../src/services/scraper/parsers/detail.parser';
 import { CURRENT_CHANGELOG, formatChangelog } from '../src/constants/changelog';
+import { computeResponsiveLayout } from '../src/hooks/useResponsiveLayout';
 import type { AniSkipResult } from '../src/types/index';
 
 console.log('=== Inizio Test di Verifica KuroTV Mobile ===\n');
@@ -2266,6 +2267,80 @@ assert(continueSectionSource.includes('IN PARI'), 'ContinueWatchingSection deve 
 assert(continueSectionSource.includes('checkmark-done-circle'), 'ContinueWatchingSection deve mostrare icona checkmark per serie in pari');
 
 console.log('✓ Gestione Anime in Corso \'IN PARI\' & Sincronizzazione Ibrida Smart verificate con successo.');
+
+// -----------------------------------------------------------------------------
+// 20. Test Supporto Schermi Larghi, Tablet (sw600dp), Left Navigation Rail & Master-Detail
+// -----------------------------------------------------------------------------
+console.log('\n[20/20] Verifica Supporto Schermi Larghi, Tablet (sw600dp), Left Navigation Rail & Master-Detail...');
+
+// 1. Test standard sw600dp: Smartphone vs Tablet
+const phonePortrait = computeResponsiveLayout(390, 844);
+assert.strictEqual(phonePortrait.isTablet, false, 'Smartphone portrait non deve essere identificato come tablet');
+assert.strictEqual(phonePortrait.railWidth, 0, 'Smartphone non deve avere navigation rail laterale');
+assert.strictEqual(phonePortrait.numColumns, 2, 'Smartphone deve mantenere 2 colonne standard');
+assert.strictEqual(phonePortrait.isMasterDetail, false, 'Smartphone non deve usare master-detail');
+
+// Smartphone in landscape (es. 844 x 390): min dimension < 600 -> non è tablet
+const phoneLandscape = computeResponsiveLayout(844, 390);
+assert.strictEqual(phoneLandscape.isTablet, false, 'Smartphone in landscape non deve attivare layout tablet (min dimension < 600)');
+assert.strictEqual(phoneLandscape.railWidth, 0, 'Smartphone in landscape mantiene bottom tab bar');
+
+// Tablet in portrait (800 x 1280): min dimension 800 >= 600 -> isTablet = true
+const tabletPortrait = computeResponsiveLayout(800, 1280);
+assert.strictEqual(tabletPortrait.isTablet, true, 'Tablet portrait deve essere identificato come tablet');
+assert.strictEqual(tabletPortrait.railWidth, 76, 'Tablet deve avere navigation rail di 76dp');
+assert.strictEqual(tabletPortrait.contentWidth, 800 - 76, 'contentWidth deve sottrarre la rail laterale');
+assert(tabletPortrait.numColumns >= 3, 'Tablet portrait deve avere almeno 3 o 4 colonne');
+assert.strictEqual(tabletPortrait.isMasterDetail, true, 'Tablet portrait deve supportare master-detail');
+
+// Tablet in landscape (1280 x 800): min dimension 800 >= 600 -> isTablet = true
+const tabletLandscape = computeResponsiveLayout(1280, 800);
+assert.strictEqual(tabletLandscape.isTablet, true, 'Tablet landscape deve essere identificato come tablet');
+assert.strictEqual(tabletLandscape.railWidth, 76, 'Tablet landscape ha rail di 76dp');
+assert(tabletLandscape.numColumns >= 5, 'Tablet landscape deve avere almeno 5 o 6 colonne');
+assert.strictEqual(tabletLandscape.isMasterDetail, true, 'Tablet landscape deve supportare master-detail');
+assert(tabletLandscape.episodeColumns >= 6, 'Tablet landscape deve avere 6-8 colonne chip episodi');
+
+// Foldable aperto (700 x 830): min dimension 700 >= 600 -> isTablet = true
+const foldableOpen = computeResponsiveLayout(700, 830);
+assert.strictEqual(foldableOpen.isTablet, true, 'Foldable aperto deve essere identificato come tablet');
+
+// 2. Verifica sorgente TabLayout (Left Navigation Rail)
+const tabLayoutRespSource = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/_layout.tsx'), 'utf-8');
+assert(tabLayoutRespSource.includes("tabBarPosition: isTablet ? 'left' : 'bottom'"), 'TabLayout deve impostare tabBarPosition condizionale');
+assert(tabLayoutRespSource.includes('railBrandWrapper'), 'TabLayout deve includere il brand logo per la navigation rail');
+assert(tabLayoutRespSource.includes('railBrandLogoBox'), 'TabLayout deve avere il logo monogramma K');
+assert(tabLayoutRespSource.includes('width: 76'), 'Navigation rail deve avere larghezza 76dp');
+assert(tabLayoutRespSource.includes('borderRightWidth: 1'), 'Navigation rail deve avere borderRightWidth');
+
+// 3. Verifica sorgente AnimeDetailScreen (Master-Detail)
+const detailSource = fs.readFileSync(path.resolve(process.cwd(), 'app/anime/[id].tsx'), 'utf-8');
+assert(detailSource.includes('isMasterDetail'), 'AnimeDetailScreen deve supportare isMasterDetail');
+assert(detailSource.includes('masterDetailContainer'), 'AnimeDetailScreen deve avere masterDetailContainer');
+assert(detailSource.includes('leftMasterColumn'), 'AnimeDetailScreen deve avere colonna sinistra master');
+assert(detailSource.includes('rightDetailColumn'), 'AnimeDetailScreen deve avere colonna destra detail');
+assert(detailSource.includes('masterDetailDivider'), 'AnimeDetailScreen deve avere divisore centrale');
+
+// 4. Verifica sorgente FavoritesScreen e SearchResultsGrid (Colonne dinamiche)
+const favoritesSource = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/favorites.tsx'), 'utf-8');
+assert(favoritesSource.includes('useResponsiveLayout'), 'FavoritesScreen deve utilizzare useResponsiveLayout');
+assert(favoritesSource.includes('numColumns={numColumns}'), 'FavoritesScreen deve passare numColumns dinamico');
+
+const searchGridSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/home/SearchResultsGrid.tsx'), 'utf-8');
+assert(searchGridSource.includes('numColumns?: number'), 'SearchResultsGrid deve supportare numColumns');
+assert(searchGridSource.includes('numColumns={numColumns}'), 'SearchResultsGrid deve passare numColumns a FlashList');
+
+// 5. Verifica Bottom Sheets & Modali (Max-width per schermi larghi)
+const filterSheetSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/FilterBottomSheet.tsx'), 'utf-8');
+assert(filterSheetSource.includes('maxWidth: 620'), 'FilterBottomSheet deve limitare maxWidth a 620 su tablet');
+
+const serverSheetSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/ServerBottomSheet.tsx'), 'utf-8');
+assert(serverSheetSource.includes('maxWidth: 580'), 'ServerBottomSheet deve limitare maxWidth a 580 su tablet');
+
+const batchSheetSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/BatchBottomSheet.tsx'), 'utf-8');
+assert(batchSheetSource.includes('maxWidth: 580'), 'BatchBottomSheet deve limitare maxWidth a 580 su tablet');
+
+console.log('✓ Supporto Schermi Larghi, Tablet (sw600dp), Left Navigation Rail & Master-Detail verificati con successo.');
 
 // -----------------------------------------------------------------------------
 // Fine Test

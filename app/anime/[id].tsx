@@ -215,9 +215,12 @@ export default function AnimeDetailScreen() {
     { id: '9', name: 'AnimeWorld Server (Default)' },
   ];
 
+  const hasStartedWatching = React.useMemo(() => {
+    return currentProgressList.some((p) => p.progress > 0 && !p.isCompleted);
+  }, [currentProgressList]);
+
   const renderHeader = () => {
     if (!anime) return null;
-    const hasStartedWatching = currentProgressList.some((p) => p.progress > 0 && !p.isCompleted);
     return (
       <View style={[styles.headerWrapper, { backgroundColor: theme.colors.background }]}>
         <AnimeHeaderBackdrop
@@ -306,6 +309,79 @@ export default function AnimeDetailScreen() {
           <Pressable style={[styles.retryBtn, { backgroundColor: theme.colors.primary }]} onPress={() => refetch()}>
             <Text style={[styles.retryBtnText, { color: getContrastTextColor(theme.colors.primary) }]}>RIPROVA</Text>
           </Pressable>
+        </View>
+      ) : isMasterDetail ? (
+        <View style={styles.masterDetailContainer}>
+          {/* Left Master Column: Poster, Titles, Action Buttons, Metadata Table */}
+          <ScrollView
+            style={[styles.leftMasterColumn, { width: leftMasterWidth }]}
+            contentContainerStyle={[
+              styles.leftMasterScrollContent,
+              {
+                paddingTop: Math.max(insets.top + 60, 68),
+                paddingBottom: 48 + Math.max(0, insets.bottom),
+              },
+            ]}
+            showsVerticalScrollIndicator={false}
+          >
+            <AnimeHeaderBackdrop
+              anime={anime}
+              windowWidth={leftMasterWidth}
+              theme={theme}
+              firstUnwatched={firstUnwatched}
+              hasStartedWatching={hasStartedWatching}
+              onPlayEpisode={navigateToEpisode}
+              onRestartPlayback={episodes.length > 0 ? handleRestartPlayback : undefined}
+            />
+            <AnimeInfoTable anime={anime} theme={theme} />
+          </ScrollView>
+
+          {/* Vertical Divider */}
+          <View style={[styles.masterDetailDivider, { backgroundColor: theme.colors.border }]} />
+
+          {/* Right Detail Column: Synopsis, Controls & Episode Grid */}
+          <View style={[styles.rightDetailColumn, { width: rightDetailWidth }]}>
+            <FlashList
+              key={`master-detail-episodes-${viewMode}-${episodeColumns}`}
+              data={displayedEpisodes}
+              numColumns={viewMode === 'grid' ? episodeColumns : 1}
+              keyExtractor={(item) => item.id}
+              ListHeaderComponent={() => (
+                <View style={[styles.rightDetailHeader, { paddingTop: Math.max(insets.top + 16, 24) }]}>
+                  <AnimeSynopsis
+                    synopsis={anime.synopsis}
+                    description={anime.description}
+                    theme={theme}
+                  />
+                  <AnimeControlsBar
+                    totalEpisodes={episodes.length}
+                    hasBatches={batches.length > 1}
+                    currentBatchLabel={currentBatch?.label || 'Batch'}
+                    viewMode={viewMode}
+                    theme={theme}
+                    onOpenBatchSheet={() => setIsBatchSheetVisible(true)}
+                    onChangeViewMode={(mode) => setViewMode(mode)}
+                  />
+                </View>
+              )}
+              contentContainerStyle={[
+                styles.rightDetailListContent,
+                { paddingBottom: 48 + Math.max(0, insets.bottom) },
+              ]}
+              maintainVisibleContentPosition={{ disabled: true }}
+              renderItem={({ item }) => {
+                const prog = progressMap.get(item.number);
+                return (
+                  <EpisodeItem
+                    episode={item}
+                    variant={viewMode}
+                    progressPercent={prog?.progress || 0}
+                    onPress={() => navigateToEpisode(item)}
+                  />
+                );
+              }}
+            />
+          </View>
         </View>
       ) : (
         <FlashList
@@ -421,5 +497,29 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: 'monospace',
     textTransform: 'uppercase',
+  },
+  masterDetailContainer: {
+    flex: 1,
+    flexDirection: 'row',
+  },
+  leftMasterColumn: {
+    height: '100%',
+  },
+  leftMasterScrollContent: {
+    paddingHorizontal: 16,
+  },
+  masterDetailDivider: {
+    width: 1,
+    height: '100%',
+  },
+  rightDetailColumn: {
+    flex: 1,
+    height: '100%',
+  },
+  rightDetailHeader: {
+    paddingHorizontal: 16,
+  },
+  rightDetailListContent: {
+    paddingHorizontal: 12,
   },
 });
