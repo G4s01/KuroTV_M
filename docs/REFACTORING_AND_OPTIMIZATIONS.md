@@ -239,9 +239,8 @@ Esporre la programmazione settimanale completa delle uscite con gli orari previs
 2. **Interfaccia Touch-Native Palinsesto (`app/(tabs)/explore.tsx`)**:
    - Re-integrazione della rotta `explore` come tab principale **Palinsesto** con icona `calendar`.
    - Banner Hero opzionale *Prossima Uscita* con pill fiammella e countdown/orario programmato.
-   - Selettore orizzontale a scorrimento per i giorni della settimana con badge conteggio e indicatore `OGGI`.
+   - Selettore orizzontale a scorrimento per i giorni della settimana con etichetta compatta giorno e numero (es. `SAB 14`, `LUN 9`) senza numero di uscite e con indicatore `OGGI`.
    - Timeline virtualizzata con `@shopify/flash-list` e card orario dedicate.
-   - Tab speciale `SENZA DATA` per le serie in corso a programmazione libera.
    - Skeleton loading dedicato `ScheduleScreenSkeleton` a zero Cumulative Layout Shift (CLS).
 3. **Visibilità Condizionale Controlli AniSkip (`settings.tsx`)**:
    - Sezione slider durata popup visibile esclusivamente quando la modalità è impostata su `'MANUALE'`.

@@ -143,7 +143,7 @@ La schermata Palinsesto visualizza la programmazione delle uscite anime settiman
 - **Query TanStack**: `scheduleQueryOptions()` con `initialData` da MMKV e stale time a 10 minuti.
 
 ### 3. Interfaccia Touch-Native & Virtualizzazione
-- **Selettore Giorni Orizzontale**: Scorrimento touch dei giorni (`LUN` ... `DOM`) con badge del numero uscite e pill `OGGI` attivo con auto-selezione della data odierna. Include la tab per le serie `SENZA DATA`.
+- **Selettore Giorni Orizzontale**: Scorrimento touch dei giorni della settimana con etichetta compatta giorno e numero (es. `SAB 14`, `LUN 9`) senza numero di uscite e con pill `OGGI` attivo per l'auto-selezione della data odierna.
 - **Virtualizzazione con `@shopify/flash-list`**: Timeline fluida a 60/120 FPS senza crash o allocazioni superflue di memoria RAM.
 - **Hero Card Prossima Uscita**: In evidenza con badge fiammella `PROSSIMA USCITA`, orario programmato, titolo, numero di puntata e navigazione diretta alla scheda dettaglio.
 - **Skeleton Dedicato**: `ScheduleScreenSkeleton` replica al millimetro hero banner, day switcher e timeline a zero Cumulative Layout Shift (CLS).

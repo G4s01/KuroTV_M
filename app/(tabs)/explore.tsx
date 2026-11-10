@@ -18,11 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { scheduleQueryOptions } from '@/services/queries';
 import { oledTheme, useTheme, getContrastTextColor } from '@/theme';
 import { ScheduleScreenSkeleton } from '@/components/skeleton';
-import type {
-  ScheduleDay,
-  ScheduleItem,
-  ScheduleUnscheduledItem,
-} from '@/types';
+import type { ScheduleDay, ScheduleItem } from '@/types';
 
 export default function ExploreScreen() {
   const router = useRouter();
@@ -39,14 +35,14 @@ export default function ExploreScreen() {
     isRefetching,
   } = useQuery(scheduleQueryOptions());
 
-  // Active selected day: 'mon' | 'tue' | ... | 'unscheduled'
+  // Active selected day: 'mon' | 'tue' | ...
   const [selectedDayId, setSelectedDayId] = React.useState<string>('');
 
   // Automatically select today when schedule data loads
   React.useEffect(() => {
     if (scheduleData?.days && scheduleData.days.length > 0) {
       setSelectedDayId((prev) => {
-        if (prev) return prev;
+        if (prev && scheduleData.days.some((d) => d.dayId === prev)) return prev;
         const todayDay = scheduleData.days.find((d) => d.isToday);
         return todayDay ? todayDay.dayId : scheduleData.days[0].dayId;
       });
@@ -88,11 +84,12 @@ export default function ExploreScreen() {
     refetch();
   }, [refetch]);
 
-  const activeDay = scheduleData?.days?.find((d) => d.dayId === selectedDayId);
-  const isUnscheduledActive = selectedDayId === 'unscheduled';
+  const activeDay =
+    scheduleData?.days?.find((d) => d.dayId === selectedDayId) ||
+    scheduleData?.days?.[0];
   const showHero =
     Boolean(scheduleData?.hero) &&
-    (activeDay?.isToday || !activeDay);
+    Boolean(activeDay?.isToday || !activeDay);
 
   const heroItem = scheduleData?.hero;
 
@@ -148,6 +145,9 @@ export default function ExploreScreen() {
               {scheduleData?.days?.map((d) => {
                 const isActive = selectedDayId === d.dayId;
                 const tabContrast = isActive ? primaryContrast : theme.colors.text;
+                const dayAbbr = d.dayName.slice(0, 3).toUpperCase();
+                const dayNum = d.dayLabel.split(' ')[0] || '';
+                const dayTitle = dayNum ? `${dayAbbr} ${dayNum}` : dayAbbr;
 
                 return (
                   <Pressable
@@ -161,192 +161,30 @@ export default function ExploreScreen() {
                     ]}
                     onPress={() => handleSelectDay(d.dayId)}
                     accessibilityRole="tab"
-                    accessibilityLabel={`${d.dayName} ${d.dayLabel}, ${d.count} uscite`}
+                    accessibilityLabel={`${dayTitle}${d.isToday ? ' (Oggi)' : ''}`}
                     accessibilityState={{ selected: isActive }}
                   >
-                    <View style={styles.dayTabTopRow}>
-                      <Text style={[styles.dayTabName, { color: tabContrast }]}>
-                        {d.dayName.slice(0, 3).toUpperCase()}
-                      </Text>
-                      {d.isToday && (
-                        <View
-                          style={[
-                            styles.todayDot,
-                            { backgroundColor: isActive ? tabContrast : theme.colors.primary },
-                          ]}
-                        />
-                      )}
-                    </View>
-
-                    <Text style={[styles.dayTabNumber, { color: tabContrast }]}>
-                      {d.dayLabel.split(' ')[0] || ''}
+                    <Text style={[styles.dayTabLabel, { color: tabContrast }]}>
+                      {dayTitle}
                     </Text>
-
-                    <View
-                      style={[
-                        styles.dayTabBadge,
-                        {
-                          backgroundColor: isActive ? `${tabContrast}25` : theme.colors.card,
-                        },
-                      ]}
-                    >
-                      <Text style={[styles.dayTabBadgeText, { color: tabContrast }]}>
-                        {d.count}
-                      </Text>
-                    </View>
+                    {d.isToday && (
+                      <View
+                        style={[
+                          styles.todayDot,
+                          { backgroundColor: isActive ? tabContrast : theme.colors.primary },
+                        ]}
+                      />
+                    )}
                   </Pressable>
                 );
               })}
-
-              {/* Senza Data Fissa Tab */}
-              {Boolean(scheduleData?.unscheduled && scheduleData.unscheduled.length > 0) && (
-                <Pressable
-                  style={[
-                    styles.dayTabBtn,
-                    styles.unscheduledTabBtn,
-                    {
-                      backgroundColor: isUnscheduledActive
-                        ? theme.colors.primary
-                        : theme.colors.surface,
-                      borderColor: isUnscheduledActive
-                        ? theme.colors.primary
-                        : theme.colors.border,
-                    },
-                  ]}
-                  onPress={() => handleSelectDay('unscheduled')}
-                  accessibilityRole="tab"
-                  accessibilityLabel={`Senza data fissa, ${scheduleData?.unscheduled?.length || 0} serie`}
-                  accessibilityState={{ selected: isUnscheduledActive }}
-                >
-                  <Ionicons
-                    name="time-outline"
-                    size={14}
-                    color={isUnscheduledActive ? primaryContrast : theme.colors.textMuted}
-                  />
-                  <Text
-                    style={[
-                      styles.dayTabName,
-                      styles.unscheduledTabText,
-                      { color: isUnscheduledActive ? primaryContrast : theme.colors.text },
-                    ]}
-                  >
-                    SENZA DATA
-                  </Text>
-                  <View
-                    style={[
-                      styles.dayTabBadge,
-                      {
-                        backgroundColor: isUnscheduledActive
-                          ? `${primaryContrast}25`
-                          : theme.colors.card,
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.dayTabBadgeText,
-                        { color: isUnscheduledActive ? primaryContrast : theme.colors.text },
-                      ]}
-                    >
-                      {scheduleData?.unscheduled?.length || 0}
-                    </Text>
-                  </View>
-                </Pressable>
-              )}
             </ScrollView>
           </View>
 
-          {/* List of Scheduled or Unscheduled Items */}
-          {isUnscheduledActive ? (
-            <FlashList
-              data={scheduleData?.unscheduled || []}
-              keyExtractor={(item, index) => `${item.id}-${index}`}
-              renderItem={({ item }) => (
-                <Pressable
-                  style={[
-                    styles.itemCard,
-                    {
-                      backgroundColor: theme.colors.surface,
-                      borderColor: theme.colors.border,
-                    },
-                  ]}
-                  onPress={() => navigateToAnime(item.id, item.title)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${item.title}, ${item.episode || ''}`}
-                >
-                  <Image
-                    source={{ uri: item.poster }}
-                    style={styles.itemPoster}
-                    contentFit="cover"
-                    transition={200}
-                  />
-                  <View style={styles.itemInfo}>
-                    <Text style={[styles.itemTitle, { color: theme.colors.text }]} numberOfLines={2}>
-                      {item.title}
-                    </Text>
-                    {item.japaneseTitle ? (
-                      <Text
-                        style={[styles.itemJTitle, { color: theme.colors.textMuted }]}
-                        numberOfLines={1}
-                      >
-                        {item.japaneseTitle}
-                      </Text>
-                    ) : null}
-                    <View style={styles.itemMetaRow}>
-                      {item.episode ? (
-                        <View
-                          style={[
-                            styles.episodeBadge,
-                            { backgroundColor: theme.colors.card, borderColor: theme.colors.border },
-                          ]}
-                        >
-                          <Text style={[styles.episodeBadgeText, { color: theme.colors.textSecondary }]}>
-                            {item.episode.toUpperCase()}
-                          </Text>
-                        </View>
-                      ) : null}
-                      {item.tag ? (
-                        <View
-                          style={[
-                            styles.tagBadge,
-                            {
-                              backgroundColor: `${theme.colors.primary}20`,
-                              borderColor: theme.colors.primary,
-                            },
-                          ]}
-                        >
-                          <Text style={[styles.tagBadgeText, { color: theme.colors.primary }]}>
-                            {item.tag.toUpperCase()}
-                          </Text>
-                        </View>
-                      ) : null}
-                    </View>
-                  </View>
-                  <Ionicons name="chevron-forward" size={16} color={theme.colors.textMuted} />
-                </Pressable>
-              )}
-              contentContainerStyle={styles.listContent}
-              refreshControl={
-                <RefreshControl
-                  refreshing={isRefetching}
-                  onRefresh={onRefresh}
-                  tintColor={theme.colors.primary}
-                  colors={[theme.colors.primary]}
-                />
-              }
-              ListEmptyComponent={
-                <View style={styles.emptyContainer}>
-                  <Ionicons name="calendar-outline" size={40} color={theme.colors.textMuted} />
-                  <Text style={[styles.emptyText, { color: theme.colors.textSecondary }]}>
-                    NESSUNA SERIE SENZA DATA FISSA
-                  </Text>
-                </View>
-              }
-            />
-          ) : (
-            <FlashList
-              data={activeDay?.items || []}
-              keyExtractor={(item, index) => `${item.id}-${item.time}-${index}`}
+          {/* List of Scheduled Items for Active Day */}
+          <FlashList
+            data={activeDay?.items || []}
+            keyExtractor={(item, index) => `${item.id}-${item.time}-${index}`}
               renderItem={({ item }) => {
                 const isDone = Boolean(item.isDone);
                 const isPause = Boolean(item.isPause);
@@ -568,7 +406,6 @@ export default function ExploreScreen() {
                 </View>
               }
             />
-          )}
         </View>
       )}
     </View>
@@ -621,56 +458,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   dayTabBtn: {
-    width: 60,
-    minHeight: 58,
+    minWidth: 72,
+    minHeight: 44,
     borderRadius: oledTheme.radius.md,
     borderWidth: 1,
-    paddingVertical: 5,
-    paddingHorizontal: 4,
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginRight: 8,
-  },
-  unscheduledTabBtn: {
-    width: 90,
-    paddingHorizontal: 6,
-  },
-  unscheduledTabText: {
-    fontSize: 9,
-    marginVertical: 2,
-  },
-  dayTabTopRow: {
+    paddingVertical: 10,
+    paddingHorizontal: 12,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
   },
-  dayTabName: {
-    fontSize: 11,
+  dayTabLabel: {
+    fontSize: 12,
     fontWeight: '800',
     fontFamily: 'monospace',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   todayDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-    marginLeft: 3,
-  },
-  dayTabNumber: {
-    fontSize: 15,
-    fontWeight: '900',
-    fontFamily: 'monospace',
-  },
-  dayTabBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 1.5,
-    borderRadius: 8,
-    marginTop: 1,
-  },
-  dayTabBadgeText: {
-    fontSize: 9,
-    fontWeight: '800',
-    fontFamily: 'monospace',
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginLeft: 6,
   },
   listContent: {
     paddingHorizontal: 14,
@@ -831,17 +641,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     fontFamily: 'monospace',
     textTransform: 'uppercase',
-  },
-  tagBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    borderWidth: 1,
-  },
-  tagBadgeText: {
-    fontSize: 9,
-    fontWeight: '800',
-    fontFamily: 'monospace',
   },
   emptyContainer: {
     alignItems: 'center',

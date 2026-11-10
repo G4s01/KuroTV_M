@@ -46,9 +46,8 @@
 ### 📅 Palinsesto & Programmazione Settimanale
 - **🗓️ Calendario Uscite AnimeWorld**: Scraper touch-native per `animeworld.ac/schedule` che espone la programmazione settimanale completa con gli orari previsti delle puntate.
 - **🌟 Hero Card Prossima Uscita**: Card in evidenza con badge fiammella `PROSSIMA USCITA`, orario programmato, titolo, numero di puntata e tap diretto alla scheda anime.
-- **👆 Selettore Orizzontale dei Giorni (`LUN` ... `DOM`)**: Scorrimento touch dei giorni con data, badge del totale uscite per data e indicatore `OGGI` con selezione automatica del giorno odierno.
+- **👆 Selettore Orizzontale dei Giorni (es. `SAB 14`)**: Scorrimento touch dei giorni con etichetta compatta giorno e numero (es. `SAB 14`, `LUN 9`) senza numero di uscite e indicatore `OGGI` con selezione automatica del giorno odierno.
 - **⏱️ Timeline Virtualizzata con FlashList**: Schede episodio ordinate cronologicamente con pill orario dedicato (`15:00`), locandina ad alta risoluzione con cache proattiva, titoli monospace, badge puntata (`EPISODIO X`) e badge di stato con codifica cromatica OLED (`USCITO` in verde, `IN PAUSA` in ambra, programmato in colore primario).
-- **⏳ Serie in Corso Senza Data Fissa (`SENZA DATA`)**: Sezione dedicata per consultare agevolmente tutte le serie in trasmissione priva di giorno stabilito (es. One Piece ITA, Detective Conan, Pokémon).
 
 ### 🎬 Player Video Touch di Nuova Generazione
 - **⚡ Streaming Asincrono (`replaceAsync`)**: Risoluzione del flusso video off-thread (`expo-video`) senza blocchi sincroni sul Main Thread, garantendo caricamento immediato e zero freeze dell'interfaccia.

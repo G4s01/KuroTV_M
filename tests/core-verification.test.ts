@@ -1940,7 +1940,9 @@ assert(exploreSource.includes('scheduleQueryOptions'), 'explore.tsx deve invocar
 assert(exploreSource.includes('ScheduleScreenSkeleton'), 'explore.tsx deve integrare ScheduleScreenSkeleton');
 assert(exploreSource.includes('FlashList'), 'explore.tsx deve virtualizzare le liste con FlashList');
 assert(exploreSource.includes('selectedDayId'), 'explore.tsx deve gestire lo stato del giorno selezionato');
-assert(exploreSource.includes('SENZA DATA'), 'explore.tsx deve supportare la tab SENZA DATA');
+assert(!exploreSource.includes('SENZA DATA'), 'explore.tsx non deve avere la sezione SENZA DATA nel palinsesto');
+assert(exploreSource.includes('dayTabLabel'), 'explore.tsx deve usare dayTabLabel per il nome del giorno (es. SAB 14)');
+assert(!exploreSource.includes('dayTabBadge'), 'explore.tsx non deve mostrare il badge con il numero di uscite del giorno');
 assert(exploreSource.includes('heroBanner'), 'explore.tsx deve supportare il banner Hero Prossima Uscita');
 
 // 6. Verifica Bottom Tabs Layout

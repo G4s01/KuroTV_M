@@ -20,7 +20,7 @@ export const ScheduleScreenSkeleton: React.FC = () => {
         >
           {[1, 2, 3, 4, 5, 6, 7].map((k) => (
             <View key={`tab-skel-${k}`} style={styles.tabItem}>
-              <Skeleton width={58} height={52} borderRadius={oledTheme.radius.md} />
+              <Skeleton width={76} height={44} borderRadius={oledTheme.radius.md} />
             </View>
           ))}
         </ScrollView>

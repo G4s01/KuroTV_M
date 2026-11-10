@@ -55,7 +55,7 @@ Kuro Mobile è un'applicazione concepita **esclusivamente per smartphone Android
      - Integra le uscite settimanali con gli orari previsti da `animeworld.ac/schedule` (`AnimeWorldScraper.getSchedule()` e `parseSchedulePage`).
      - Header dedicato con titolo `PALINSESTO` e sottotitolo della settimana corrente (`SETTIMANA D MESE – D MESE`).
      - Hero card opzionale per la *Prossima Uscita* in evidenza con badge fiammella `PROSSIMA USCITA`, orario programmato / countdown, titolo anime, puntata e locandina (tap diretto a scheda dettaglio).
-     - Selettore orizzontale a scorrimento per i giorni della settimana (`LUN` ... `DOM`) con numero del giorno, badge uscite e indicatore `OGGI` per auto-selezionare il giorno odierno. Include il tab dedicato per le serie senza giorno fisso (`SENZA DATA`).
+     - Selettore orizzontale a scorrimento per i giorni della settimana con etichetta compatta e pulita nel formato giorno + numero (es. `SAB 14`, `LUN 9`) senza contatore di uscite, indicatore `OGGI` per auto-selezionare il giorno odierno e touch target $\ge 44$dp.
      - Timeline orizzontale/verticale virtualizzata con `@shopify/flash-list`: pill orario dedicato (`15:00`), locandina ad alta risoluzione con cache, titolo serie (monospace, uppercase), titolo alternativo, badge puntata (`EPISODIO X`) e badge di stato dinamico con codifica cromatica OLED (`USCITO` in verde success, `IN PAUSA` in ambra warning, programmato `ALLE HH:MM` in colore primario).
      - Supporto pull-to-refresh nativo con tint color coordinato e layout skeleton dedicato `ScheduleScreenSkeleton` a zero CLS.
    - **Struttura Sezioni Schermata Home**:
@@ -246,5 +246,5 @@ Prima di ogni commit o push è obbligatorio verificare la conformità tramite:
    - AniSkipSlider, Player Integrated Loader & Media Notification.
    - AniSkip Dynamic Auto Description, Auto-Off Fallback & Duration Slider.
    - Ridefinizione Schermata Home & Scraper (Hero Swiper, Raccomandati numerati, Snapping, Play/Info, Caroselli, Upcoming `.film-listnext` & Anti-Corruzione Titoli).
-   - Palinsesto / Schedule (Parser cheerio/slim & htmlparser2, Scraper AnimeWorldScraper.getSchedule(), Query TanStack scheduleQueryOptions(), Storage MMKV cache.scheduleData, ScheduleScreenSkeleton, Virtualizzazione FlashList, Selettore giorni LUN-DOM con badge uscite e indicatore OGGI, Banner Prossima Uscita e Sezione SENZA DATA) & Fix Download Aggiornamenti Manuali (convalida UpdateManifest ed eliminazione eventi sintetici).
+   - Palinsesto / Schedule (Parser cheerio/slim & htmlparser2, Scraper AnimeWorldScraper.getSchedule(), Query TanStack scheduleQueryOptions(), Storage MMKV cache.scheduleData, ScheduleScreenSkeleton, Virtualizzazione FlashList, Selettore giorni nel formato 'SAB 14' senza badge uscite, indicatore OGGI e Banner Prossima Uscita) & Fix Download Aggiornamenti Manuali (convalida UpdateManifest ed eliminazione eventi sintetici).
 2. `npx expo export --platform android`: Verifica dell'assenza di errori di bundle e corretta generazione del bytecode Hermes.
