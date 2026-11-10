@@ -56,6 +56,16 @@ Kuro Mobile è un'applicazione concepita **esclusivamente per smartphone Android
 3. **Navigazione a Bottom Tabs & Ricerca Unificata in Home**:
    - La navigazione principale usa schede con sole icone vettoriali (`tabBarShowLabel: false`): **Home** (`home`), **Palinsesto** (`calendar`), **Preferiti** (`heart`), **Cronologia** (`time`), **Impostazioni** (`settings`).
    - La ricerca del catalogo con filtri avanzati è integrata direttamente nell'header della **Home** (icona lente di ingrandimento, debouncing 450ms, griglia FlashList a 2 colonne e supporto al tasto fisico Indietro di Android per chiudere la ricerca senza uscire dall'app).
+   - **Cronologia di Ricerca in Stile Google & Filtri Avanzati**:
+     - Sostituzione dei vecchi consigliati generici con una **cronologia ricerche touch-native in stile Google**: ciascuna riga presenta l'icona orologio `time-outline`, testo in stampatello maiuscolo monospace, tap diretto per eseguire immediatamente la ricerca, pulsante di eliminazione della singola ricerca (`close-outline`) con area di tocco minima $\ge 44$dp e feedback tattile (`Haptics.impactAsync(Light)`).
+     - Pulsante dedicato *CANCELLA TUTTE* protetto dal componente in-app `ConfirmModal`.
+     - Configurazione flessibile nelle Impostazioni dell'app tramite `HistorySlider` con passaggi dedicati `SEARCH_RETENTION_STEPS` (`OFF`, `30GG`, `60GG`, `90GG`, `ON` illimitato) e pulsante di svuotamento rapido della cronologia ricerche.
+     - **Fix Completo Filtri & Allineamento Scraper AnimeWorld**:
+       - **Generi Multipli**: Integrazione di tutti i 46 generi del catalogo con selezione multipla e invio di `genre_mode=and` per filtrare accuratamente le intersezioni tra categorie.
+       - **Filtro Audio Doppiati e Sottotitolati**: Supporto dedicato a `DOPPIATI (ITA)` (`dub: '1'`) e `SOTTOTITOLATI (SUB)` (`dub: '0'`).
+       - **Categorie & Formati**: Mappatura corretta conforme ai valori nativi del motore di ricerca AnimeWorld (`0` Serie TV, `4` Film Anime / Movie, `1` OAV, `2` ONA, `3` Special), azzerando la precedente restituzione di 6 titoli spuri.
+       - **Ordinamenti**: Mappatura corretta con ordinamento per data reale di uscita delle serie (`5` Più recenti, `1` Ultime aggiunte, `6` Più visti, `7` Meglio valutati, `2` A-Z, `3` Z-A).
+       - **Isolamento Risultati nello Scraper**: Selettore in `search.parser.ts` vincolato rigorosamente al contenitore principale (`#main .film-list > .item, .content .film-list > .item`), con esclusione tassativa dei widget di raccomandazione laterale (`.simple-film-list`, `.ranking`, aside), garantendo l'assenza di titoli incoerenti a 6 elementi in caso di risultati vuoti.
    - Colore attivo delle tab agganciato dinamicamente a `theme.colors.primary`.
    - **Nuova Sezione Palinsesto / Programmazione Settimanale (`app/(tabs)/explore.tsx`)**:
      - Integra le uscite settimanali con gli orari previsti da `animeworld.ac/schedule` (`AnimeWorldScraper.getSchedule()` e `parseSchedulePage`).
@@ -237,7 +247,7 @@ Kuro Mobile è un'applicazione concepita **esclusivamente per smartphone Android
 ## 🧪 7. Standard di Test & Verifica Qualità
 
 Prima di ogni commit o push è obbligatorio verificare la conformità tramite:
-1. `npm test`: Suite di test automatizzata a 15 stadi:
+1. `npm test`: Suite di test automatizzata a 16 stadi:
    - SemVer e Updater Service.
    - Regole di Stile Mobile & conformità OLED.
    - Storage MMKV (preferiti, cronologia visione).
@@ -253,4 +263,5 @@ Prima di ogni commit o push è obbligatorio verificare la conformità tramite:
    - AniSkip Dynamic Auto Description, Auto-Off Fallback & Duration Slider.
    - Ridefinizione Schermata Home & Scraper (Hero Swiper, Raccomandati numerati, Snapping, Play/Info, Caroselli, Upcoming `.film-listnext` & Anti-Corruzione Titoli).
    - Palinsesto / Schedule (Parser cheerio/slim & htmlparser2, Scraper AnimeWorldScraper.getSchedule(), Query TanStack scheduleQueryOptions(), Storage MMKV cache.scheduleData, ScheduleScreenSkeleton, Virtualizzazione FlashList, Selettore giorni nel formato 'SAB 14' senza badge uscite, indicatore OGGI e Banner Prossima Uscita) & Fix Download Aggiornamenti Manuali (convalida UpdateManifest ed eliminazione eventi sintetici).
+   - Ricerca Avanzata, Cronologia Ricerche Google-Style (icona orologio `time-outline`, tap-to-search, eliminazione singola voce `close-outline`, cancellazione totale protetta da `ConfirmModal`, configurazione retention in Settings con `HistorySlider` e passaggi dedicati `SEARCH_RETENTION_STEPS`), Filtro Multi-Genere (tutti i 46 generi con `genre_mode=and`), Filtro Audio (DOPPIATI/SOTTOTITOLATI con `dub: '1'` e `dub: '0'`), Formati numerici AnimeWorld (`type` per Serie, Film, OAV, ONA, Special), Ordinamento per data reale di uscita (`sort=5`) e Isolamento Scraper Risultati (esclusione categorica di `.simple-film-list`, `.ranking` e widget correlati da 6 elementi).
 2. `npx expo export --platform android`: Verifica dell'assenza di errori di bundle e corretta generazione del bytecode Hermes.

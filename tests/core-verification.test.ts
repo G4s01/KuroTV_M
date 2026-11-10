@@ -940,10 +940,11 @@ function simulateSequentialTaps(taps: Array<{ side: 'left' | 'right'; isDouble: 
   let accumulated: { direction: 'left' | 'right'; seconds: number } | null = null;
   for (const tap of taps) {
     if (tap.isDouble) {
-      const isConsecutive = accumulated && accumulated.direction === tap.side;
+      const isConsecutive: boolean = Boolean(accumulated && accumulated.direction === tap.side);
+      const prevSeconds: number = accumulated?.seconds ?? 0;
       accumulated = {
         direction: tap.side,
-        seconds: isConsecutive ? accumulated.seconds + 10 : 10,
+        seconds: isConsecutive ? prevSeconds + 10 : 10,
       };
     } else {
       // Single tap during active skip in same direction
@@ -1088,8 +1089,8 @@ const sampleDetailHtml = `
 const parsedDetail = parseDetailPage(sampleDetailHtml, 'https://www.animeworld.so/play/test-anime', 'https://www.animeworld.so');
 assert.strictEqual(parsedDetail.audio, 'Giapponese', 'Audio deve essere estratto');
 assert.strictEqual(parsedDetail.releaseDate, '12 Ottobre 2024', 'Data di uscita deve essere estratta');
-assert(parsedDetail.studios.includes('Mappa'), 'Studio deve essere estratto');
-assert(parsedDetail.genres.includes('Azione'), 'Genere deve contenere Azione');
+assert(Boolean(parsedDetail.studios?.includes('Mappa')), 'Studio deve essere estratto');
+assert(Boolean(parsedDetail.genres?.includes('Azione')), 'Genere deve contenere Azione');
 assert.strictEqual(parsedDetail.rating, '9.2', 'Voto deve essere estratto');
 assert.strictEqual(parsedDetail.duration, '24 min', 'Durata deve essere estratta');
 assert.strictEqual(parsedDetail.totalEpisodes, 12, 'Episodi devono essere 12');
@@ -1684,8 +1685,8 @@ console.log('✓ AniSkip Dynamic Auto Description, Auto-Off Fallback & Duration 
 console.log('\n[14/14] Verifica Ridefinizione Schermata Home & Scraper (Raccomandati, Play/Info, Caroselli, Upcoming)...');
 
 // 1. Verifica Metodi Scraper & Parser Home
-const { AnimeWorldScraper: AwScraper } = await import('../src/services/scraper/index.ts');
-const { parseHomePage: testParseHome } = await import('../src/services/scraper/parsers/home.parser.ts');
+const { AnimeWorldScraper: AwScraper } = await import('../src/services/scraper/index');
+const { parseHomePage: testParseHome } = await import('../src/services/scraper/parsers/home.parser');
 
 assert.strictEqual(typeof AwScraper.getUpcoming, 'function', 'AnimeWorldScraper deve esporre getUpcoming');
 
@@ -1752,7 +1753,7 @@ assert.strictEqual(parsedHome.upcomingTitle, 'Uscite Inverno 2027', 'Titolo stag
 assert.strictEqual(parsedHome.newAdded.length, 1, 'Nuove aggiunte deve contenere 1 item');
 
 // 2. Verifica Scraper Upcoming & parseSearchPage (.film-listnext e prevenzione corruzione titolo)
-const { parseSearchPage: testParseSearch } = await import('../src/services/scraper/parsers/search.parser.ts');
+const { parseSearchPage: testParseSearch } = await import('../src/services/scraper/parsers/search.parser');
 const mockUpcomingHtml = `
 <html>
   <body>
@@ -1958,6 +1959,152 @@ assert(settingsFixedSource.includes('isManifest = (m: any): boolean =>'), 'setti
 assert(settingsFixedSource.includes("prev === 'idle' || prev === 'error' ? 'available' : prev"), 'settings.tsx deve recuperare dallo stato di errore al focus');
 
 console.log('✓ Palinsesto / Schedule & Fix Aggiornamenti Manuali verificati con successo.');
+
+// -----------------------------------------------------------------------------
+// 16. Verifica Ricerca, Cronologia Ricerche (Google Style) & Fix Filtri / Audio
+// -----------------------------------------------------------------------------
+console.log('\n[16/16] Verifica Cronologia Ricerche, Filtri Avanzati (Multi-Genere & Audio) & Fix Scraper...');
+
+// 1. Verifica Storage Cronologia Ricerca in AppStorage
+AppStorage.clearSearchHistory();
+assert.deepStrictEqual(AppStorage.getSearchHistory(), [], 'Cronologia ricerche deve iniziare vuota');
+
+AppStorage.addSearchHistory('Naruto');
+AppStorage.addSearchHistory('One Piece');
+AppStorage.addSearchHistory('Attack on Titan');
+// Inserimento duplicato: deve riposizionare in testa senza duplicare
+AppStorage.addSearchHistory('naruto');
+
+let searchHist = AppStorage.getSearchHistory();
+assert.strictEqual(searchHist.length, 3, 'Cronologia ricerche deve contenere 3 elementi unici');
+assert.strictEqual(searchHist[0].query, 'naruto', 'L ultimo elemento cercato deve essere in cima');
+
+// Rimozione singolo elemento
+AppStorage.removeSearchHistoryItem('one piece');
+searchHist = AppStorage.getSearchHistory();
+assert.strictEqual(searchHist.length, 2, 'Dopo rimozione di One Piece devono rimanere 2 ricerche');
+assert(!searchHist.some((h) => h.query.toLowerCase() === 'one piece'), 'One Piece non deve più essere presente');
+
+// Retention slider & spegnimento cronologia (OFF / -1)
+AppStorage.setSearchHistoryRetentionDays(-1);
+assert.strictEqual(AppStorage.isSearchHistoryEnabled(), false, 'Retention -1 deve disattivare la cronologia');
+assert.deepStrictEqual(AppStorage.getSearchHistory(), [], 'Con cronologia disattivata getSearchHistory deve restituire array vuoto');
+
+// Riattivazione retention a 90 giorni
+AppStorage.setSearchHistoryRetentionDays(90);
+assert.strictEqual(AppStorage.isSearchHistoryEnabled(), true, 'Retention 90 deve riattivare la cronologia ricerche');
+AppStorage.addSearchHistory('Bleach');
+assert.strictEqual(AppStorage.getSearchHistory().length, 1, 'Dopo riattivazione la nuova ricerca deve essere salvata');
+AppStorage.clearSearchHistory();
+assert.deepStrictEqual(AppStorage.getSearchHistory(), [], 'clearSearchHistory deve svuotare la cronologia');
+
+// 2. Verifica buildFilterQuery & Mapping Parametri AnimeWorld
+const { buildFilterQuery } = await import('../src/services/scraper/parsers/search.parser');
+
+// Test Type mapping (movie -> 4, tv -> 0, etc.)
+const queryMovie = buildFilterQuery({ type: 'movie' });
+assert(queryMovie.includes('type=4'), 'buildFilterQuery deve convertire type: movie in type=4 per AnimeWorld');
+const queryTv = buildFilterQuery({ type: 'tv' });
+assert(queryTv.includes('type=0'), 'buildFilterQuery deve convertire type: tv in type=0 per AnimeWorld');
+const queryDirectType = buildFilterQuery({ type: '4' });
+assert(queryDirectType.includes('type=4'), 'buildFilterQuery deve preservare type numerico 4');
+
+// Test Status mapping (ongoing -> 0, completed -> 1)
+const queryOngoing = buildFilterQuery({ status: 'ongoing' });
+assert(queryOngoing.includes('status=0'), 'buildFilterQuery deve convertire status: ongoing in status=0');
+const queryCompleted = buildFilterQuery({ status: 'completed' });
+assert(queryCompleted.includes('status=1'), 'buildFilterQuery deve convertire status: completed in status=1');
+
+// Test Sort mapping (recent / release_date -> 5, post_date -> 1, views -> 6, vote -> 7)
+const queryRecent = buildFilterQuery({ sort: 'recent' });
+assert(queryRecent.includes('sort=5'), 'buildFilterQuery deve mappare sort: recent su sort=5 (data di uscita)');
+const queryLatest = buildFilterQuery({ sort: 'latest' });
+assert(queryLatest.includes('sort=1'), 'buildFilterQuery deve mappare sort: latest su sort=1 (ultime aggiunte)');
+const queryPopular = buildFilterQuery({ sort: 'popular' });
+assert(queryPopular.includes('sort=6'), 'buildFilterQuery deve mappare sort: popular su sort=6 (più visti)');
+const queryRating = buildFilterQuery({ sort: 'rating' });
+assert(queryRating.includes('sort=7'), 'buildFilterQuery deve mappare sort: rating su sort=7 (meglio valutati)');
+
+// Test Dub / Audio filter (dubbed -> 1, subbed -> 0)
+const queryDub = buildFilterQuery({ dub: '1' });
+assert(queryDub.includes('dub=1'), 'buildFilterQuery deve gestire dub=1 per doppiati ITA');
+const querySub = buildFilterQuery({ dub: '0' });
+assert(querySub.includes('dub=0'), 'buildFilterQuery deve gestire dub=0 per sottotitolati SUB');
+const queryAudioIta = buildFilterQuery({ audio: 'ita' });
+assert(queryAudioIta.includes('dub=1'), 'buildFilterQuery audio: ita deve mappare su dub=1');
+
+// Test Multi-Genre & genre_mode=and
+const queryMultiGenre = buildFilterQuery({ genres: ['1', '9'] });
+assert(queryMultiGenre.includes('genre=1'), 'buildFilterQuery multi-genre deve includere genre=1');
+assert(queryMultiGenre.includes('genre=9'), 'buildFilterQuery multi-genre deve includere genre=9');
+assert(queryMultiGenre.includes('genre_mode=and'), 'buildFilterQuery multi-genre deve impostare genre_mode=and');
+
+// 3. Verifica parseSearchPage su HTML con zero risultati (Esclusione widget laterali da 6 elementi)
+const { parseSearchPage } = await import('../src/services/scraper/parsers/search.parser');
+
+const mockHtmlNoResults = `
+<html>
+<body>
+  <div id="main">
+    <div class="content">
+      <div class="alert alert-warning">Non ci sono anime con i filtri inseriti!</div>
+      <div class="film-list"></div>
+    </div>
+  </div>
+  <aside class="sidebar">
+    <div class="widget simple-film-list">
+      <div class="widget-body">
+        <div class="item"><a class="name" href="/play/item-1">Item 1</a></div>
+        <div class="item"><a class="name" href="/play/item-2">Item 2</a></div>
+        <div class="item"><a class="name" href="/play/item-3">Item 3</a></div>
+        <div class="item"><a class="name" href="/play/item-4">Item 4</a></div>
+        <div class="item"><a class="name" href="/play/item-5">Item 5</a></div>
+        <div class="item"><a class="name" href="/play/item-6">Item 6</a></div>
+      </div>
+    </div>
+  </aside>
+</body>
+</html>
+`;
+const parsedNoResults = parseSearchPage(mockHtmlNoResults, 'https://www.animeworld.ac');
+assert.strictEqual(parsedNoResults.items.length, 0, 'parseSearchPage non deve raccogliere i 6 elementi dal widget laterale in assenza di risultati');
+
+// 4. Verifica Costanti e Componente FilterBottomSheet
+const {
+  ANIME_GENRES,
+  ANIME_DUB,
+  ANIME_TYPES,
+  ANIME_STATUSES,
+  ANIME_SORTS,
+} = await import('../src/components/FilterBottomSheet');
+
+assert(Array.isArray(ANIME_GENRES) && ANIME_GENRES.length >= 40, 'ANIME_GENRES deve contenere tutti i generi completi di AnimeWorld');
+assert(ANIME_GENRES.some((g: any) => g.id === '1' && g.label === 'Azione'), 'ANIME_GENRES deve contenere Azione con id 1');
+assert(ANIME_GENRES.some((g: any) => g.id === '49' && g.label === 'Isekai'), 'ANIME_GENRES deve contenere Isekai');
+
+assert(Array.isArray(ANIME_DUB) && ANIME_DUB.length === 3, 'ANIME_DUB deve contenere TUTTI, DOPPIATI e SOTTOTITOLATI');
+assert(ANIME_DUB.some((d: any) => d.value === '1'), 'ANIME_DUB deve supportare Doppiati (1)');
+assert(ANIME_DUB.some((d: any) => d.value === '0'), 'ANIME_DUB deve supportare Sottotitolati (0)');
+
+assert(ANIME_TYPES.some((t: any) => t.value === '4' && t.label === 'FILM ANIME'), 'ANIME_TYPES deve mappare FILM ANIME a 4');
+assert(ANIME_SORTS.some((s: any) => s.value === '5' && s.label.includes('RECENTI')), 'ANIME_SORTS deve mappare PIÙ RECENTI a 5');
+
+// 5. Verifica File Sorgente app/(tabs)/index.tsx e settings.tsx
+const homeSearchSource = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/index.tsx'), 'utf-8');
+assert(homeSearchSource.includes('RICERCHE RECENTI'), 'index.tsx deve contenere la sezione RICERCHE RECENTI in stile Google');
+assert(homeSearchSource.includes('time-outline'), 'index.tsx deve mostrare l icona orologio time-outline per le ricerche passate');
+assert(homeSearchSource.includes('handleDeleteSearchHistoryItem'), 'index.tsx deve permettere l eliminazione di singole ricerche');
+assert(homeSearchSource.includes('handleConfirmClearAllSearch'), 'index.tsx deve permettere di svuotare la cronologia con ConfirmModal');
+assert(!homeSearchSource.includes('SUGGERIMENTI RAPIDI'), 'index.tsx non deve più contenere i vecchi SUGGERIMENTI RAPIDI');
+assert(homeSearchSource.includes('ANIME_DUB'), 'index.tsx deve integrare il filtro AUDIO');
+assert(homeSearchSource.includes('removeGenre'), 'index.tsx deve supportare la rimozione di singoli generi selezionati');
+
+const settingsSearchSource = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/settings.tsx'), 'utf-8');
+assert(settingsSearchSource.includes('CRONOLOGIA DI RICERCA'), 'settings.tsx deve contenere la sezione CRONOLOGIA DI RICERCA');
+assert(settingsSearchSource.includes('SEARCH_RETENTION_STEPS'), 'settings.tsx deve usare SEARCH_RETENTION_STEPS con HistorySlider');
+assert(settingsSearchSource.includes('isClearSearchHistoryConfirmOpen'), 'settings.tsx deve gestire la modale ConfirmModal per svuotare le ricerche');
+
+console.log('✓ Cronologia Ricerche, Filtri Avanzati (Multi-Genere & Audio) & Fix Scraper verificati con successo.');
 
 // -----------------------------------------------------------------------------
 // Fine Test

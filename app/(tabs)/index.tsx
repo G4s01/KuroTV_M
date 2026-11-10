@@ -22,12 +22,20 @@ import { FlashList } from '@shopify/flash-list';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { homeQueryOptions, animeQueryKeys, animeDetailQueryOptions } from '@/services/queries';
-import { AppStorage } from '@/services/storage';
+import { AppStorage, type SearchHistoryItem } from '@/services/storage';
 import { AnimeWorldScraper } from '@/services/scraper';
 import { oledTheme, useTheme, getContrastTextColor } from '@/theme';
 import { AnimeCard } from '@/components/AnimeCard';
 import { ConfirmModal } from '@/components/ConfirmModal';
-import { FilterBottomSheet, type FilterState } from '@/components/FilterBottomSheet';
+import {
+  FilterBottomSheet,
+  type FilterState,
+  ANIME_GENRES,
+  ANIME_TYPES,
+  ANIME_STATUSES,
+  ANIME_SORTS,
+  ANIME_DUB,
+} from '@/components/FilterBottomSheet';
 import { HomeScreenSkeleton, ExploreScreenSkeleton } from '@/components/skeleton';
 import type { AnimeItem, ContinueWatchingItem, SearchFilter } from '@/types';
 
@@ -73,6 +81,16 @@ export default function HomeScreen() {
   const [debouncedQuery, setDebouncedQuery] = React.useState('');
   const [filterState, setFilterState] = React.useState<FilterState>({});
   const [isFilterSheetVisible, setIsFilterSheetVisible] = React.useState(false);
+  const [searchHistoryList, setSearchHistoryList] = React.useState<SearchHistoryItem[]>([]);
+  const [isClearAllSearchConfirmOpen, setIsClearAllSearchConfirmOpen] = React.useState(false);
+
+  const isSearchHistoryActive = AppStorage.isSearchHistoryEnabled();
+
+  React.useEffect(() => {
+    if (isSearchActive) {
+      setSearchHistoryList(AppStorage.getSearchHistory());
+    }
+  }, [isSearchActive]);
 
   React.useEffect(() => {
     const timer = setTimeout(() => {
@@ -94,12 +112,13 @@ export default function HomeScreen() {
     return () => backSub.remove();
   }, [isSearchActive]);
 
-  const activeFilterCount = [
-    filterState.genre,
-    filterState.type,
-    filterState.status,
-    filterState.sort,
-  ].filter(Boolean).length;
+  const activeGenres = filterState.genres || (filterState.genre ? [filterState.genre] : []);
+  const activeFilterCount =
+    activeGenres.length +
+    (filterState.dub ? 1 : 0) +
+    (filterState.type ? 1 : 0) +
+    (filterState.status ? 1 : 0) +
+    (filterState.sort ? 1 : 0);
 
   const hasSearchInput = Boolean(debouncedQuery || activeFilterCount > 0);
 
@@ -111,14 +130,18 @@ export default function HomeScreen() {
   } = useQuery({
     queryKey: ['home-search', debouncedQuery, filterState],
     queryFn: async () => {
-      if (debouncedQuery) {
+      if (debouncedQuery && activeFilterCount === 0) {
         return AnimeWorldScraper.searchAnime(debouncedQuery);
       }
       const filter: SearchFilter = {
-        genre: filterState.genre,
+        query: debouncedQuery || undefined,
+        genres: activeGenres.length > 0 ? activeGenres : undefined,
+        genre: activeGenres.length === 1 ? activeGenres[0] : undefined,
         type: filterState.type,
         status: filterState.status,
         order: filterState.sort,
+        sort: filterState.sort,
+        dub: filterState.dub,
       };
       return AnimeWorldScraper.searchAnime(filter);
     },
@@ -126,9 +149,13 @@ export default function HomeScreen() {
     staleTime: 5 * 60 * 1000,
   });
 
-  // Pre-fetching of top 4 search result images
+  // Pre-fetching of top 4 search result images & auto record to search history
   React.useEffect(() => {
     if (searchResults?.items && searchResults.items.length > 0) {
+      if (debouncedQuery.length >= 2) {
+        AppStorage.addSearchHistory(debouncedQuery);
+        setSearchHistoryList(AppStorage.getSearchHistory());
+      }
       const urls = searchResults.items
         .slice(0, 4)
         .map((item) => item.image || item.thumbnail || '')
@@ -137,15 +164,50 @@ export default function HomeScreen() {
         Image.prefetch(urls).catch(() => {});
       }
     }
-  }, [searchResults]);
+  }, [searchResults, debouncedQuery]);
 
   const removeFilter = (key: keyof FilterState) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     setFilterState((prev) => {
       const next = { ...prev };
       delete next[key];
+      if (key === 'genre') delete next.genres;
+      if (key === 'genres') delete next.genre;
       return next;
     });
+  };
+
+  const removeGenre = (genreId: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    setFilterState((prev) => {
+      const currentList = prev.genres || (prev.genre ? [prev.genre] : []);
+      const remaining = currentList.filter((id) => id !== genreId);
+      return {
+        ...prev,
+        genres: remaining.length > 0 ? remaining : undefined,
+        genre: remaining.length === 1 ? remaining[0] : undefined,
+      };
+    });
+  };
+
+  const handleSelectSearchHistory = (queryText: string) => {
+    Haptics.selectionAsync().catch(() => {});
+    setSearchQuery(queryText);
+    setDebouncedQuery(queryText);
+    Keyboard.dismiss();
+  };
+
+  const handleDeleteSearchHistoryItem = (queryText: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    AppStorage.removeSearchHistoryItem(queryText);
+    setSearchHistoryList(AppStorage.getSearchHistory());
+  };
+
+  const handleConfirmClearAllSearch = () => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    AppStorage.clearSearchHistory();
+    setSearchHistoryList([]);
+    setIsClearAllSearchConfirmOpen(false);
   };
 
   // Proactive pre-fetching of top images to eliminate visual loading latency on scroll
@@ -481,6 +543,12 @@ export default function HomeScreen() {
               placeholderTextColor={theme.colors.textMuted}
               value={searchQuery}
               onChangeText={setSearchQuery}
+              onSubmitEditing={() => {
+                if (searchQuery.trim().length >= 2) {
+                  AppStorage.addSearchHistory(searchQuery.trim());
+                  setSearchHistoryList(AppStorage.getSearchHistory());
+                }
+              }}
               returnKeyType="search"
               autoFocus={true}
               autoCorrect={false}
@@ -558,12 +626,25 @@ export default function HomeScreen() {
           {activeFilterCount > 0 && (
             <View style={styles.activeFiltersRow}>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.activeFiltersScroll}>
+                {filterState.dub && (
+                  <Pressable
+                    style={[styles.activeFilterChip, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
+                    onPress={() => removeFilter('dub')}
+                  >
+                    <Text style={[styles.activeFilterText, { color: theme.colors.text }]}>
+                      AUDIO: {filterState.dub === '1' ? 'DOPPIATI (ITA)' : 'SUB ITA'}
+                    </Text>
+                    <Ionicons name="close-circle" size={14} color={theme.colors.textMuted} />
+                  </Pressable>
+                )}
                 {filterState.type && (
                   <Pressable
                     style={[styles.activeFilterChip, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
                     onPress={() => removeFilter('type')}
                   >
-                    <Text style={[styles.activeFilterText, { color: theme.colors.text }]}>TIPO: {filterState.type.toUpperCase()}</Text>
+                    <Text style={[styles.activeFilterText, { color: theme.colors.text }]}>
+                      TIPO: {(ANIME_TYPES.find((t) => t.value === filterState.type)?.label || filterState.type).toUpperCase()}
+                    </Text>
                     <Ionicons name="close-circle" size={14} color={theme.colors.textMuted} />
                   </Pressable>
                 )}
@@ -572,7 +653,9 @@ export default function HomeScreen() {
                     style={[styles.activeFilterChip, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
                     onPress={() => removeFilter('status')}
                   >
-                    <Text style={[styles.activeFilterText, { color: theme.colors.text }]}>STATO: {filterState.status.toUpperCase()}</Text>
+                    <Text style={[styles.activeFilterText, { color: theme.colors.text }]}>
+                      STATO: {(ANIME_STATUSES.find((s) => s.value === filterState.status)?.label || filterState.status).toUpperCase()}
+                    </Text>
                     <Ionicons name="close-circle" size={14} color={theme.colors.textMuted} />
                   </Pressable>
                 )}
@@ -581,19 +664,27 @@ export default function HomeScreen() {
                     style={[styles.activeFilterChip, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
                     onPress={() => removeFilter('sort')}
                   >
-                    <Text style={[styles.activeFilterText, { color: theme.colors.text }]}>ORDINA: {filterState.sort.toUpperCase()}</Text>
+                    <Text style={[styles.activeFilterText, { color: theme.colors.text }]}>
+                      ORDINA: {(ANIME_SORTS.find((s) => s.value === filterState.sort)?.label || filterState.sort).toUpperCase()}
+                    </Text>
                     <Ionicons name="close-circle" size={14} color={theme.colors.textMuted} />
                   </Pressable>
                 )}
-                {filterState.genre && (
-                  <Pressable
-                    style={[styles.activeFilterChip, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
-                    onPress={() => removeFilter('genre')}
-                  >
-                    <Text style={[styles.activeFilterText, { color: theme.colors.text }]}>GENERE: {filterState.genre.toUpperCase()}</Text>
-                    <Ionicons name="close-circle" size={14} color={theme.colors.textMuted} />
-                  </Pressable>
-                )}
+                {activeGenres.map((gId) => {
+                  const genreLabel = ANIME_GENRES.find((g) => g.id === gId)?.label || gId;
+                  return (
+                    <Pressable
+                      key={`active-genre-${gId}`}
+                      style={[styles.activeFilterChip, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
+                      onPress={() => removeGenre(gId)}
+                    >
+                      <Text style={[styles.activeFilterText, { color: theme.colors.text }]}>
+                        GENERE: {genreLabel.toUpperCase()}
+                      </Text>
+                      <Ionicons name="close-circle" size={14} color={theme.colors.textMuted} />
+                    </Pressable>
+                  );
+                })}
               </ScrollView>
             </View>
           )}
@@ -645,27 +736,93 @@ export default function HomeScreen() {
               </View>
             )
           ) : (
-            <View style={styles.searchSuggestionsBox}>
-              <Text style={[styles.suggestionTitle, { color: theme.colors.textSecondary }]}>
-                SUGGERIMENTI RAPIDI
-              </Text>
-              <View style={styles.suggestionChips}>
-                {['Azione', 'Avventura', 'Fantasy', 'Commedia', 'Romantico', 'Fantascienza', 'Sport', 'Horror'].map((g) => (
-                  <Pressable
-                    key={g}
-                    style={[styles.suggestionChip, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
-                    onPress={() => {
-                      Haptics.selectionAsync().catch(() => {});
-                      setFilterState((prev) => ({ ...prev, genre: g }));
-                    }}
-                  >
-                    <Text style={[styles.suggestionChipText, { color: theme.colors.text }]}>
-                      {g.toUpperCase()}
+            <ScrollView
+              style={styles.searchHistoryContainer}
+              contentContainerStyle={styles.searchHistoryContent}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              {isSearchHistoryActive ? (
+                searchHistoryList.length > 0 ? (
+                  <>
+                    <View style={styles.searchHistoryHeader}>
+                      <View style={styles.searchHistoryTitleRow}>
+                        <Ionicons name="time-outline" size={16} color={theme.colors.textSecondary} />
+                        <Text style={[styles.searchHistoryTitle, { color: theme.colors.textSecondary }]}>
+                          RICERCHE RECENTI
+                        </Text>
+                      </View>
+                      <Pressable
+                        onPress={() => setIsClearAllSearchConfirmOpen(true)}
+                        hitSlop={8}
+                        style={styles.clearAllSearchBtn}
+                        accessibilityRole="button"
+                        accessibilityLabel="CANCELLA TUTTA LA CRONOLOGIA DI RICERCA"
+                      >
+                        <Text style={[styles.clearAllSearchText, { color: theme.colors.textMuted }]}>
+                          CANCELLA TUTTE
+                        </Text>
+                      </Pressable>
+                    </View>
+
+                    <View style={[styles.searchHistoryList, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+                      {searchHistoryList.map((item, index) => (
+                        <View
+                          key={`${item.query}-${item.timestamp}-${index}`}
+                          style={[
+                            styles.searchHistoryItem,
+                            index < searchHistoryList.length - 1 && {
+                              borderBottomWidth: StyleSheet.hairlineWidth,
+                              borderBottomColor: theme.colors.border,
+                            },
+                          ]}
+                        >
+                          <Pressable
+                            style={styles.searchHistoryItemContent}
+                            onPress={() => handleSelectSearchHistory(item.query)}
+                            hitSlop={4}
+                            accessibilityRole="button"
+                            accessibilityLabel={`CERCA ${item.query.toUpperCase()}`}
+                          >
+                            <Ionicons name="time-outline" size={18} color={theme.colors.textMuted} style={styles.searchHistoryItemIcon} />
+                            <Text style={[styles.searchHistoryItemText, { color: theme.colors.text }]} numberOfLines={1}>
+                              {item.query.toUpperCase()}
+                            </Text>
+                          </Pressable>
+
+                          <Pressable
+                            style={styles.searchHistoryDeleteBtn}
+                            onPress={() => handleDeleteSearchHistoryItem(item.query)}
+                            hitSlop={10}
+                            accessibilityRole="button"
+                            accessibilityLabel={`ELIMINA ${item.query.toUpperCase()} DALLA CRONOLOGIA`}
+                          >
+                            <Ionicons name="close-outline" size={20} color={theme.colors.textMuted} />
+                          </Pressable>
+                        </View>
+                      ))}
+                    </View>
+                  </>
+                ) : (
+                  <View style={styles.centerBox}>
+                    <Ionicons name="search-outline" size={44} color={theme.colors.textMuted} />
+                    <Text style={[styles.emptyText, { color: theme.colors.textMuted }]}>
+                      DIGITA UN TITOLO PER CERCARE O UTILIZZA I FILTRI
                     </Text>
-                  </Pressable>
-                ))}
-              </View>
-            </View>
+                  </View>
+                )
+              ) : (
+                <View style={styles.centerBox}>
+                  <Ionicons name="time-outline" size={44} color={theme.colors.textMuted} />
+                  <Text style={[styles.emptyText, { color: theme.colors.textMuted }]}>
+                    CRONOLOGIA DI RICERCA DISATTIVATA
+                  </Text>
+                  <Text style={[styles.emptySubText, { color: theme.colors.textSecondary }]}>
+                    PUOI ATTIVARLA NELLA SCHEDA IMPOSTAZIONI DELL&apos;APP
+                  </Text>
+                </View>
+              )}
+            </ScrollView>
           )}
         </View>
       ) : (
@@ -1275,6 +1432,17 @@ export default function HomeScreen() {
         onApply={(f) => setFilterState(f)}
         onReset={() => setFilterState({})}
       />
+
+      {/* Modal di Conferma Svuota Cronologia Ricerche */}
+      <ConfirmModal
+        visible={isClearAllSearchConfirmOpen}
+        title="SVUOTA CRONOLOGIA RICERCHE"
+        message="VUOI DAVVERO CANCELLARE TUTTE LE RICERCHE RECENTI? L'OPERAZIONE NON È REVERSIBILE."
+        icon="trash-outline"
+        confirmText="CANCELLA TUTTO"
+        onConfirm={handleConfirmClearAllSearch}
+        onCancel={() => setIsClearAllSearchConfirmOpen(false)}
+      />
     </View>
   );
 }
@@ -1450,36 +1618,87 @@ const styles = StyleSheet.create({
     fontFamily: 'monospace',
     textTransform: 'uppercase',
   },
-  searchSuggestionsBox: {
-    padding: 20,
+  searchHistoryContainer: {
+    flex: 1,
   },
-  suggestionTitle: {
+  searchHistoryContent: {
+    padding: 16,
+    paddingBottom: 32,
+  },
+  searchHistoryHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+    paddingHorizontal: 4,
+  },
+  searchHistoryTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  searchHistoryTitle: {
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '800',
     fontFamily: 'monospace',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-    marginBottom: 12,
   },
-  suggestionChips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  suggestionChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: oledTheme.radius.full,
-    borderWidth: 1,
+  clearAllSearchBtn: {
     minHeight: 44,
     justifyContent: 'center',
-    alignItems: 'center',
+    paddingHorizontal: 8,
   },
-  suggestionChipText: {
-    fontSize: 12,
+  clearAllSearchText: {
+    fontSize: 11,
     fontWeight: '700',
     fontFamily: 'monospace',
     textTransform: 'uppercase',
+  },
+  searchHistoryList: {
+    borderRadius: oledTheme.radius.md,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  searchHistoryItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: 48,
+    paddingLeft: 14,
+    paddingRight: 6,
+  },
+  searchHistoryItemContent: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 48,
+    gap: 12,
+  },
+  searchHistoryItemIcon: {
+    marginRight: 2,
+  },
+  searchHistoryItemText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
+    letterSpacing: 0.2,
+  },
+  searchHistoryDeleteBtn: {
+    width: 44,
+    height: 48,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emptySubText: {
+    fontSize: 11,
+    fontWeight: '600',
+    textAlign: 'center',
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
+    marginTop: -4,
   },
   scroll: {
     flex: 1,

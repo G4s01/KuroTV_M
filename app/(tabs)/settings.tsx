@@ -27,7 +27,7 @@ import {
   type AniSkipMode,
   type NavBarMode,
 } from '@/services/storage';
-import { HistorySlider } from '@/components/HistorySlider';
+import { HistorySlider, SEARCH_RETENTION_STEPS } from '@/components/HistorySlider';
 import { AniSkipSlider } from '@/components/AniSkipSlider';
 import { AniSkipDurationSlider } from '@/components/AniSkipDurationSlider';
 import { ConfirmModal } from '@/components/ConfirmModal';
@@ -217,6 +217,39 @@ export default function SettingsScreen() {
     AppStorage.clearWatchHistory();
     setIsClearHistoryConfirmOpen(false);
     showHistoryNotice('CRONOLOGIA COMPLETAMENTE CANCELLATA');
+  };
+
+  // Search History settings state
+  const [searchHistoryRetention, setSearchHistoryRetention] = React.useState<HistoryRetentionDays>(() => {
+    return AppStorage.getSearchHistoryRetentionDays();
+  });
+  const [isClearSearchHistoryConfirmOpen, setIsClearSearchHistoryConfirmOpen] = React.useState(false);
+  const [searchHistoryNotice, setSearchHistoryNotice] = React.useState<string | null>(null);
+
+  const showSearchHistoryNotice = (msg: string) => {
+    setSearchHistoryNotice(msg);
+    setTimeout(() => {
+      setSearchHistoryNotice(null);
+    }, 4000);
+  };
+
+  const handleChangeSearchHistoryRetention = (days: HistoryRetentionDays) => {
+    setSearchHistoryRetention(days);
+    AppStorage.setSearchHistoryRetentionDays(days);
+    if (days === -1) {
+      showSearchHistoryNotice('CRONOLOGIA DI RICERCA DISATTIVATA');
+    } else if (days === 0) {
+      showSearchHistoryNotice('CRONOLOGIA DI RICERCA SENZA SCADENZA (ATTIVA)');
+    } else {
+      showSearchHistoryNotice(`CONSERVAZIONE RICERCHE IMPOSTATA A ${days} GIORNI`);
+    }
+  };
+
+  const handleConfirmClearSearchHistory = () => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    AppStorage.clearSearchHistory();
+    setIsClearSearchHistoryConfirmOpen(false);
+    showSearchHistoryNotice('CRONOLOGIA RICERCHE CANCELLATA CON SUCCESSO');
   };
 
   // OTA state (strictly in-app, zero native Alert dialogs)
@@ -563,6 +596,54 @@ export default function SettingsScreen() {
               <Ionicons name="checkmark-circle" size={14} color={theme.colors.primary} />
               <Text style={[styles.sourceNoticeText, { color: theme.colors.primary }]}>
                 {historyNotice}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+
+        {/* CRONOLOGIA DI RICERCA (Google Style search history retention & clear) */}
+        <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+          <Text style={[styles.cardTitle, { color: theme.colors.text }]}>CRONOLOGIA DI RICERCA</Text>
+
+          <HistorySlider
+            value={searchHistoryRetention}
+            onChange={handleChangeSearchHistoryRetention}
+            theme={theme}
+            steps={SEARCH_RETENTION_STEPS}
+          />
+
+          <Pressable
+            style={[
+              styles.clearHistoryBtn,
+              { backgroundColor: theme.colors.card, borderColor: theme.colors.border },
+            ]}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+              setIsClearSearchHistoryConfirmOpen(true);
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="CANCELLA CRONOLOGIA RICERCHE"
+          >
+            <Ionicons name="trash-outline" size={16} color={theme.colors.error || '#EF4444'} />
+            <Text style={[styles.clearHistoryBtnText, { color: theme.colors.error || '#EF4444' }]}>
+              CANCELLA TUTTA LA CRONOLOGIA RICERCHE
+            </Text>
+          </Pressable>
+
+          {searchHistoryNotice ? (
+            <View
+              style={[
+                styles.sourceNoticeBox,
+                {
+                  backgroundColor: `${theme.colors.primary}18`,
+                  borderColor: theme.colors.primary,
+                  marginTop: 10,
+                },
+              ]}
+            >
+              <Ionicons name="checkmark-circle" size={14} color={theme.colors.primary} />
+              <Text style={[styles.sourceNoticeText, { color: theme.colors.primary }]}>
+                {searchHistoryNotice}
               </Text>
             </View>
           ) : null}
@@ -991,6 +1072,17 @@ export default function SettingsScreen() {
         confirmText="CANCELLA TUTTO"
         onConfirm={handleConfirmClearHistory}
         onCancel={() => setIsClearHistoryConfirmOpen(false)}
+      />
+
+      {/* Modal di Conferma Svuota Cronologia Ricerche */}
+      <ConfirmModal
+        visible={isClearSearchHistoryConfirmOpen}
+        title="SVUOTA CRONOLOGIA RICERCHE"
+        message="VUOI DAVVERO CANCELLARE TUTTE LE RICERCHE RECENTI? L'OPERAZIONE NON È REVERSIBILE."
+        icon="trash-outline"
+        confirmText="CANCELLA TUTTO"
+        onConfirm={handleConfirmClearSearchHistory}
+        onCancel={() => setIsClearSearchHistoryConfirmOpen(false)}
       />
     </View>
   );

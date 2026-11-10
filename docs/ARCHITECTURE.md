@@ -45,7 +45,7 @@ KuroM/
 │   └── types/                   # Definizioni TypeScript condivise
 ├── workers/                     # Cloudflare Worker unificato per OTA
 ├── scripts/                     # Tooling DevOps, release pipeline & patch native (apply-patches, build-release)
-└── tests/                       # Suite di verifica qualità a 15 stadi
+└── tests/                       # Suite di verifica qualità a 16 stadi
 ```
 
 ---
@@ -61,9 +61,10 @@ Il data fetching remoto sfrutta `@tanstack/react-query` v5 per garantire caching
 - **Ricerca & Filtri**: `['anime', 'search', query, filters]` — debounce integrato sul campo di input.
 
 ### 2. Storage Locale ad Alte Prestazioni (`react-native-mmkv`)
-Tutti i dati persistenti lato client (preferiti, avanzamento episodi, cronologia di riproduzione, server preferito e impostazioni) risiedono in istanze sincrone di **MMKV**:
-- Nessun tempo di attesa o promise asincrona per leggere lo stato dei preferiti.
+Tutti i dati persistenti lato client (preferiti, avanzamento episodi, cronologia di riproduzione, cronologia di ricerca, server preferito e impostazioni) risiedono in istanze sincrone di **MMKV**:
+- Nessun tempo di attesa o promise asincrona per leggere lo stato dei preferiti o delle ricerche recenti.
 - Salvataggio dello stato di riproduzione (tempo corrente, percentuale di avanzamento e data ultimo accesso) ad ogni aggiornamento della timeline video.
+- Gestione della cronologia delle ricerche (`user.searchHistory`) con memorizzazione timestamp e pulizia automatica in base al periodo di ritenzione configurato.
 
 ---
 
@@ -128,6 +129,27 @@ La schermata Home (`app/(tabs)/index.tsx`) è strutturata per replicare fedelmen
 - **Supporto Scraper per `.film-listnext` & Sanitizzazione Titoli**:
   - `parseSearchPage` in `src/services/scraper/parsers/search.parser.ts` include il selettore `.film-listnext .item` per estrarre la totalità delle uscite stagionali da `animeworld.ac/upcoming`.
   - Isola con precisione i titoli testuali (`nameEl`), prevenendo la contaminazione da badge accessori (es. `DUB`, `Special`, `ONA`) collocati dentro l'elemento locandina `<a class="poster">`.
+
+---
+
+## 🔍 Ricerca Unificata, Cronologia Google-Style & Filtri Avanzati (`app/(tabs)/index.tsx`, `FilterBottomSheet.tsx`)
+
+La ricerca catalogo è integrata direttamente nell'header della schermata Home:
+
+### 1. Cronologia Ricerche in Stile Google & Privacy
+- **Sostituzione dei Consigliati**: I vecchi suggerimenti statici sono sostituiti da una cronologia di ricerca recente touch-native.
+- **Interfaccia Touch-Native**: Ciascuna ricerca passata presenta l'icona orologio `time-outline`, testo maiuscolo monospace, tap-to-search immediato per eseguire la ricerca e pulsante `close-outline` dedicato con area di tocco $\ge 44$dp per rimuovere la singola voce con feedback tattile (`Haptics.ImpactFeedbackStyle.Light`).
+- **Cancellazione Globale Protetta**: Pulsante `CANCELLA TUTTE` protetto dal componente modale in-app unificato `ConfirmModal`.
+- **Retention Policy Flessibile (`HistorySlider.tsx`)**: Configurazione nelle Impostazioni tramite `HistorySlider` e step dedicati `SEARCH_RETENTION_STEPS` (`OFF`, `30GG`, `60GG`, `90GG`, `ON` illimitato). Alla disattivazione (`OFF`), la cronologia viene svuotata e la memorizzazione interrotta. La pulizia dei record scaduti (`AppStorage.cleanupExpiredSearchHistory`) viene eseguita all'avvio in background.
+
+### 2. Filtri Catalogo Avanzati & Risoluzione 6 Titoli Spuri
+- **Supporto 46 Generi & Logica AND**: Interfaccia a chip con selezione multipla di tutti i 46 generi AnimeWorld e invio del parametro `genre_mode=and` per intersezioni accurate.
+- **Filtro Audio Dedicato**: Supporto completo per `TUTTI GLI AUDIO`, `DOPPIATI (ITA)` (`dub: '1'`) e `SOTTOTITOLATI (SUB)` (`dub: '0'`).
+- **Mappatura Categorie & Formati Nativi**: Mappatura corretta con codici numerici AnimeWorld (`0` Serie TV, `4` Film Anime, `1` OAV, `2` ONA, `3` Special).
+- **Ordinamento Reale per Data di Uscita**: Selezione di `sort: '5'` per ordinare in base alla vera data di rilascio (`release_date:desc`), affiancato da `1` Ultime aggiunte, `6` Più visti, `7` Meglio valutati, `2` A-Z, `3` Z-A.
+- **Isolamento del Contenitore nello Scraper (`search.parser.ts`)**:
+  - Il selettore di parsing è circoscritto ai soli contenitori dei risultati effettivi (`#main .film-list > .item, .content .film-list > .item, .film-list > .item, #main .film-listnext > .item, .content .film-listnext > .item, .film-listnext .item`).
+  - Esclusione categorica di `.simple-film-list .item, .ranking .item, aside .item, .widget.ranking .item, .widget.simple-film-list .item`: quando una ricerca non produce risultati (es. categorie particolari senza match), AnimeWorld visualizza un widget laterale/inferiore con esattamente 6 titoli consigliati. Il filtro rigoroso evita che questi 6 elementi vengano erroneamente restituiti come risultati della ricerca.
 
 ---
 

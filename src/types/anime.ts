@@ -78,10 +78,12 @@ export interface AnimeDetail extends AnimeItem {
 export interface SearchFilter {
   query?: string;
   keyword?: string;
-  genre?: string | number;
+  genre?: string | number | (string | number)[];
+  genres?: (string | number)[];
   genreMode?: 'and' | 'or';
   year?: number;
   order?: number | string;
+  sort?: number | string;
   status?: number | string;
   season?: number | string;
   type?: 'music' | 'movie' | 'ova' | 'ona' | 'special' | 'anime' | string;

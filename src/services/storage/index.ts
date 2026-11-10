@@ -129,6 +129,7 @@ export const StorageKeys = {
   HOME_DATA: 'cache.homeData',
   SCHEDULE_DATA: 'cache.scheduleData',
   ANISKIP_SETTINGS: 'settings.aniSkipSettings',
+  SEARCH_HISTORY: 'user.searchHistory',
 } as const;
 
 export type ThemeMode = 'oled' | 'light' | 'custom';
@@ -155,6 +156,7 @@ export interface AppSettings {
   autoplayNext: boolean;
   defaultServer: string;
   historyRetentionDays: HistoryRetentionDays;
+  searchHistoryRetentionDays?: HistoryRetentionDays;
   searchMode: SearchMode;
   searchDebounceMs: number;
   searchMinChars: number;
@@ -174,12 +176,18 @@ export const DEFAULT_SETTINGS: AppSettings = {
   autoplayNext: true,
   defaultServer: '9',
   historyRetentionDays: 90,
+  searchHistoryRetentionDays: 90,
   searchMode: 'auto',
   searchDebounceMs: 800,
   searchMinChars: 3,
   aniSkipSettings: DEFAULT_ANISKIP_SETTINGS,
   navBarMode: 'visible',
 };
+
+export interface SearchHistoryItem {
+  query: string;
+  timestamp: number;
+}
 
 export interface WatchProgressItem {
   animeId: string;
@@ -358,6 +366,9 @@ export const AppStorage = {
     }
     if (partial.historyRetentionDays !== undefined) {
       AppStorage.cleanupExpiredHistory(partial.historyRetentionDays);
+    }
+    if (partial.searchHistoryRetentionDays !== undefined) {
+      AppStorage.cleanupExpiredSearchHistory(partial.searchHistoryRetentionDays);
     }
     if (partial.aniSkipSettings) {
       AppStorage.saveAniSkipSettings(partial.aniSkipSettings);
@@ -1140,6 +1151,89 @@ export const AppStorage = {
     const merged = { ...existing, ...newEpisodes };
     AppStorage.setObject(`${StorageKeys.KITSU_EPISODES_PREFIX}${kitsuId}`, merged);
     return merged;
+  },
+
+  // ----------------------------------------------------
+  // Search History
+  // ----------------------------------------------------
+  isSearchHistoryEnabled: (): boolean => {
+    return AppStorage.getSearchHistoryRetentionDays() !== -1;
+  },
+
+  getSearchHistoryRetentionDays: (): HistoryRetentionDays => {
+    return AppStorage.getSettings().searchHistoryRetentionDays ?? 90;
+  },
+
+  setSearchHistoryRetentionDays: (days: HistoryRetentionDays): void => {
+    AppStorage.saveSettings({ searchHistoryRetentionDays: days });
+    AppStorage.cleanupExpiredSearchHistory(days);
+  },
+
+  getSearchHistory: (): SearchHistoryItem[] => {
+    const retentionDays = AppStorage.getSearchHistoryRetentionDays();
+    if (retentionDays === -1) return [];
+    const data = AppStorage.getObject<unknown>(StorageKeys.SEARCH_HISTORY);
+    const history = Array.isArray(data) ? (data as SearchHistoryItem[]) : [];
+    if (retentionDays === 0) return history;
+
+    const cutoffTime = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
+    return history.filter((item) => (item.timestamp || 0) >= cutoffTime);
+  },
+
+  addSearchHistory: (query: string): void => {
+    if (!AppStorage.isSearchHistoryEnabled()) return;
+    const clean = query.trim();
+    if (!clean || clean.length < 2) return;
+
+    const current = AppStorage.getSearchHistory();
+    const filtered = current.filter(
+      (item) => item.query.trim().toLowerCase() !== clean.toLowerCase(),
+    );
+    filtered.unshift({
+      query: clean,
+      timestamp: Date.now(),
+    });
+
+    const maxItems = 50;
+    AppStorage.setObject(StorageKeys.SEARCH_HISTORY, filtered.slice(0, maxItems));
+  },
+
+  removeSearchHistoryItem: (query: string): void => {
+    if (!query) return;
+    const clean = query.trim().toLowerCase();
+    const current = AppStorage.getSearchHistory();
+    const filtered = current.filter(
+      (item) => item.query.trim().toLowerCase() !== clean,
+    );
+    AppStorage.setObject(StorageKeys.SEARCH_HISTORY, filtered);
+  },
+
+  clearSearchHistory: (): void => {
+    AppStorage.remove(StorageKeys.SEARCH_HISTORY);
+  },
+
+  cleanupExpiredSearchHistory: (customRetentionDays?: number): number => {
+    const retentionDays =
+      customRetentionDays !== undefined
+        ? customRetentionDays
+        : AppStorage.getSearchHistoryRetentionDays();
+
+    if (retentionDays === -1) {
+      AppStorage.clearSearchHistory();
+      return 0;
+    }
+    if (retentionDays <= 0) return 0;
+
+    const cutoffTime = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
+    const history = AppStorage.getObject<SearchHistoryItem[]>(StorageKeys.SEARCH_HISTORY);
+    if (!Array.isArray(history)) return 0;
+
+    const validHistory = history.filter((item) => (item.timestamp || 0) >= cutoffTime);
+    const removedCount = history.length - validHistory.length;
+    if (removedCount > 0) {
+      AppStorage.setObject(StorageKeys.SEARCH_HISTORY, validHistory);
+    }
+    return removedCount;
   },
 
   // ----------------------------------------------------

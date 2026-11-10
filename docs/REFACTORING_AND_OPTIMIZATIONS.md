@@ -16,6 +16,9 @@
 - [Step 8: Scheda Tecnica Dettaglio & Metadati Estesi (`AnimeInfoTable`)](#-step-8-scheda-tecnica-dettaglio--metadati-estesi-animeinfotable)
 - [Step 9: Streaming Asincrono (`replaceAsync`) & Rifinitura UX Dettaglio](#-step-9-streaming-asincrono-replaceasync--rifinitura-ux-dettaglio)
 - [Step 10: Ridefinizione Schermata Home, Hero Swiper Sincronizzato & Scraper Stagionali (`/upcoming`)](#-step-10-ridefinizione-schermata-home-hero-swiper-sincronizzato--scraper-stagionali-upcoming)
+- [Step 11: Palinsesto Settimanale (`animeworld.ac/schedule`), AniSkip Condizionale & Hardening Aggiornamenti Manuali](#-step-11-palinsesto-settimanale-animeworldacschedule-aniskip-condizionale--hardening-aggiornamenti-manuali)
+- [Step 12: Ottimizzazione Carosello Raccomandati, Risoluzione Scroll Deadlock & Layout Stabile](#-step-12-ottimizzazione-carosello-raccomandati-risoluzione-scroll-deadlock--layout-stabile)
+- [Step 13: Rifacimento Ricerca, Cronologia Google-Style, Filtri Multipli & Hardening Scraper](#-step-13-rifacimento-ricerca-cronologia-google-style-filtri-multipli--hardening-scraper)
 
 ---
 
@@ -272,10 +275,44 @@ Risolvere il blocco e crash immediato dell'applicazione durante lo scorrimento d
 4. **Bordo Stabile a 2dp & Zero `requestLayout`**:
    - `styles.recommendedCard` fissa `borderWidth: 2` a livello statico, variando esclusivamente `borderColor` al cambio focus per eliminare le invalidazioni di layout del motore Android durante lo scroll inerziale.
 
+---
+
+## 🔍 Step 13: Rifacimento Ricerca, Cronologia Google-Style, Filtri Multipli & Hardening Scraper
+
+### 🎯 Obiettivo
+Rinnovare completamente l'esperienza di ricerca rimuovendo i vecchi consigliati statici, introducendo una cronologia ricerche touch-native in stile Google con eliminazione singola e massiva protetta da `ConfirmModal`, configurazione della ritenzione nelle Impostazioni con `HistorySlider`, supporto completo a tutti i 46 generi con selezione multipla e logica AND (`genre_mode=and`), filtro Audio per doppiati e sottotitolati, risoluzione della mappatura dei formati/categorie e isolamento rigoroso dello scraper per eliminare i 6 titoli non pertinenti iniettati da AnimeWorld in caso di zero risultati.
+
+### 🛠️ Piano di Refactor & Implementazione
+1. **Cronologia Ricerche Touch-Native in Stile Google (`index.tsx`)**:
+   - Eliminazione dei vecchi consigliati generici.
+   - Ogni elemento recente mostra l'icona `time-outline`, testo maiuscolo monospace, tap diretto per eseguire immediatamente la ricerca, e tasto di rimozione singolo (`close-outline`) con area di tocco minima $\ge 44$dp e feedback tattile (`Haptics.impactAsync(Light)`).
+   - Tasto *CANCELLA TUTTE* con modale di conferma in-app unificato `ConfirmModal`.
+2. **Storage Sincrono MMKV & Retention Policy (`AppStorage`, `settings.tsx`, `HistorySlider.tsx`)**:
+   - Aggiunta della chiave `user.searchHistory` (`SearchHistoryItem`: `term`, `timestamp`).
+   - Gestione `searchHistoryRetentionDays` in `AppSettings` (default 90 giorni).
+   - Estensione di `HistorySlider` con prop `steps` e preset dedicato `SEARCH_RETENTION_STEPS` (`OFF`, `30GG`, `60GG`, `90GG`, `ON`). Alla disattivazione (`OFF`), la cronologia viene svuotata istantaneamente.
+   - Pulizia automatica periodica delle ricerche scadute all'avvio dell'app in background (`AppStorage.cleanupExpiredSearchHistory()`).
+3. **Filtri Catalogo Avanzati (`FilterBottomSheet.tsx`, `anime.ts`)**:
+   - Supporto a tutti i 46 generi AnimeWorld con selezione multipla.
+   - Sezione Audio dedicata: `TUTTI GLI AUDIO`, `DOPPIATI (ITA)` (`dub: '1'`), `SOTTOTITOLATI (SUB)` (`dub: '0'`).
+   - Sezione Categoria & Formato con mapping numerico nativo AnimeWorld: `0` Serie TV, `4` Film Anime, `1` OAV, `2` ONA, `3` Special.
+   - Ordinamento: aggiunta di `sort: '5'` per ordinare fedelmente in base alla data reale di uscita delle serie (`release_date:desc`), oltre a ultime aggiunte (`1`), più visti (`6`), meglio valutati (`7`), A-Z (`2`) e Z-A (`3`).
+4. **Hardening Scraper Risultati & Isolamento Widget Spuri (`search.parser.ts`)**:
+   - `buildFilterQuery`: serializzazione corretta dei parametri query, gestione array generi con aggiunta automatica di `genre_mode=and`.
+   - `parseSearchPage`: selettore limitato ai soli container primari dei risultati (`#main .film-list > .item, .content .film-list > .item, .film-list > .item, #main .film-listnext > .item, .content .film-listnext > .item, .film-listnext .item`) ed esclusione esplicita di `.simple-film-list .item, .ranking .item, aside .item`. In questo modo, quando una categoria (es. Film) non produce risultati, il widget laterale da 6 titoli consigliati non viene più scambiato per risultati di ricerca.
+
+### 🧪 Criteri di Accettazione
+- Cronologia ricerche perfettamente funzionante con persistenza sincrona in MMKV.
+- Modale filtri reattivo con reset rapido, conteggio filtri attivi nell'header e chip rimovibili individualmente.
+- Zero titoli spuri in caso di ricerche o filtri privi di risultati.
+- Suite completa di test superata a 16 stadi (`npm test`).
+
+---
+
 ## 📋 Checklist di Verifica per Ogni Step
 
 Prima di considerare concluso uno step della roadmap, l'agente deve verificare:
 1. `npx tsc --noEmit`: 0 errori di tipo.
-2. `npm test`: Suite completa a 15 stadi superata con codice 0.
+2. `npm test`: Suite completa a 16 stadi superata con codice 0.
 3. `npx expo export --platform android`: Compilazione Hermes bytecode senza warning o errori di importazione.
 4. Aggiornamento contestuale di [`AGENTS.md`](../AGENTS.md) qualora vengano introdotte nuove regole o pattern.

@@ -74,7 +74,8 @@
 - **Tipografia Monospace & CAPS LOCK**: Identità coerente su tutta l'app con font monospace di sistema e testi in maiuscolo.
 - **📱 Compatibilità Navbar di Sistema Android**: Navbar fissa in-app di default con sollevamento dinamico del router dei tab per zero interferenze con i tasti di navigazione fisici/virtuali, commutazione automatica in auto-hide immersivo (`BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE`) durante la riproduzione video a schermo intero e switch dedicato con descrizione snellita in Impostazioni (`A SCOMPARSA, RICHIAMABILE CON SWIPE DAL BASSO.` e `SEMPRE FISSA E VISIBILE IN-APP.`).
 - **⏭️ Selettore AniSkip a Scorrimento Continuo (`AniSkipSlider`)**: Slider touch-native minimale per la modalità di salto tra `'OFF'`, `'MANUALE'` e `'AUTO'` con feedback aptico e tracciamento continuo in stile `HistorySlider`.
-- **🔍 Ricerca Unificata in Home**: Catalogo accessibile dalla Home tramite header search con debouncing 450ms, dismiss tastiera su scroll, hardware back button e filtri modali.
+- **🔍 Ricerca Unificata in Home & Cronologia Google-Style**: Catalogo accessibile dalla Home con debouncing 450ms, dismiss tastiera su scroll, tasto indietro hardware per chiusura rapida e griglia FlashList a 2 colonne. Include cronologia ricerche touch-native in stile Google (icona orologio `time-outline`, testo monospace maiuscolo, tap to search, cancellazione della singola ricerca con target $\ge 44$dp e cancellazione massiva protetta da `ConfirmModal`). Ritenzione configurabile nelle Impostazioni con `HistorySlider` (`OFF`, `30GG`, `60GG`, `90GG`, `ON`).
+- **🎯 Filtri Catalogo Avanzati & Fix Scraper AnimeWorld**: Filtro modale touch-safe con tutti i 46 generi e selezione multipla (`genre_mode=and`), filtro Audio dedicato per `DOPPIATI (ITA)` e `SOTTOTITOLATI (SUB)`, mappatura corretta dei formati (`type` per Serie TV, Film Anime, OAV, ONA, Special), ordinamento fedele per data di uscita (`sort=5` Più recenti, `1` Ultime aggiunte, `6` Più visti, `7` Meglio valutati, `2` A-Z, `3` Z-A), e isolamento selettori nello scraper escludendo i widget correlati (`.simple-film-list`, `.ranking`) che iniettavano 6 titoli non pertinenti in caso di risultati vuoti.
 - **Zero Alert di Sistema & Modal In-App Unificato (`ConfirmModal`)**: Sostituzione integrale degli alert nativi grezzi di Android con modali a tema OLED, contrasto dinamico YIQ, feedback aptico e touch target $\ge 44$dp.
 - **Bottom Tabs Solo Icone**: Barra inferiore pulita a 5 schede (**Home**, **Palinsesto**, **Preferiti**, **Cronologia**, **Impostazioni**) senza etichette testuali e touch target minimi $\ge 44$dp.
 - **Temi Reattivi al Click**: Quattro palette d'accento (**OLED Puro**, **Pikachu**, **Orchidea**, **Rainbow**) con toggle scuro/chiaro al click e contrasto dinamico YIQ del testo.
@@ -112,11 +113,11 @@ cd KuroM
 npm install
 ```
 
-### 2. Test di Qualità (15 Stadi)
+### 2. Test di Qualità (16 Stadi)
 ```bash
 npm test
 ```
-*Valida SemVer, regole OLED, storage MMKV, batch puntate, intervalli AniSkip, skeleton animation, export delle rotte, touch sheets, updater, compatibilità navbar, gesture verticali, PiP no-pause, dimensioni sheets, AniSkipSlider, loader integrato, media notification, slider hero sincronizzato, parser upcoming, anti-corruzione titoli, palinsesto/schedule e affidabilità aggiornamenti manuali.*
+*Valida SemVer, regole OLED, storage MMKV, batch puntate, intervalli AniSkip, skeleton animation, export delle rotte, touch sheets, updater, compatibilità navbar, gesture verticali, PiP no-pause, dimensioni sheets, AniSkipSlider, loader integrato, media notification, slider hero sincronizzato, parser upcoming, anti-corruzione titoli, palinsesto/schedule, affidabilità aggiornamenti manuali, cronologia ricerche Google-style, filtri multi-genere, audio e isolamento scraper.*
 
 ### 3. Build & Verifica Bytecode Hermes
 ```bash

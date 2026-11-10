@@ -16,6 +16,7 @@ export interface HistorySliderProps {
   value: HistoryRetentionDays;
   onChange: (newValue: HistoryRetentionDays) => void;
   theme: Theme;
+  steps?: StepItem[];
 }
 
 export interface StepItem {
@@ -52,6 +53,34 @@ export const RETENTION_STEPS: StepItem[] = [
   },
 ];
 
+export const SEARCH_RETENTION_STEPS: StepItem[] = [
+  {
+    label: 'OFF',
+    value: -1,
+    description: 'CRONOLOGIA DI RICERCA DISATTIVATA (NON MEMORIZZA LE RICERCHE FUTURE)',
+  },
+  {
+    label: '30GG',
+    value: 30,
+    description: 'LE RICERCHE PIÙ VECCHIE DI 30 GIORNI VENGONO ELIMINATE AUTOMATICAMENTE',
+  },
+  {
+    label: '60GG',
+    value: 60,
+    description: 'LE RICERCHE PIÙ VECCHIE DI 60 GIORNI VENGONO ELIMINATE AUTOMATICAMENTE',
+  },
+  {
+    label: '90GG',
+    value: 90,
+    description: 'LE RICERCHE PIÙ VECCHIE DI 90 GIORNI VENGONO ELIMINATE AUTOMATICAMENTE',
+  },
+  {
+    label: 'ON',
+    value: 0,
+    description: 'CRONOLOGIA DI RICERCA ATTIVA A TEMPO INDETERMINATO SENZA SCADENZA',
+  },
+];
+
 const THUMB_SIZE = 24;
 const THUMB_RADIUS = THUMB_SIZE / 2;
 
@@ -59,16 +88,18 @@ export const HistorySlider = React.memo<HistorySliderProps>(function HistorySlid
   value,
   onChange,
   theme,
+  steps,
 }) {
+  const activeSteps = steps || RETENTION_STEPS;
   const [trackWidth, setTrackWidth] = React.useState(0);
   const trackWidthRef = React.useRef(0);
   const startLocationXRef = React.useRef(0);
 
   // Find index corresponding to current value (default to 90GG if not matched)
   const activeIndex = React.useMemo(() => {
-    const idx = RETENTION_STEPS.findIndex((s) => s.value === value);
+    const idx = activeSteps.findIndex((s) => s.value === value);
     return idx >= 0 ? idx : 3; // 90GG default
-  }, [value]);
+  }, [value, activeSteps]);
 
   const activeIndexRef = React.useRef(activeIndex);
   activeIndexRef.current = activeIndex;
@@ -78,34 +109,37 @@ export const HistorySlider = React.memo<HistorySliderProps>(function HistorySlid
 
   const selectStepByIndex = React.useCallback(
     (index: number) => {
-      const clamped = Math.max(0, Math.min(RETENTION_STEPS.length - 1, index));
+      const clamped = Math.max(0, Math.min(activeSteps.length - 1, index));
       if (clamped !== activeIndexRef.current) {
         Haptics.selectionAsync().catch(() => {});
         activeIndexRef.current = clamped;
-        onChangeRef.current(RETENTION_STEPS[clamped].value);
+        onChangeRef.current(activeSteps[clamped].value);
       }
     },
-    []
+    [activeSteps]
   );
 
-  const updateFromPositionX = React.useCallback((posX: number) => {
-    const w = trackWidthRef.current;
-    if (w <= THUMB_SIZE) return;
+  const updateFromPositionX = React.useCallback(
+    (posX: number) => {
+      const w = trackWidthRef.current;
+      if (w <= THUMB_SIZE) return;
 
-    const usableWidth = w - THUMB_SIZE;
-    const clampedX = Math.max(0, Math.min(usableWidth, posX - THUMB_RADIUS));
-    const ratio = clampedX / usableWidth;
-    const newIndex = Math.max(
-      0,
-      Math.min(RETENTION_STEPS.length - 1, Math.round(ratio * (RETENTION_STEPS.length - 1)))
-    );
+      const usableWidth = w - THUMB_SIZE;
+      const clampedX = Math.max(0, Math.min(usableWidth, posX - THUMB_RADIUS));
+      const ratio = clampedX / usableWidth;
+      const newIndex = Math.max(
+        0,
+        Math.min(activeSteps.length - 1, Math.round(ratio * (activeSteps.length - 1)))
+      );
 
-    if (newIndex !== activeIndexRef.current) {
-      Haptics.selectionAsync().catch(() => {});
-      activeIndexRef.current = newIndex;
-      onChangeRef.current(RETENTION_STEPS[newIndex].value);
-    }
-  }, []);
+      if (newIndex !== activeIndexRef.current) {
+        Haptics.selectionAsync().catch(() => {});
+        activeIndexRef.current = newIndex;
+        onChangeRef.current(activeSteps[newIndex].value);
+      }
+    },
+    [activeSteps]
+  );
 
   // Stable PanResponder: never recreated, prevents parent ScrollView from stealing touch
   const panResponder = React.useRef(
@@ -134,8 +168,8 @@ export const HistorySlider = React.memo<HistorySliderProps>(function HistorySlid
     }
   };
 
-  const currentStep = RETENTION_STEPS[activeIndex];
-  const activeRatio = activeIndex / (RETENTION_STEPS.length - 1);
+  const currentStep = activeSteps[activeIndex];
+  const activeRatio = activeIndex / (activeSteps.length - 1);
   const primaryContrast = getContrastTextColor(theme.colors.primary);
   const usableWidth = Math.max(0, trackWidth - THUMB_SIZE);
   const thumbLeft = activeRatio * usableWidth;
@@ -167,9 +201,9 @@ export const HistorySlider = React.memo<HistorySliderProps>(function HistorySlid
           />
 
           {/* Step tick dots aligned to thumb center */}
-          {RETENTION_STEPS.map((s, idx) => {
+          {activeSteps.map((s, idx) => {
             const isFilled = idx <= activeIndex;
-            const dotRatio = idx / (RETENTION_STEPS.length - 1);
+            const dotRatio = idx / (activeSteps.length - 1);
             const dotLeft = trackWidth > 0 ? THUMB_RADIUS + dotRatio * usableWidth : `${dotRatio * 100}%`;
             return (
               <View
@@ -215,7 +249,7 @@ export const HistorySlider = React.memo<HistorySliderProps>(function HistorySlid
 
       {/* Discrete Step Labels (Tap-to-jump) */}
       <View style={styles.labelsRow}>
-        {RETENTION_STEPS.map((s, idx) => {
+        {activeSteps.map((s, idx) => {
           const isActive = idx === activeIndex;
           return (
             <Pressable

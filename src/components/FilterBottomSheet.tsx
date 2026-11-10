@@ -15,11 +15,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { oledTheme, useTheme, getContrastTextColor } from '@/theme';
 
 export interface FilterState {
-  genre?: string;
+  genres?: string[]; // IDs dei generi multipli, es. ['1', '9']
+  genre?: string;    // ID del genere singolo (retrocompatibilità)
   year?: string;
-  type?: string;
-  status?: string;
-  sort?: string;
+  type?: string;     // '0' (Serie), '4' (Film), '1' (OVA), '2' (ONA), '3' (Special)
+  status?: string;   // '0' (In corso), '1' (Completato), '2' (Non rilasciato)
+  sort?: string;     // '5' (Più recenti data uscita), '1' (Ultime aggiunte), '6' (Più visti), '7' (Meglio valutati), '2' (A-Z), '3' (Z-A)
+  dub?: string;      // '1' (Doppiati ITA), '0' (Sottotitolati SUB)
 }
 
 export interface FilterBottomSheetProps {
@@ -30,39 +32,84 @@ export interface FilterBottomSheetProps {
   onReset: () => void;
 }
 
-const GENRES = [
-  'Azione',
-  'Avventura',
-  'Commedia',
-  'Drammatico',
-  'Fantasy',
-  'Fantascienza',
-  'Horror',
-  'Mistero',
-  'Psicologico',
-  'Romantico',
-  'Soprannaturale',
-  'Slice of Life',
-  'Sport',
+export const ANIME_GENRES = [
+  { id: '3', label: 'Arti Marziali' },
+  { id: '5', label: 'Avanguardia' },
+  { id: '2', label: 'Avventura' },
+  { id: '1', label: 'Azione' },
+  { id: '47', label: 'Bambini' },
+  { id: '4', label: 'Commedia' },
+  { id: '6', label: 'Demoni' },
+  { id: '7', label: 'Drammatico' },
+  { id: '8', label: 'Ecchi' },
+  { id: '9', label: 'Fantasy' },
+  { id: '10', label: 'Gioco' },
+  { id: '11', label: 'Harem' },
+  { id: '43', label: 'Hentai' },
+  { id: '13', label: 'Horror' },
+  { id: '49', label: 'Isekai' },
+  { id: '14', label: 'Josei' },
+  { id: '16', label: 'Magia' },
+  { id: '18', label: 'Mecha' },
+  { id: '19', label: 'Militari' },
+  { id: '21', label: 'Mistero' },
+  { id: '20', label: 'Musicale' },
+  { id: '22', label: 'Parodia' },
+  { id: '23', label: 'Polizia' },
+  { id: '24', label: 'Psicologico' },
+  { id: '46', label: 'Romantico' },
+  { id: '26', label: 'Samurai' },
+  { id: '28', label: 'Sci-Fi' },
+  { id: '27', label: 'Scolastico' },
+  { id: '29', label: 'Seinen' },
+  { id: '25', label: 'Sentimentale' },
+  { id: '30', label: 'Shoujo' },
+  { id: '31', label: 'Shoujo Ai' },
+  { id: '32', label: 'Shounen' },
+  { id: '33', label: 'Shounen Ai' },
+  { id: '34', label: 'Slice of Life' },
+  { id: '37', label: 'Soprannaturale' },
+  { id: '35', label: 'Spazio' },
+  { id: '36', label: 'Sport' },
+  { id: '12', label: 'Storico' },
+  { id: '38', label: 'Superpoteri' },
+  { id: '39', label: 'Thriller' },
+  { id: '40', label: 'Vampiri' },
+  { id: '48', label: 'Veicoli' },
+  { id: '41', label: 'Yaoi' },
+  { id: '42', label: 'Yuri' },
 ];
 
-const TYPES = [
+export const ANIME_DUB = [
+  { label: 'TUTTI GLI AUDIO', value: '' },
+  { label: 'DOPPIATI (ITA)', value: '1' },
+  { label: 'SOTTOTITOLATI (SUB)', value: '0' },
+];
+
+export const ANIME_TYPES = [
   { label: 'TUTTI I TIPI', value: '' },
-  { label: 'SERIE TV', value: 'tv' },
-  { label: 'FILM ANIME', value: 'movie' },
-  { label: 'OAV / SPECIAL', value: 'ova' },
+  { label: 'SERIE TV', value: '0' },
+  { label: 'FILM ANIME', value: '4' },
+  { label: 'OAV', value: '1' },
+  { label: 'ONA', value: '2' },
+  { label: 'SPECIAL', value: '3' },
 ];
 
-const STATUSES = [
+export const ANIME_STATUSES = [
   { label: 'TUTTI GLI STATI', value: '' },
-  { label: 'IN CORSO', value: 'ongoing' },
-  { label: 'COMPLETATO', value: 'completed' },
+  { label: 'IN CORSO', value: '0' },
+  { label: 'COMPLETATO', value: '1' },
+  { label: 'NON RILASCIATO', value: '2' },
 ];
 
-const SORTS = [
-  { label: 'PIÙ POPOLARI', value: 'popular' },
-  { label: 'PIÙ RECENTI', value: 'recent' },
-  { label: 'VALUTAZIONE', value: 'rating' },
+export const ANIME_SORTS = [
+  { label: 'STANDARD', value: '' },
+  { label: 'PIÙ RECENTI (USCITA)', value: '5' },
+  { label: 'ULTIME AGGIUNTE', value: '1' },
+  { label: 'PIÙ VISTI', value: '6' },
+  { label: 'MEGLIO VALUTATI', value: '7' },
+  { label: 'ALFABETICO A-Z', value: '2' },
+  { label: 'ALFABETICO Z-A', value: '3' },
 ];
 
 export const FilterBottomSheet: React.FC<FilterBottomSheetProps> = ({
@@ -80,22 +127,46 @@ export const FilterBottomSheet: React.FC<FilterBottomSheetProps> = ({
   const safeHorizontalInset = Math.max(insets.left, insets.right);
   const horizontalPadding = Math.max(16, safeHorizontalInset);
 
-  const [selectedGenre, setSelectedGenre] = React.useState<string | undefined>(filters.genre);
+  const [selectedGenres, setSelectedGenres] = React.useState<string[]>(() => {
+    if (filters.genres && filters.genres.length > 0) return filters.genres;
+    if (filters.genre) return [filters.genre];
+    return [];
+  });
+  const [selectedDub, setSelectedDub] = React.useState<string | undefined>(filters.dub);
   const [selectedType, setSelectedType] = React.useState<string | undefined>(filters.type);
   const [selectedStatus, setSelectedStatus] = React.useState<string | undefined>(filters.status);
   const [selectedSort, setSelectedSort] = React.useState<string | undefined>(filters.sort);
 
   React.useEffect(() => {
-    setSelectedGenre(filters.genre);
+    if (filters.genres && filters.genres.length > 0) {
+      setSelectedGenres(filters.genres);
+    } else if (filters.genre) {
+      setSelectedGenres([filters.genre]);
+    } else {
+      setSelectedGenres([]);
+    }
+    setSelectedDub(filters.dub);
     setSelectedType(filters.type);
     setSelectedStatus(filters.status);
     setSelectedSort(filters.sort);
   }, [filters, isVisible]);
 
+  const toggleGenre = (genreId: string) => {
+    Haptics.selectionAsync().catch(() => {});
+    setSelectedGenres((prev) => {
+      if (prev.includes(genreId)) {
+        return prev.filter((id) => id !== genreId);
+      }
+      return [...prev, genreId];
+    });
+  };
+
   const handleApply = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     onApply({
-      genre: selectedGenre,
+      genres: selectedGenres.length > 0 ? selectedGenres : undefined,
+      genre: selectedGenres.length === 1 ? selectedGenres[0] : undefined,
+      dub: selectedDub,
       type: selectedType,
       status: selectedStatus,
       sort: selectedSort,
@@ -105,7 +176,8 @@ export const FilterBottomSheet: React.FC<FilterBottomSheetProps> = ({
 
   const handleReset = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    setSelectedGenre(undefined);
+    setSelectedGenres([]);
+    setSelectedDub(undefined);
     setSelectedType(undefined);
     setSelectedStatus(undefined);
     setSelectedSort(undefined);
@@ -114,6 +186,13 @@ export const FilterBottomSheet: React.FC<FilterBottomSheetProps> = ({
   };
 
   const primaryContrast = getContrastTextColor(theme.colors.primary);
+
+  const totalActiveInSheet =
+    selectedGenres.length +
+    (selectedDub ? 1 : 0) +
+    (selectedType ? 1 : 0) +
+    (selectedStatus ? 1 : 0) +
+    (selectedSort ? 1 : 0);
 
   return (
     <Modal
@@ -150,6 +229,13 @@ export const FilterBottomSheet: React.FC<FilterBottomSheetProps> = ({
             <View style={styles.headerTitleGroup}>
               <Ionicons name="filter-outline" size={18} color={theme.colors.primary} />
               <Text style={[styles.title, { color: theme.colors.text }]}>FILTRI DI RICERCA</Text>
+              {totalActiveInSheet > 0 && (
+                <View style={[styles.headerCountBadge, { backgroundColor: theme.colors.primary }]}>
+                  <Text style={[styles.headerCountBadgeText, { color: primaryContrast }]}>
+                    {totalActiveInSheet}
+                  </Text>
+                </View>
+              )}
             </View>
             <View style={styles.headerRightActions}>
               <Pressable
@@ -174,15 +260,54 @@ export const FilterBottomSheet: React.FC<FilterBottomSheetProps> = ({
           </View>
 
           <ScrollView
-            style={{ maxHeight: isLandscape ? 260 : Math.min(460, windowHeight * 0.62) }}
+            style={{ maxHeight: isLandscape ? 260 : Math.min(480, windowHeight * 0.65) }}
             showsVerticalScrollIndicator={false}
             nestedScrollEnabled={true}
             keyboardShouldPersistTaps="handled"
           >
+            {/* Audio: Doppiati e Sottotitolati */}
+            <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>AUDIO</Text>
+            <View style={styles.chipRow}>
+              {ANIME_DUB.map((item) => {
+                const active = selectedDub === item.value || (!selectedDub && !item.value);
+                const contrastColor = active ? primaryContrast : theme.colors.textSecondary;
+                return (
+                  <Pressable
+                    key={item.label}
+                    style={[
+                      styles.chip,
+                      { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+                      active && [
+                        styles.chipActive,
+                        { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
+                      ],
+                    ]}
+                    onPress={() => {
+                      Haptics.selectionAsync().catch(() => {});
+                      setSelectedDub(item.value || undefined);
+                    }}
+                    hitSlop={4}
+                    accessibilityRole="button"
+                    accessibilityLabel={`AUDIO ${item.label}${active ? ' ATTIVO' : ''}`}
+                  >
+                    <Text
+                      style={[
+                        styles.chipText,
+                        { color: contrastColor },
+                        active && styles.chipTextActive,
+                      ]}
+                    >
+                      {item.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
             {/* Formato / Tipo */}
             <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>FORMATO</Text>
             <View style={styles.chipRow}>
-              {TYPES.map((item) => {
+              {ANIME_TYPES.map((item) => {
                 const active = selectedType === item.value || (!selectedType && !item.value);
                 const contrastColor = active ? primaryContrast : theme.colors.textSecondary;
                 return (
@@ -218,10 +343,10 @@ export const FilterBottomSheet: React.FC<FilterBottomSheetProps> = ({
               })}
             </View>
 
-            {/* Stato */}
+            {/* Stato di uscita */}
             <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>STATO DI USCITA</Text>
             <View style={styles.chipRow}>
-              {STATUSES.map((item) => {
+              {ANIME_STATUSES.map((item) => {
                 const active = selectedStatus === item.value || (!selectedStatus && !item.value);
                 const contrastColor = active ? primaryContrast : theme.colors.textSecondary;
                 return (
@@ -260,8 +385,8 @@ export const FilterBottomSheet: React.FC<FilterBottomSheetProps> = ({
             {/* Ordinamento */}
             <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>ORDINA PER</Text>
             <View style={styles.chipRow}>
-              {SORTS.map((item) => {
-                const active = selectedSort === item.value;
+              {ANIME_SORTS.map((item) => {
+                const active = selectedSort === item.value || (!selectedSort && !item.value);
                 const contrastColor = active ? primaryContrast : theme.colors.textSecondary;
                 return (
                   <Pressable
@@ -276,7 +401,7 @@ export const FilterBottomSheet: React.FC<FilterBottomSheetProps> = ({
                     ]}
                     onPress={() => {
                       Haptics.selectionAsync().catch(() => {});
-                      setSelectedSort(item.value);
+                      setSelectedSort(item.value || undefined);
                     }}
                     hitSlop={4}
                     accessibilityRole="button"
@@ -296,15 +421,30 @@ export const FilterBottomSheet: React.FC<FilterBottomSheetProps> = ({
               })}
             </View>
 
-            {/* Generi */}
-            <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>GENERI</Text>
+            {/* Generi (Selezione Multipla) */}
+            <View style={styles.sectionHeaderRow}>
+              <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary, marginBottom: 0 }]}>
+                GENERI {selectedGenres.length > 0 ? `(${selectedGenres.length} SELEZIONATI)` : '(TUTTI)'}
+              </Text>
+              {selectedGenres.length > 0 && (
+                <Pressable
+                  onPress={() => {
+                    Haptics.selectionAsync().catch(() => {});
+                    setSelectedGenres([]);
+                  }}
+                  hitSlop={8}
+                >
+                  <Text style={[styles.clearSectionText, { color: theme.colors.primary }]}>AZZERA</Text>
+                </Pressable>
+              )}
+            </View>
             <View style={styles.chipRow}>
-              {GENRES.map((g) => {
-                const active = selectedGenre === g;
+              {ANIME_GENRES.map((g) => {
+                const active = selectedGenres.includes(g.id);
                 const contrastColor = active ? primaryContrast : theme.colors.textSecondary;
                 return (
                   <Pressable
-                    key={g}
+                    key={g.id}
                     style={[
                       styles.chip,
                       { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
@@ -313,14 +453,19 @@ export const FilterBottomSheet: React.FC<FilterBottomSheetProps> = ({
                         { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
                       ],
                     ]}
-                    onPress={() => {
-                      Haptics.selectionAsync().catch(() => {});
-                      setSelectedGenre(active ? undefined : g);
-                    }}
+                    onPress={() => toggleGenre(g.id)}
                     hitSlop={4}
                     accessibilityRole="button"
-                    accessibilityLabel={`GENERE ${g}${active ? ' SELEZIONATO' : ''}`}
+                    accessibilityLabel={`GENERE ${g.label}${active ? ' SELEZIONATO' : ''}`}
                   >
+                    {active && (
+                      <Ionicons
+                        name="checkmark-sharp"
+                        size={12}
+                        color={contrastColor}
+                        style={{ marginRight: 4 }}
+                      />
+                    )}
                     <Text
                       style={[
                         styles.chipText,
@@ -328,7 +473,7 @@ export const FilterBottomSheet: React.FC<FilterBottomSheetProps> = ({
                         active && styles.chipTextActive,
                       ]}
                     >
-                      {g}
+                      {g.label}
                     </Text>
                   </Pressable>
                 );
@@ -396,6 +541,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
+  headerCountBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 10,
+    minWidth: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerCountBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    fontFamily: oledTheme.typography.caption.fontFamily,
+  },
   headerRightActions: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -420,9 +578,9 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   closeBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -435,6 +593,19 @@ const styles = StyleSheet.create({
     marginTop: 12,
     marginBottom: 8,
   },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 14,
+    marginBottom: 8,
+  },
+  clearSectionText: {
+    fontSize: 11,
+    fontWeight: '700',
+    fontFamily: oledTheme.typography.caption.fontFamily,
+    textTransform: 'uppercase',
+  },
   chipRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -446,6 +617,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: oledTheme.radius.full,
     borderWidth: 1,
+    flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
   },
