@@ -45,7 +45,7 @@ KuroM/
 │   └── types/                   # Definizioni TypeScript condivise
 ├── workers/                     # Cloudflare Worker unificato per OTA
 ├── scripts/                     # Tooling DevOps, release pipeline & patch native (apply-patches, build-release)
-└── tests/                       # Suite di verifica qualità a 12 stadi
+└── tests/                       # Suite di verifica qualità a 14 stadi
 ```
 
 ---
@@ -88,6 +88,43 @@ export function parseAnimeDetail(html: string): AnimeDetail {
 
 ---
 
+## 🏠 Architettura della Schermata Home & Slider Sincronizzato
+
+La schermata Home (`app/(tabs)/index.tsx`) è strutturata per replicare fedelmente l'esperienza ufficiale del portale anime, arricchita con interazioni touch a 60/120 FPS:
+
+### 1. Banner Hero Spotlight Orizzontale a Paging
+- **Slider a Schermo Intero**: Implementato tramite `ScrollView` orizzontale a piena larghezza con `pagingEnabled={true}` e `decelerationRate="fast"`.
+- **Predefinito #1 della Top 8**: All'avvio dell'applicazione espone il primo elemento dei raccomandati AnimeWorld (`homeData.sliders[0]`).
+- **Controlli d'Azione Integrati**:
+  - `RIPRODUCI`: Avvio rapido che verifica prioritariamente se l'anime possiede una sessione in corso in cronologia; in caso negativo, interroga le API per il primo episodio (`serverId` automatico) e naviga direttamente al player video con indicatore di caricamento integrato. In caso di errore di rete temporaneo, scatta il fallback sicuro alla scheda dettagli (`/anime/[id]`).
+  - `INFO`: Navigazione diretta alla scheda tecnica e trama completa (`/anime/[id]`), attivabile anche toccando qualsiasi area libera del banner.
+
+### 2. Sincronizzazione Bi-direzionale Hero Banner ⇄ Carosello Raccomandati
+- **Bi-directional Focus Sync**:
+  - Scorrendo il carosello dei raccomandati numerati (`#1` ... `#8`), l'evento `handleRecommendedScroll` calcola l'indice di destinazione e anima lo slider Hero (`heroScrollRef.current.scrollTo`).
+  - Scorrendo lo slider Hero a swipe orizzontale, l'evento `handleHeroScroll` calcola la pagina corrente e sincronizza il carosello compatto sottostante (`recommendedScrollRef.current.scrollTo`).
+- **Loop-Guard contro Feedback Loop Infiniti**:
+  - Un riferimento mutabile `activeScrollSourceRef` (`'hero' | 'recommended' | 'tap' | null`) traccia l'origine della gesture in tempo reale, azzerando qualsiasi scatto, jitter o re-triggering incrociato degli eventi di scroll.
+- **Snapping Touch Nativo & Dynamic Right Padding**:
+  - Il carosello numerato adotta `snapToOffsets` calcolato sulla larghezza di ciascun blocco (`124dp = 112 + 12`).
+  - Il padding destro del contenitore è calcolato dinamicamente con `Math.max(16, windowWidth - RECOMMENDED_ITEM_WIDTH - 16)`, permettendo alle ultime due schede (#7 e #8) di scorrere liberamente fino al punto di focus senza essere respinte dal limite dello scroll.
+
+### 3. Organizzazione delle Sezioni & Scraper Stagionale (`/upcoming`)
+- **Sezioni Verticali**:
+  1. Hero Banner Spotlight (Top 8).
+  2. Carosello Raccomandati numerati progressivamente (`#1` ... `#8`).
+  3. *Riprendi a Guardare* (condizionale, sincronizzato con MMKV).
+  4. *Ultimi Episodi Usciti* (con pulsante `VEDI TUTTI`).
+  5. *Tendenze*.
+  6. *Anime in Corso* (`ongoing`).
+  7. *Uscite della Stagione Corrente* (`upcoming` / stagionali con pulsante `VEDI TUTTI`).
+  8. *Nuove Aggiunte*.
+- **Supporto Scraper per `.film-listnext` & Sanitizzazione Titoli**:
+  - `parseSearchPage` in `src/services/scraper/parsers/search.parser.ts` include il selettore `.film-listnext .item` per estrarre la totalità delle uscite stagionali da `animeworld.ac/upcoming`.
+  - Isola con precisione i titoli testuali (`nameEl`), prevenendo la contaminazione da badge accessori (es. `DUB`, `Special`, `ONA`) collocati dentro l'elemento locandina `<a class="poster">`.
+
+---
+
 ## 🎨 Motore dei Temi & Reattività Istantanea
 
 Il motore dei temi (in [`src/theme/unistyles.ts`](file:///home/g4s/VSCode/KuroM/src/theme/unistyles.ts)) combina le specifiche di un design token moderno con la reattività immediata di React Context:
@@ -106,7 +143,7 @@ Il sistema di skeleton loading in [`src/components/skeleton/`](file:///home/g4s/
    - Adotta sfondi OLED surface scuri (`#161616`) e bordi ad alto contrasto (`#262626`) per display AMOLED.
 2. **Layout Skeleton Specializzati**:
    - `AnimeCardSkeleton`: replica l'aspect ratio (1.45) e le dimensioni esatte (130x190 o responsive) di `AnimeCard`, con badge posizionato a (6, 6) e linee titolo duplicate (`marginTop: 6`).
-   - `HomeScreenSkeleton`: modella l'Hero Banner Spotlight (280dp) privo di margini verticali divergenti, supporta la sezione condizionale *Riprendi a guardare* (`hasContinueWatching`) con card a 160x96dp per preservare lo spazio prima del fetch remoto, e allinea il padding orizzontale a `paddingLeft: 16, paddingRight: 4` per combaciare perfettamente con il carosello reale.
+   - `HomeScreenSkeleton`: modella l'Hero Banner Spotlight a 320dp con i due pulsanti d'azione (Play e Info), il carosello compatto dei raccomandati numerati con card a 112x140dp, supporta la sezione condizionale *Riprendi a guardare* (`hasContinueWatching`) con card a 160x96dp per preservare lo spazio prima del fetch remoto, e allinea il padding orizzontale per combaciare perfettamente con i caroselli reali a zero Cumulative Layout Shift (CLS).
    - `ExploreScreenSkeleton`: griglia a 2 colonne sincronizzata con la larghezza schermo `(windowWidth - 44) / 2` con `padding: 0` interno per eliminare il doppio padding rispetto a `styles.listContent` (16dp).
    - `AnimeDetailScreenSkeleton`: scheletro completo fedele al 100% che modella il backdrop (260dp), poster (110x160dp), pulsanti d'azione rapidi circolari di avvio/riavvio (`play` e `reload` $\ge 44$dp), sinossi a 3 righe, scheda tecnica a 4 righe (`tableCard`), 3 pulsanti link esterni (`linksRow` $\ge 44$dp), barra controlli con switch vista e chip episodi a 52dp.
    - `EpisodeItemSkeleton`: chip quadrati per vista griglia (altezza a 52dp e raggio `radius.md` conformi a `EpisodeItem`) o barre orizzontali per vista lista con badge numerico 32x32 e pulsante play circolare 24x24.

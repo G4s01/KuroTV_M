@@ -15,6 +15,7 @@
 - [Step 7: Gestione Cronologia Touch, Retention Slider & Rimozione In-App](#-step-7-gestione-cronologia-touch-retention-slider--rimozione-in-app)
 - [Step 8: Scheda Tecnica Dettaglio & Metadati Estesi (`AnimeInfoTable`)](#-step-8-scheda-tecnica-dettaglio--metadati-estesi-animeinfotable)
 - [Step 9: Streaming Asincrono (`replaceAsync`) & Rifinitura UX Dettaglio](#-step-9-streaming-asincrono-replaceasync--rifinitura-ux-dettaglio)
+- [Step 10: Ridefinizione Schermata Home, Hero Swiper Sincronizzato & Scraper Stagionali (`/upcoming`)](#-step-10-ridefinizione-schermata-home-hero-swiper-sincronizzato--scraper-stagionali-upcoming)
 
 ---
 
@@ -205,11 +206,31 @@ Eliminare i blocchi sincroni sul Main Thread durante la risoluzione del flusso v
 
 ---
 
+## 🏠 Step 10: Ridefinizione Schermata Home, Hero Swiper Sincronizzato & Scraper Stagionali (`/upcoming`)
+
+### 🎯 Obiettivo
+Allineare l'interfaccia Home agli standard del sito AnimeWorld moderno con una presentazione in evidenza (#1 della top 8 dei raccomandati), carosello compatto numerato con focus bi-direzionale continuo, supporto alle uscite stagionali (`/upcoming`) con scraper arricchito ed estrazione titoli robusta anti-corruzione.
+
+### 🛠️ Piano di Refactor & Implementazione
+1. **Hero Swiper Orizzontale a Paging**:
+   - `ScrollView` orizzontale a tutta larghezza con `pagingEnabled={true}` e `heroScrollRef`.
+   - Pulsanti integrati `RIPRODUCI` (con feedback visivo, ripresa da cronologia o fetch ep. 1 con `serverId`) e `INFO` (navigazione a `/anime/[id]`), attivabile anche al tocco del banner.
+2. **Carosello Numerato & Sincronizzazione Bi-direzionale**:
+   - Sincronizzazione fluida tra Hero Swiper e Carosello Numerato (`#1` ... `#8`).
+   - Gestione `activeScrollSourceRef` (`'hero' | 'recommended' | 'tap'`) per eliminare loop di scroll o jitter.
+   - Snapping nativo (`snapToOffsets`) e padding destro dinamico per permettere a schede #7 e #8 di raggiungere la posizione di focus.
+3. **Scraper Stagionale & Isolamento Titoli**:
+   - Supporto per `.film-listnext .item` in `search.parser.ts` per recuperare tutti gli oltre 80 anime della sezione `/upcoming`.
+   - Isolamento stringente dei titoli testuali per escludere badge `DUB`/`Special` collocati nei tag `<a class="poster">`.
+4. **Zero Cumulative Layout Shift (CLS)**:
+   - Aggiornamento di `HomeScreenSkeleton` a 320dp con repliche dei pulsanti Play/Info e del carosello numerato.
+
+---
+
 ## 📋 Checklist di Verifica per Ogni Step
 
 Prima di considerare concluso uno step della roadmap, l'agente deve verificare:
 1. `npx tsc --noEmit`: 0 errori di tipo.
-2. `npm test`: Suite completa a 7 stadi superata con codice 0.
-3. `npx expo-doctor`: 20/20 controlli superati.
-4. `npx expo export --platform android`: Compilazione Hermes bytecode senza warning o errori di importazione.
-5. Aggiornamento contestuale di [`AGENTS.md`](../AGENTS.md) qualora vengano introdotte nuove regole o pattern.
+2. `npm test`: Suite completa a 14 stadi superata con codice 0.
+3. `npx expo export --platform android`: Compilazione Hermes bytecode senza warning o errori di importazione.
+4. Aggiornamento contestuale di [`AGENTS.md`](../AGENTS.md) qualora vengano introdotte nuove regole o pattern.

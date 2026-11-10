@@ -31,6 +31,18 @@
 
 ## 🔥 Caratteristiche Principali
 
+### 🏠 Schermata Home & Hero Swiper Sincronizzato
+- **🌟 Hero Swiper Orizzontale a Paging**: In testa alla Home, slider a tutto schermo dei raccomandati (default il #1 della Top 8 di AnimeWorld) con titoli monospace in maiuscolo, badge tematico `#1 RACCOMANDATO`, sinossi pulita e sfondo con gradiente OLED.
+- **▶️ Azioni Rapide Esecutive (`RIPRODUCI` & `INFO`)**: Tasto `RIPRODUCI` che riprende all'istante l'episodio in corso o estrae l'episodio 1 dal provider avviando il player con loader integrato, e tasto `INFO` (così come il tocco altrove sul banner) per consultare i dettagli.
+- **🔢 Carosello Top Raccomandati Numerati (`#1` ... `#8`)**: Sincronizzazione bi-direzionale in tempo reale a 60/120 FPS protetta da loop-guard (`activeScrollSourceRef`), snapping nativo (`snapToOffsets`) e padding destro dinamico per garantire la perfetta focalizzazione anche per le posizioni #7 e #8.
+- **📑 Caroselli Tematici Completi**:
+  - **Riprendi a Guardare**: Visibile unicamente in presenza di visioni in corso con avanzamento e rimozione sicura via `ConfirmModal`.
+  - **Ultimi Episodi Usciti**: Tutte le nuove puntate pubblicate con pulsante rapido `VEDI TUTTI`.
+  - **Tendenze**: Le serie più seguite e popolari del momento.
+  - **Anime in Corso**: Serie attualmente in trasmissione (`ongoing`).
+  - **Uscite della Stagione Corrente (`upcoming`)**: Carosello con le prossime uscite stagionali (oltre 80 serie con scraper arricchito per `.film-listnext` e titoli sanitizzati).
+  - **Nuove Aggiunte**: Le ultime novità introdotte nel catalogo AnimeWorld.
+
 ### 🎬 Player Video Touch di Nuova Generazione
 - **⚡ Streaming Asincrono (`replaceAsync`)**: Risoluzione del flusso video off-thread (`expo-video`) senza blocchi sincroni sul Main Thread, garantendo caricamento immediato e zero freeze dell'interfaccia.
 - **🎞️ Live Real-Frame Scrubbing**: Trascina la timeline per visualizzare in tempo reale i veri fotogrammi video estratti dallo stream (`expo-video`), con cache in memoria e proximity matching a 60 FPS senza lag.
@@ -94,11 +106,11 @@ cd KuroM
 npm install
 ```
 
-### 2. Test di Qualità (12 Stadi)
+### 2. Test di Qualità (14 Stadi)
 ```bash
 npm test
 ```
-*Valida SemVer, regole OLED, storage MMKV, batch puntate, intervalli AniSkip, skeleton animation, export delle rotte, touch sheets, updater, compatibilità navbar, gesture verticali, PiP no-pause, dimensioni sheets, AniSkipSlider, loader integrato e media notification.*
+*Valida SemVer, regole OLED, storage MMKV, batch puntate, intervalli AniSkip, skeleton animation, export delle rotte, touch sheets, updater, compatibilità navbar, gesture verticali, PiP no-pause, dimensioni sheets, AniSkipSlider, loader integrato, media notification, slider hero sincronizzato, parser upcoming e anti-corruzione titoli.*
 
 ### 3. Build & Verifica Bytecode Hermes
 ```bash

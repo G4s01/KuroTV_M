@@ -52,16 +52,16 @@ Kuro Mobile è un'applicazione concepita **esclusivamente per smartphone Android
    - La ricerca del catalogo con filtri avanzati è integrata direttamente nell'header della **Home** (icona lente di ingrandimento, debouncing 450ms, griglia FlashList a 2 colonne e supporto al tasto fisico Indietro di Android per chiudere la ricerca senza uscire dall'app).
    - Colore attivo delle tab agganciato dinamicamente a `theme.colors.primary`.
    - **Struttura Sezioni Schermata Home**:
-     1. **Banner Hero in Evidenza**: Espone in testa l'anime raccomandato selezionato (di default il primo della top 8 dei raccomandati). Mostra banner/artwork, badge `#1 RACCOMANDATO`, titolo (monospace, uppercase), sinossi pulita e pulsanti d'azione dedicati:
-        - `RIPRODUCI` (icona `play`, avvio diretto dell'episodio salvato in cronologia/continua a guardare o fetch dell'episodio 1 con feedback visivo di caricamento);
+     1. **Banner Hero in Evidenza**: Espone in testa l'anime raccomandato selezionato (di default il primo della top 8 dei raccomandati). Implementato come slider orizzontale a tutta larghezza con `pagingEnabled={true}` e sincronizzazione bi-direzionale protetta da `activeScrollSourceRef`. Mostra banner/artwork, badge `#1 RACCOMANDATO`, titolo (monospace, uppercase), sinossi pulita e pulsanti d'azione dedicati:
+        - `RIPRODUCI` (icona `play`, avvio diretto dell'episodio salvato in cronologia/continua a guardare o fetch dell'episodio 1 con feedback visivo di caricamento e fallback sicuro a scheda dettagli);
         - `INFO` (icona `information-circle-outline`, apertura dettagli);
         - Tocco altrove sul banner: navigazione verso i dettagli della serie.
-     2. **Carosello Top Raccomandati**: Subito sotto il banner hero, carosello orizzontale con tutti i raccomandati numerati progressivamente in ordine (`#1` ... `#8`). Toccando una scheda o scorrendo orizzontalmente la lista, il focus si sincronizza dinamicamente aggiornando il banner hero soprastante con bordo e badge primario attivo.
+     2. **Carosello Top Raccomandati**: Subito sotto il banner hero, carosello orizzontale con tutti i raccomandati numerati progressivamente in ordine (`#1` ... `#8`). Toccando una scheda o scorrendo orizzontalmente la lista, il focus si sincronizza dinamicamente aggiornando lo slider hero soprastante con bordo e badge primario attivo. Adotta `snapToOffsets` e padding destro dinamico (`Math.max(16, windowWidth - RECOMMENDED_ITEM_WIDTH - 16)`) per permettere anche alle schede #7 e #8 di scorrere fino alla posizione di focus senza blocco del clamp.
      3. **Riprendi a Guardare**: Visibile unicamente in presenza di visione in corso (`continueWatching.length > 0`), con swipe/pulsante rimozione sicuro tramite `ConfirmModal`.
      4. **Ultimi Episodi Usciti**: Carosello orizzontale delle ultime puntate aggiunte con tasto rapido `VEDI TUTTI`.
      5. **Tendenze**: Carosello orizzontale delle serie più popolari e di tendenza del momento.
      6. **Anime in Corso**: Carosello orizzontale con le serie attualmente in trasmissione ('ongoing').
-     7. **Uscite della Stagione Corrente ('upcoming')**: Carosello con le prossime uscite stagionali (`homeData.upcoming` e titolo dinamico es. `USCITE INVERNO 2027`).
+     7. **Uscite della Stagione Corrente ('upcoming')**: Carosello con le prossime uscite stagionali (`homeData.upcoming` e titolo dinamico es. `USCITE INVERNO 2027` con pulsante `VEDI TUTTI`). Lo scraper (`AnimeWorldScraper.getUpcoming()` e `parseSearchPage`) supporta il contenitore `.film-listnext .item` di AnimeWorld e isola con precisione i titoli escludendo i badge `DUB` o `Special` all'interno di `.poster`.
      8. **Nuove Aggiunte**: Carosello con le ultime serie catalogate (`homeData.newAdded`).
 4. **Modal e Menu Contestuali Touch-Native (Zero Jetpack Compose Crashes)**:
    - Tutti i selettori modali (filtri di ricerca `FilterBottomSheet`, batch puntate `BatchBottomSheet`, carosello episodi `PlayerEpisodesCarouselSheet`, scheda info `PlayerInfoSheet`, e opzioni server `ServerBottomSheet`) utilizzano componenti modali touch-native custom basati su React Native `Modal` (`transparent={true}`, `statusBarTranslucent={true}` e slide animation) con overlay oscurato OLED, drag handle e padding simmetrico. È severamente vietato l'uso di `@expo/ui` `BottomSheet` (Jetpack Compose) che causa crash nativi non intercettati (`ViewTreeLifecycleOwner` / window detach) su fullscreen landscape, rotazioni o scroll annidati.
@@ -223,7 +223,7 @@ Kuro Mobile è un'applicazione concepita **esclusivamente per smartphone Android
 ## 🧪 7. Standard di Test & Verifica Qualità
 
 Prima di ogni commit o push è obbligatorio verificare la conformità tramite:
-1. `npm test`: Suite di test automatizzata a 11 stadi:
+1. `npm test`: Suite di test automatizzata a 14 stadi:
    - SemVer e Updater Service.
    - Regole di Stile Mobile & conformità OLED.
    - Storage MMKV (preferiti, cronologia visione).
@@ -235,4 +235,7 @@ Prima di ogni commit o push è obbligatorio verificare la conformità tramite:
    - Sheets Cutoff Fixes, AniSkip Settings & FilterBottomSheet Modal.
    - System Navigation Bar Compatibility & Auto-Hide Mode.
    - Gestures Verticali, PiP No-Pause, Sheets Dimensioni & Update Scroll.
+   - AniSkipSlider, Player Integrated Loader & Media Notification.
+   - AniSkip Dynamic Auto Description, Auto-Off Fallback & Duration Slider.
+   - Ridefinizione Schermata Home & Scraper (Hero Swiper, Raccomandati numerati, Snapping, Play/Info, Caroselli, Upcoming `.film-listnext` & Anti-Corruzione Titoli).
 2. `npx expo export --platform android`: Verifica dell'assenza di errori di bundle e corretta generazione del bytecode Hermes.
