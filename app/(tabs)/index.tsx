@@ -58,6 +58,15 @@ export default function HomeScreen() {
   const activeScrollSourceRef = React.useRef<'hero' | 'recommended' | 'tap' | null>(null);
   const resetSourceTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Cleanup pending scroll sync timeouts on unmount
+  React.useEffect(() => {
+    return () => {
+      if (resetSourceTimeoutRef.current) {
+        clearTimeout(resetSourceTimeoutRef.current);
+      }
+    };
+  }, []);
+
   // Search in Home state
   const [isSearchActive, setIsSearchActive] = React.useState(false);
   const [searchQuery, setSearchQuery] = React.useState('');
@@ -260,6 +269,11 @@ export default function HomeScreen() {
     return (homeData?.sliders || []).slice(0, 10);
   }, [homeData?.sliders]);
 
+  // Stable memoized snap offsets to prevent layout thrashing on Android Fabric
+  const recommendedSnapOffsets = React.useMemo(() => {
+    return recommendedList.map((_, i) => i * RECOMMENDED_ITEM_TOTAL);
+  }, [recommendedList.length]);
+
   // Safe index within bounds
   const safeFocusedIndex = Math.min(
     focusedIndex,
@@ -278,7 +292,7 @@ export default function HomeScreen() {
     if (resetSourceTimeoutRef.current) clearTimeout(resetSourceTimeoutRef.current);
     resetSourceTimeoutRef.current = setTimeout(() => {
       activeScrollSourceRef.current = null;
-    }, 400);
+    }, 450);
 
     setFocusedIndex(index);
     heroScrollRef.current?.scrollTo({
@@ -291,9 +305,55 @@ export default function HomeScreen() {
     });
   };
 
+  // Settling handler when recommended carousel scroll finishes (drag release without momentum or momentum end)
+  const settleRecommendedScroll = (offsetX: number) => {
+    const targetIndex = Math.max(
+      0,
+      Math.min(
+        Math.round(offsetX / RECOMMENDED_ITEM_TOTAL),
+        Math.max(0, recommendedList.length - 1)
+      )
+    );
+
+    setFocusedIndex(targetIndex);
+    activeScrollSourceRef.current = 'recommended';
+    heroScrollRef.current?.scrollTo({
+      x: targetIndex * windowWidth,
+      animated: true,
+    });
+
+    if (resetSourceTimeoutRef.current) clearTimeout(resetSourceTimeoutRef.current);
+    resetSourceTimeoutRef.current = setTimeout(() => {
+      activeScrollSourceRef.current = null;
+    }, 450);
+  };
+
+  // Settling handler when hero banner scroll finishes (drag release without momentum or momentum end)
+  const settleHeroScroll = (offsetX: number) => {
+    const targetIndex = Math.max(
+      0,
+      Math.min(
+        Math.round(offsetX / windowWidth),
+        Math.max(0, recommendedList.length - 1)
+      )
+    );
+
+    setFocusedIndex(targetIndex);
+    activeScrollSourceRef.current = 'hero';
+    recommendedScrollRef.current?.scrollTo({
+      x: targetIndex * RECOMMENDED_ITEM_TOTAL,
+      animated: true,
+    });
+
+    if (resetSourceTimeoutRef.current) clearTimeout(resetSourceTimeoutRef.current);
+    resetSourceTimeoutRef.current = setTimeout(() => {
+      activeScrollSourceRef.current = null;
+    }, 450);
+  };
+
   // Synchronizing focus while scrolling the horizontal recommended carousel
   const handleRecommendedScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    if (activeScrollSourceRef.current === 'hero' || activeScrollSourceRef.current === 'tap') {
+    if (activeScrollSourceRef.current !== 'recommended') {
       return;
     }
     const offsetX = e.nativeEvent.contentOffset.x;
@@ -306,16 +366,12 @@ export default function HomeScreen() {
     );
     if (targetIndex !== focusedIndex) {
       setFocusedIndex(targetIndex);
-      heroScrollRef.current?.scrollTo({
-        x: targetIndex * windowWidth,
-        animated: true,
-      });
     }
   };
 
   // Synchronizing focus while scrolling the Hero Banner
   const handleHeroScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    if (activeScrollSourceRef.current === 'recommended' || activeScrollSourceRef.current === 'tap') {
+    if (activeScrollSourceRef.current !== 'hero') {
       return;
     }
     const offsetX = e.nativeEvent.contentOffset.x;
@@ -328,10 +384,6 @@ export default function HomeScreen() {
     );
     if (targetIndex !== focusedIndex) {
       setFocusedIndex(targetIndex);
-      recommendedScrollRef.current?.scrollTo({
-        x: targetIndex * RECOMMENDED_ITEM_TOTAL,
-        animated: true,
-      });
     }
   };
 
@@ -654,22 +706,17 @@ export default function HomeScreen() {
                   decelerationRate="fast"
                   scrollEventThrottle={16}
                   onScrollBeginDrag={() => {
+                    if (resetSourceTimeoutRef.current) clearTimeout(resetSourceTimeoutRef.current);
                     activeScrollSourceRef.current = 'hero';
                   }}
+                  onScrollEndDrag={(e) => {
+                    const velocity = e.nativeEvent.velocity?.x ?? 0;
+                    if (Math.abs(velocity) < 0.1) {
+                      settleHeroScroll(e.nativeEvent.contentOffset.x);
+                    }
+                  }}
                   onMomentumScrollEnd={(e) => {
-                    const newIndex = Math.max(
-                      0,
-                      Math.min(
-                        Math.round(e.nativeEvent.contentOffset.x / windowWidth),
-                        recommendedList.length - 1
-                      )
-                    );
-                    setFocusedIndex(newIndex);
-                    recommendedScrollRef.current?.scrollTo({
-                      x: newIndex * RECOMMENDED_ITEM_TOTAL,
-                      animated: true,
-                    });
-                    activeScrollSourceRef.current = null;
+                    settleHeroScroll(e.nativeEvent.contentOffset.x);
                   }}
                   onScroll={handleHeroScroll}
                   style={{ width: windowWidth, height: HERO_HEIGHT }}
@@ -869,7 +916,7 @@ export default function HomeScreen() {
               <View style={styles.section}>
                 <View style={styles.sectionHeader}>
                   <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
-                    TOP RACCOMANDATI
+                    RACCOMANDATI
                   </Text>
                   <Text
                     style={[
@@ -894,26 +941,21 @@ export default function HomeScreen() {
                       paddingRight: Math.max(16, windowWidth - RECOMMENDED_ITEM_WIDTH - 16),
                     },
                   ]}
-                  snapToOffsets={recommendedList.map((_, i) => i * RECOMMENDED_ITEM_TOTAL)}
+                  snapToOffsets={recommendedSnapOffsets}
                   decelerationRate="fast"
                   scrollEventThrottle={16}
                   onScrollBeginDrag={() => {
+                    if (resetSourceTimeoutRef.current) clearTimeout(resetSourceTimeoutRef.current);
                     activeScrollSourceRef.current = 'recommended';
                   }}
+                  onScrollEndDrag={(e) => {
+                    const velocity = e.nativeEvent.velocity?.x ?? 0;
+                    if (Math.abs(velocity) < 0.1) {
+                      settleRecommendedScroll(e.nativeEvent.contentOffset.x);
+                    }
+                  }}
                   onMomentumScrollEnd={(e) => {
-                    const targetIndex = Math.max(
-                      0,
-                      Math.min(
-                        Math.round(e.nativeEvent.contentOffset.x / RECOMMENDED_ITEM_TOTAL),
-                        recommendedList.length - 1
-                      )
-                    );
-                    setFocusedIndex(targetIndex);
-                    heroScrollRef.current?.scrollTo({
-                      x: targetIndex * windowWidth,
-                      animated: true,
-                    });
-                    activeScrollSourceRef.current = null;
+                    settleRecommendedScroll(e.nativeEvent.contentOffset.x);
                   }}
                   onScroll={handleRecommendedScroll}
                 >
@@ -927,7 +969,6 @@ export default function HomeScreen() {
                           {
                             backgroundColor: theme.colors.card,
                             borderColor: isFocused ? theme.colors.primary : theme.colors.border,
-                            borderWidth: isFocused ? 2 : 1,
                           },
                         ]}
                         onPress={() => handleSelectRecommended(index)}
@@ -1654,6 +1695,7 @@ const styles = StyleSheet.create({
     borderRadius: oledTheme.radius.md,
     overflow: 'hidden',
     position: 'relative',
+    borderWidth: 2,
   },
   recommendedImage: {
     width: '100%',

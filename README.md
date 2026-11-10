@@ -34,7 +34,7 @@
 ### 🏠 Schermata Home & Hero Swiper Sincronizzato
 - **🌟 Hero Swiper Orizzontale a Paging**: In testa alla Home, slider a tutto schermo dei raccomandati (default il #1 della Top 8 di AnimeWorld) con titoli monospace in maiuscolo, badge tematico `#1 RACCOMANDATO`, sinossi pulita e sfondo con gradiente OLED.
 - **▶️ Azioni Rapide Esecutive (`RIPRODUCI` & `INFO`)**: Tasto `RIPRODUCI` che riprende all'istante l'episodio in corso o estrae l'episodio 1 dal provider avviando il player con loader integrato, e tasto `INFO` (così come il tocco altrove sul banner) per consultare i dettagli.
-- **🔢 Carosello Top Raccomandati Numerati (`#1` ... `#8`)**: Sincronizzazione bi-direzionale in tempo reale a 60/120 FPS protetta da loop-guard (`activeScrollSourceRef`), snapping nativo (`snapToOffsets`) e padding destro dinamico per garantire la perfetta focalizzazione anche per le posizioni #7 e #8.
+- **🔢 Carosello Raccomandati Numerati (`#1` ... `#8`)**: Sincronizzazione bi-direzionale a 60/120 FPS protetta da loop-guard differito (`activeScrollSourceRef`), snapping nativo (`snapToOffsets` con array memoizzato), gestione settling touch-safe e padding destro dinamico per garantire la perfetta focalizzazione anche per le posizioni #7 e #8.
 - **📑 Caroselli Tematici Completi**:
   - **Riprendi a Guardare**: Visibile unicamente in presenza di visioni in corso con avanzamento e rimozione sicura via `ConfirmModal`.
   - **Ultimi Episodi Usciti**: Tutte le nuove puntate pubblicate con pulsante rapido `VEDI TUTTI`.

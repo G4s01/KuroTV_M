@@ -1789,7 +1789,7 @@ assert.strictEqual(parsedUpcoming.items[1].id, 'my-happy-marriage-special-ita.6v
 
 // 3. Verifica Codice Sorgente app/(tabs)/index.tsx (Bi-directional Sync, Snapping & Zero CLS)
 const indexSource = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/index.tsx'), 'utf-8');
-assert(indexSource.includes('TOP RACCOMANDATI'), 'index.tsx deve contenere la sezione TOP RACCOMANDATI');
+assert(indexSource.includes('RACCOMANDATI'), 'index.tsx deve contenere la sezione RACCOMANDATI');
 assert(indexSource.includes('handlePlayHero'), 'index.tsx deve implementare handlePlayHero per avviare la riproduzione dal banner');
 assert(indexSource.includes('RIPRODUCI'), 'index.tsx deve mostrare il pulsante RIPRODUCI nel banner hero');
 assert(indexSource.includes('INFO'), 'index.tsx deve mostrare il pulsante INFO nel banner hero');
