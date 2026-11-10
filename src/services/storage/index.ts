@@ -1,7 +1,6 @@
 import { MMKV } from 'react-native-mmkv';
 import type {
   AnimeItem,
-  EpisodeMetadata,
   AnimeHomePage,
   SchedulePageData,
   AniSkipSettings,
@@ -124,8 +123,6 @@ export const StorageKeys = {
   ORCHID_MODE: 'settings.orchidMode',
   RAINBOW_MODE: 'settings.rainbowMode',
   CUSTOM_DOMAIN: 'settings.customDomain',
-  KITSU_ANIME_MAPPING_PREFIX: 'kitsu.anime.',
-  KITSU_EPISODES_PREFIX: 'kitsu.episodes.',
   HOME_DATA: 'cache.homeData',
   SCHEDULE_DATA: 'cache.scheduleData',
   ANISKIP_SETTINGS: 'settings.aniSkipSettings',
@@ -315,7 +312,11 @@ export const AppStorage = {
   },
 
   setObject: <T>(key: string, value: T): void => {
-    storage.set(key, JSON.stringify(value));
+    try {
+      storage.set(key, JSON.stringify(value));
+    } catch (err) {
+      console.warn(`[AppStorage] Failed to serialize object for key "${key}":`, err);
+    }
   },
 
   remove: (key: string): void => {
@@ -1118,40 +1119,6 @@ export const AppStorage = {
     return modified;
   },
 
-  // ----------------------------------------------------
-  // Kitsu Metadata Cache
-  // ----------------------------------------------------
-  getKitsuAnimeId: (lookupKey: string): string | null => {
-    if (!lookupKey) return null;
-    return AppStorage.getString(`${StorageKeys.KITSU_ANIME_MAPPING_PREFIX}${lookupKey}`) || null;
-  },
-
-  setKitsuAnimeId: (lookupKey: string, kitsuId: string): void => {
-    if (!lookupKey || !kitsuId) return;
-    AppStorage.setString(`${StorageKeys.KITSU_ANIME_MAPPING_PREFIX}${lookupKey}`, kitsuId);
-  },
-
-  getKitsuEpisodes: (kitsuId: string): Record<number, EpisodeMetadata> => {
-    if (!kitsuId) return {};
-    return (
-      AppStorage.getObject<Record<number, EpisodeMetadata>>(
-        `${StorageKeys.KITSU_EPISODES_PREFIX}${kitsuId}`,
-      ) || {}
-    );
-  },
-
-  saveKitsuEpisodes: (
-    kitsuId: string,
-    newEpisodes: Record<number, EpisodeMetadata>,
-  ): Record<number, EpisodeMetadata> => {
-    if (!kitsuId || !newEpisodes || Object.keys(newEpisodes).length === 0) {
-      return AppStorage.getKitsuEpisodes(kitsuId);
-    }
-    const existing = AppStorage.getKitsuEpisodes(kitsuId);
-    const merged = { ...existing, ...newEpisodes };
-    AppStorage.setObject(`${StorageKeys.KITSU_EPISODES_PREFIX}${kitsuId}`, merged);
-    return merged;
-  },
 
   // ----------------------------------------------------
   // Search History
@@ -1285,8 +1252,7 @@ export const AppStorage = {
       if (
         key.startsWith('cache.') ||
         key.startsWith('scraper.') ||
-        key.startsWith(StorageKeys.KITSU_ANIME_MAPPING_PREFIX) ||
-        key.startsWith(StorageKeys.KITSU_EPISODES_PREFIX)
+        key.startsWith('kitsu.')
       ) {
         storage.remove(key);
       }

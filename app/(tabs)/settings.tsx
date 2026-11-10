@@ -1,17 +1,14 @@
 import React from 'react';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import {
-  StyleSheet,
   Text,
   View,
   ScrollView,
   Pressable,
-  TextInput,
   ActivityIndicator,
   Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -31,6 +28,12 @@ import { HistorySlider, SEARCH_RETENTION_STEPS } from '@/components/HistorySlide
 import { AniSkipSlider } from '@/components/AniSkipSlider';
 import { AniSkipDurationSlider } from '@/components/AniSkipDurationSlider';
 import { ConfirmModal } from '@/components/ConfirmModal';
+import {
+  settingsStyles as styles,
+  ThemeSettingsCard,
+  SourceSettingsCard,
+  QUICK_DOMAINS,
+} from '@/components/settings';
 import { scraperConfig } from '@/services/scraper/config';
 import {
   UpdaterService,
@@ -40,36 +43,6 @@ import {
 } from '@/services/updater';
 import type { UpdateCheckResult, DownloadProgress } from '@/services/updater';
 import { CURRENT_CHANGELOG, formatChangelog } from '@/constants/changelog';
-
-import themeOledSvg from '../../assets/icons/theme-oled.svg';
-import themePikachuSvg from '../../assets/icons/theme-pikachu.svg';
-import themeOrchidSvg from '../../assets/icons/theme-orchid.svg';
-import themeRainbowSvg from '../../assets/icons/theme-rainbow.svg';
-
-const THEMES = [
-  {
-    id: 'oled',
-    icon: themeOledSvg,
-    accessibilityLabel: 'TEMA OLED',
-  },
-  {
-    id: 'pikachu',
-    icon: themePikachuSvg,
-    accessibilityLabel: 'TEMA PIKACHU',
-  },
-  {
-    id: 'orchid',
-    icon: themeOrchidSvg,
-    accessibilityLabel: 'TEMA ORCHIDEA',
-  },
-  {
-    id: 'rainbow',
-    icon: themeRainbowSvg,
-    accessibilityLabel: 'TEMA RAINBOW',
-  },
-];
-
-const QUICK_DOMAINS = ['ac', 'so', 'tv'] as const;
 
 export default function SettingsScreen() {
   const params = useLocalSearchParams<{ scrollTo?: string }>();
@@ -513,45 +486,13 @@ export default function SettingsScreen() {
         }}
       >
         {/* TEMA (con invertibilità chiaro/scuro al click) */}
-        <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-          <Text style={[styles.cardTitle, { color: theme.colors.text }]}>TEMA</Text>
-          <View style={styles.themeGrid}>
-            {THEMES.map((t) => {
-              const active = activeTheme === t.id;
-              return (
-                <Pressable
-                  key={t.id}
-                  style={[
-                    styles.themeIconBtn,
-                    {
-                      backgroundColor: theme.colors.card,
-                      borderColor: active ? theme.colors.primary : theme.colors.border,
-                    },
-                    active && {
-                      borderWidth: 2,
-                      backgroundColor: `${theme.colors.primary}22`,
-                    },
-                  ]}
-                  onPress={() => handleSelectTheme(t.id)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${t.accessibilityLabel} (${active ? (activeMode === 'light' ? 'CHIARO' : 'SCURO') : 'NON ATTIVO'})`}
-                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                >
-                  <Image source={t.icon} style={styles.themeSvgIcon} contentFit="contain" />
-                  {active && (
-                    <View style={[styles.modeIndicatorBadge, { backgroundColor: theme.colors.primary }]}>
-                      <Ionicons
-                        name={activeMode === 'light' ? 'sunny' : 'moon'}
-                        size={9}
-                        color={primaryContrast}
-                      />
-                    </View>
-                  )}
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
+        <ThemeSettingsCard
+          activeTheme={activeTheme}
+          activeMode={activeMode}
+          onSelectTheme={handleSelectTheme}
+          theme={theme}
+          primaryContrast={primaryContrast}
+        />
 
         {/* CRONOLOGIA (Slider durata conservazione & cancellazione comoda) */}
         <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
@@ -786,73 +727,15 @@ export default function SettingsScreen() {
         )}
 
         {/* SORGENTE (.ac, .so, .tv o scrivibile a mano) */}
-        <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-          <Text style={[styles.cardTitle, { color: theme.colors.text }]}>SORGENTE</Text>
-          <View style={styles.quickDomainsRow}>
-            {QUICK_DOMAINS.map((domain) => {
-              const active = selectedTld === domain;
-              return (
-                <Pressable
-                  key={domain}
-                  style={[
-                    styles.domainChip,
-                    {
-                      backgroundColor: theme.colors.card,
-                      borderColor: active ? theme.colors.primary : theme.colors.border,
-                    },
-                    active && {
-                      backgroundColor: `${theme.colors.primary}25`,
-                    },
-                  ]}
-                  onPress={() => handleSelectQuickDomain(domain)}
-                  hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-                >
-                  <Text
-                    style={[
-                      styles.domainChipText,
-                      { color: theme.colors.textSecondary },
-                      active && { color: theme.colors.primary, fontWeight: '800' },
-                    ]}
-                  >
-                    .{domain.toUpperCase()}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-
-          <View style={styles.customUrlRow}>
-            <TextInput
-              style={[
-                styles.customUrlInput,
-                {
-                  backgroundColor: theme.colors.background,
-                  borderColor: theme.colors.border,
-                  color: theme.colors.text,
-                },
-              ]}
-              value={customUrl}
-              onChangeText={setCustomUrl}
-              autoCapitalize="none"
-              autoCorrect={false}
-              placeholder="HTTPS://..."
-              placeholderTextColor={theme.colors.textMuted}
-            />
-            <Pressable
-              style={[styles.applyBtn, { backgroundColor: theme.colors.primary }]}
-              onPress={handleApplyCustomUrl}
-            >
-              <Text style={styles.applyBtnText}>APPLICA</Text>
-            </Pressable>
-          </View>
-
-          {sourceNotice ? (
-            <View style={[styles.sourceNoticeBox, { backgroundColor: `${theme.colors.primary}18`, borderColor: theme.colors.primary }]}>
-              <Ionicons name="checkmark-circle" size={14} color={theme.colors.primary} />
-              <Text style={[styles.sourceNoticeText, { color: theme.colors.primary }]}>{sourceNotice}</Text>
-            </View>
-          ) : null}
-        </View>
+        <SourceSettingsCard
+          selectedTld={selectedTld}
+          customUrl={customUrl}
+          onChangeCustomUrl={setCustomUrl}
+          onSelectQuickDomain={handleSelectQuickDomain}
+          onApplyCustomUrl={handleApplyCustomUrl}
+          sourceNotice={sourceNotice}
+          theme={theme}
+        />
 
         {/* INFORMAZIONI, CHANGELOG & UPDATER INTEGRATO */}
         <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
@@ -1087,485 +970,3 @@ export default function SettingsScreen() {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: '#000000',
-  },
-  appBar: {
-    minHeight: 48,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#141414',
-  },
-  appBarTitle: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '800',
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  scroll: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: 16,
-    gap: 16,
-    paddingBottom: 40,
-  },
-  card: {
-    backgroundColor: oledTheme.colors.surface,
-    padding: 16,
-    borderRadius: oledTheme.radius.lg,
-    borderWidth: 1,
-    borderColor: oledTheme.colors.border,
-  },
-  cardTitle: {
-    color: oledTheme.colors.text,
-    fontSize: 13,
-    fontWeight: '700',
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-    marginBottom: 12,
-  },
-  themeGrid: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  themeIconBtn: {
-    width: 54,
-    height: 54,
-    borderRadius: oledTheme.radius.md,
-    backgroundColor: '#1E1E1E',
-    borderWidth: 1.5,
-    borderColor: '#333333',
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-  },
-  themeSvgIcon: {
-    width: 28,
-    height: 28,
-  },
-  clearHistoryBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    minHeight: 44,
-    borderRadius: oledTheme.radius.md,
-    borderWidth: 1,
-    paddingHorizontal: 16,
-    marginTop: 10,
-  },
-  clearHistoryBtnText: {
-    fontSize: 12,
-    fontWeight: '700',
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
-  },
-  inlineConfirmCard: {
-    padding: 14,
-    borderRadius: oledTheme.radius.md,
-    borderWidth: 1.5,
-    marginTop: 10,
-    gap: 10,
-  },
-  inlineConfirmText: {
-    fontSize: 12,
-    fontWeight: '700',
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
-    lineHeight: 16,
-    textAlign: 'center',
-  },
-  inlineConfirmButtons: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  inlineConfirmCancelBtn: {
-    flex: 1,
-    minHeight: 44,
-    borderRadius: oledTheme.radius.md,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#1E1E1E',
-  },
-  inlineConfirmCancelText: {
-    fontSize: 12,
-    fontWeight: '700',
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
-  },
-  inlineConfirmDeleteBtn: {
-    flex: 1,
-    minHeight: 44,
-    borderRadius: oledTheme.radius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  inlineConfirmDeleteText: {
-    fontSize: 12,
-    fontWeight: '700',
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
-  },
-  modeIndicatorBadge: {
-    position: 'absolute',
-    top: 2,
-    right: 2,
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  quickDomainsRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 12,
-  },
-  domainChip: {
-    flex: 1,
-    minHeight: 44,
-    borderRadius: oledTheme.radius.md,
-    backgroundColor: '#1E1E1E',
-    borderWidth: 1.5,
-    borderColor: '#333333',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  domainChipText: {
-    color: '#D4D4D4',
-    fontSize: 14,
-    fontWeight: '700',
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
-  },
-  aniskipSubTitle: {
-    fontSize: 11,
-    fontWeight: '700',
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
-    marginBottom: 8,
-    letterSpacing: 0.5,
-  },
-  aniskipRow: {
-    flexDirection: 'row',
-    gap: 8,
-    alignItems: 'center',
-  },
-  aniskipChip: {
-    flex: 1,
-    minHeight: 44,
-    borderRadius: oledTheme.radius.md,
-    borderWidth: 1.5,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: 6,
-    paddingHorizontal: 4,
-  },
-  aniskipChipText: {
-    fontSize: 11,
-    fontWeight: '700',
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
-  },
-  aniskipChipTextActive: {
-    fontWeight: '900',
-  },
-  navBarRow: {
-    flexDirection: 'row',
-    gap: 8,
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  navBarChip: {
-    flex: 1,
-    minHeight: 44,
-    borderRadius: oledTheme.radius.md,
-    borderWidth: 1.5,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: 8,
-    paddingHorizontal: 8,
-  },
-  navBarChipText: {
-    fontSize: 11,
-    fontWeight: '700',
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
-  },
-  navBarChipTextActive: {
-    fontWeight: '900',
-  },
-  navBarHelpText: {
-    fontSize: 10,
-    lineHeight: 15,
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
-    marginTop: 4,
-    letterSpacing: 0.3,
-  },
-  customUrlRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  customUrlInput: {
-    flex: 1,
-    height: 44,
-    backgroundColor: '#000000',
-    borderRadius: oledTheme.radius.md,
-    borderWidth: 1,
-    borderColor: '#333333',
-    paddingHorizontal: 12,
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontFamily: 'monospace',
-  },
-  applyBtn: {
-    height: 44,
-    paddingHorizontal: 14,
-    borderRadius: oledTheme.radius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  applyBtnText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '700',
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
-  },
-  sourceNoticeBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: oledTheme.radius.md,
-    borderWidth: 1,
-  },
-  sourceNoticeText: {
-    fontSize: 11,
-    fontWeight: '700',
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
-  },
-  infoRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#202020',
-  },
-  infoLabel: {
-    color: oledTheme.colors.textMuted,
-    fontSize: 12,
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
-  },
-  infoValue: {
-    color: oledTheme.colors.text,
-    fontSize: 12,
-    fontWeight: '600',
-    fontFamily: 'monospace',
-  },
-  changelogCard: {
-    marginTop: 16,
-    padding: 12,
-    borderRadius: oledTheme.radius.md,
-    borderWidth: 1,
-    borderColor: '#262626',
-    backgroundColor: '#121212',
-    gap: 8,
-  },
-  changelogHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  changelogTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  changelogTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  changelogTabSwitch: {
-    flexDirection: 'row',
-    gap: 6,
-  },
-  changelogTabBtn: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: '#333333',
-    backgroundColor: '#1E1E1E',
-  },
-  changelogTabBtnActive: {
-    borderColor: 'transparent',
-  },
-  changelogTabBtnText: {
-    fontSize: 9,
-    fontWeight: '700',
-    fontFamily: 'monospace',
-    color: '#888888',
-    textTransform: 'uppercase',
-  },
-  changelogTabBtnTextActive: {
-    color: '#FFFFFF',
-  },
-  changelogContentBox: {
-    borderRadius: oledTheme.radius.sm,
-    borderWidth: 1,
-    maxHeight: 220,
-  },
-  changelogScrollContent: {
-    padding: 10,
-  },
-  changelogText: {
-    fontSize: 10,
-    lineHeight: 15,
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
-  },
-  updateContainer: {
-    marginTop: 16,
-  },
-  actionBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 12,
-    borderRadius: oledTheme.radius.md,
-    minHeight: 44,
-  },
-  actionBtnText: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-    fontSize: 13,
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
-  },
-  updateAvailableBanner: {
-    padding: 14,
-    borderRadius: oledTheme.radius.md,
-    borderWidth: 1.5,
-    gap: 12,
-  },
-  updateBadgeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  updateAvailableTitle: {
-    fontSize: 12,
-    fontWeight: '800',
-    flex: 1,
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
-    lineHeight: 16,
-  },
-  downloadProgressWrapper: {
-    padding: 12,
-    borderRadius: oledTheme.radius.md,
-    borderWidth: 1,
-    gap: 8,
-  },
-  downloadProgressText: {
-    fontSize: 12,
-    fontWeight: '700',
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
-  },
-  track: {
-    height: 8,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  bar: {
-    height: '100%',
-  },
-  bytesText: {
-    fontSize: 11,
-    textAlign: 'right',
-    fontFamily: 'monospace',
-  },
-  inlineStatusBox: {
-    padding: 12,
-    borderRadius: oledTheme.radius.md,
-    borderWidth: 1,
-    gap: 8,
-  },
-  inlineStatusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  inlineStatusText: {
-    fontSize: 11,
-    fontWeight: '700',
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
-    lineHeight: 15,
-  },
-  smallActionBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 6,
-    borderWidth: 1,
-    minHeight: 36,
-  },
-  smallActionBtnText: {
-    fontSize: 11,
-    fontWeight: '800',
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
-  },
-  upToDateRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderRadius: oledTheme.radius.md,
-    borderWidth: 1,
-    minHeight: 44,
-  },
-  upToDateLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  upToDateText: {
-    fontFamily: 'monospace',
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-  },
-});

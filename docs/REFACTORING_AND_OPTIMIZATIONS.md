@@ -19,6 +19,7 @@
 - [Step 11: Palinsesto Settimanale (`animeworld.ac/schedule`), AniSkip Condizionale & Hardening Aggiornamenti Manuali](#-step-11-palinsesto-settimanale-animeworldacschedule-aniskip-condizionale--hardening-aggiornamenti-manuali)
 - [Step 12: Ottimizzazione Carosello Raccomandati, Risoluzione Scroll Deadlock & Layout Stabile](#-step-12-ottimizzazione-carosello-raccomandati-risoluzione-scroll-deadlock--layout-stabile)
 - [Step 13: Rifacimento Ricerca, Cronologia Google-Style, Filtri Multipli & Hardening Scraper](#-step-13-rifacimento-ricerca-cronologia-google-style-filtri-multipli--hardening-scraper)
+- [Step 14: De-monolizzazione Schermate Home/Impostazioni, Unificazione Slider & Pulizia Codice Morto](#-step-14-de-monolizzazione-schermate-homeimpostazioni-unificazione-slider--pulizia-codice-morto)
 
 ---
 
@@ -306,6 +307,36 @@ Rinnovare completamente l'esperienza di ricerca rimuovendo i vecchi consigliati 
 - Modale filtri reattivo con reset rapido, conteggio filtri attivi nell'header e chip rimovibili individualmente.
 - Zero titoli spuri in caso di ricerche o filtri privi di risultati.
 - Suite completa di test superata a 16 stadi (`npm test`).
+
+---
+
+## 🏗️ Step 14: De-monolizzazione Schermate Home/Impostazioni, Unificazione Slider & Pulizia Codice Morto
+
+### 🎯 Obiettivo
+Eliminare l'accumulo di codice monolitico nei controller di rotta (`app/(tabs)/index.tsx` e `app/(tabs)/settings.tsx`), unificare i tre slider discreti duplicati in una primitiva touch-native riutilizzabile (`StepSlider.tsx`), ed eliminare servizi legacy non utilizzati (Kitsu, AniList GraphQL) e dipendenze superflue (`@expo/ui`).
+
+### 🛠️ Piano di Refactor & Implementazione
+1. **Fase 1 — Pulizia Codice Morto & Dipendenze**:
+   - Rimozione di `src/services/kitsu/` e `src/services/anilist/` (servizi metadata deprecati e non richiamati dall'app).
+   - Pulizia query hook orfani in `anime-queries.ts` e tipi inutilizzati in `navigation.ts`.
+   - Rimozione definitiva di `@expo/ui` da `package.json` a favore dei modali touch-safe React Native `Modal`.
+2. **Fase 2 — Unificazione Slider Discreti (`StepSlider.tsx`)**:
+   - Creazione della primitiva generica `StepSlider.tsx` con `PanResponder` touch-safe (`onPanResponderTerminationRequest: () => false`, `pointerEvents="none"` su track e thumb), calcolo layout a larghezza dinamica, snapping a intervalli discreti e feedback aptico (`Haptics.selectionAsync()`).
+   - Refactor di `HistorySlider.tsx`, `AniSkipSlider.tsx` e `AniSkipDurationSlider.tsx` come wrapper leggeri su `StepSlider`.
+3. **Fase 3 — De-monolizzazione Impostazioni (`settings.tsx`)**:
+   - Estrazione di `settings.styles.ts` (480 righe di stili).
+   - Estrazione di `ThemeSettingsCard.tsx` (selezione temi OLED/Pikachu/Orchidea/Rainbow e toggle scuro/chiaro) e `SourceSettingsCard.tsx` (domini rapidi `.ac`, `.so`, `.tv` e URL personalizzato).
+   - Riduzione di `settings.tsx` da 1571 a 972 righe (-600 righe, ~38% snellimento).
+4. **Fase 4 — De-monolizzazione Home & Scorporo Ricerca (`index.tsx`)**:
+   - Estrazione di `home.styles.ts` (600 righe di stili).
+   - Estrazione di `HomeSection.tsx` (caroselli unificati) e `ContinueWatchingSection.tsx` (sezione continua a guardare con rimozione sicura).
+   - Scorporo del modulo di ricerca: `HomeSearchHeader.tsx` (con `HomeAppBar`), `SearchFilterChips.tsx`, `SearchResultsGrid.tsx` e `SearchHistoryList.tsx`.
+   - Riduzione di `index.tsx` da 2104 a 1134 righe (-970 righe, ~46% snellimento).
+
+### 🧪 Criteri di Accettazione
+- `npm run typecheck` completato con 0 errori.
+- Suite di test automatizzata a 16 stadi (`npm test`) superata al 100%.
+- Generazione pulita del bundle Android Hermes bytecode con `npx expo export --platform android`.
 
 ---
 

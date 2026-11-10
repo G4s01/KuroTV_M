@@ -84,6 +84,7 @@
 - **Storage Sincrono MMKV v3**: Cronologia, preferiti, impostazioni AniSkip e Navbar memorizzati con letture e scritture a latenza zero.
 - **Skeleton Animati a Zero CLS**: Primitive e layout dedicati che rispecchiano al millimetro le geometrie reali (scheda tecnica metadati, pulsanti rapidi, hero spotlight, griglie senza doppio padding e sezioni condizionali sincronizzate) azzerando il Cumulative Layout Shift (CLS).
 - **Scraper 100% Hermes Safe**: Web scraper nativo basato su `cheerio/slim` ed `htmlparser2`, privo di moduli pesanti `node:*` incompatibili con il runtime mobile.
+- **Architettura Modulare & Primitiva Slider Unificata (`StepSlider`)**: De-monolizzazione completa dei controller di rotta (Home e Impostazioni) con fogli di stile isolati (`*.styles.ts`), subcomponenti dedicati (`src/components/home/`, `src/components/settings/`) e slider touch-safe discreti unificati con `PanResponder`.
 - **Updater OTA Integrato con `UpdateModal`**: Notifica in-app all'avvio con changelog, scroll animato e progressivo automatico verso la sezione informazioni/download su click "AGGIORNA ORA" e freccia animata sul tab Impostazioni se differito.
 
 ---

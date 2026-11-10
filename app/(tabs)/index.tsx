@@ -36,6 +36,16 @@ import {
   ANIME_SORTS,
   ANIME_DUB,
 } from '@/components/FilterBottomSheet';
+import {
+  homeStyles as styles,
+  HomeSection,
+  ContinueWatchingSection,
+  HomeSearchHeader,
+  HomeAppBar,
+  SearchFilterChips,
+  SearchResultsGrid,
+  SearchHistoryList,
+} from '@/components/home';
 import { HomeScreenSkeleton, ExploreScreenSkeleton } from '@/components/skeleton';
 import type { AnimeItem, ContinueWatchingItem, SearchFilter } from '@/types';
 
@@ -574,174 +584,47 @@ export default function HomeScreen() {
     <View style={[styles.root, { paddingTop: insets.top, backgroundColor: theme.colors.background }]}>
       {/* App Bar / Search Header */}
       {isSearchActive ? (
-        <View style={[styles.searchHeader, { backgroundColor: theme.colors.background, borderBottomColor: theme.colors.border }]}>
-          <Pressable
-            style={styles.searchBackBtn}
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-              setIsSearchActive(false);
-              setSearchQuery('');
-              setFilterState({});
-            }}
-            hitSlop={12}
-            accessibilityRole="button"
-            accessibilityLabel="CHIUDI RICERCA"
-          >
-            <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
-          </Pressable>
-
-          <View style={[styles.searchBar, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
-            <Ionicons name="search" size={18} color={theme.colors.textMuted} />
-            <TextInput
-              style={[styles.searchInput, { color: theme.colors.text }]}
-              placeholder="CERCA ANIME, SERIE, FILM..."
-              placeholderTextColor={theme.colors.textMuted}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              onSubmitEditing={() => {
-                if (searchQuery.trim().length >= 2) {
-                  AppStorage.addSearchHistory(searchQuery.trim());
-                  setSearchHistoryList(AppStorage.getSearchHistory());
-                }
-              }}
-              returnKeyType="search"
-              autoFocus={true}
-              autoCorrect={false}
-            />
-            {searchQuery.length > 0 && (
-              <Pressable
-                onPress={() => setSearchQuery('')}
-                hitSlop={12}
-                style={styles.clearBtn}
-                accessibilityRole="button"
-                accessibilityLabel="CANCELLA TESTO"
-              >
-                <Ionicons name="close-circle" size={18} color={theme.colors.textMuted} />
-              </Pressable>
-            )}
-          </View>
-
-          <Pressable
-            style={[
-              styles.filterBtn,
-              { backgroundColor: theme.colors.card, borderColor: theme.colors.border },
-              activeFilterCount > 0 && {
-                backgroundColor: theme.colors.primary,
-                borderColor: theme.colors.primary,
-              },
-            ]}
-            onPress={() => {
-              Haptics.selectionAsync().catch(() => {});
-              Keyboard.dismiss();
-              setIsFilterSheetVisible(true);
-            }}
-            accessibilityRole="button"
-            accessibilityLabel="FILTRI DI RICERCA"
-          >
-            <Ionicons
-              name="options-outline"
-              size={20}
-              color={activeFilterCount > 0 ? getContrastTextColor(theme.colors.primary) : theme.colors.text}
-            />
-            {activeFilterCount > 0 && (
-              <View style={[styles.filterBadge, { backgroundColor: getContrastTextColor(theme.colors.primary) }]}>
-                <Text style={[styles.filterBadgeText, { color: theme.colors.primary }]}>{activeFilterCount}</Text>
-              </View>
-            )}
-          </Pressable>
-        </View>
+        <HomeSearchHeader
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          onSubmitSearch={(q) => {
+            if (q.trim().length >= 2) {
+              AppStorage.addSearchHistory(q.trim());
+              setSearchHistoryList(AppStorage.getSearchHistory());
+            }
+          }}
+          onClose={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+            setIsSearchActive(false);
+            setSearchQuery('');
+            setFilterState({});
+          }}
+          activeFilterCount={activeFilterCount}
+          onOpenFilters={() => {
+            Haptics.selectionAsync().catch(() => {});
+            Keyboard.dismiss();
+            setIsFilterSheetVisible(true);
+          }}
+        />
       ) : (
-        <View style={[styles.appBar, { backgroundColor: theme.colors.background, borderBottomColor: theme.colors.border }]}>
-          <View style={styles.brandRow}>
-            <Text style={[styles.brandPrefix, { color: theme.colors.text }]}>KURO</Text>
-            <Text style={[styles.brandSuffix, { color: theme.colors.primary }]}>TV</Text>
-            <View style={[styles.mobileBadge, { backgroundColor: theme.colors.surface }]}>
-              <Text style={[styles.mobileBadgeText, { color: theme.colors.textSecondary }]}>MOBILE</Text>
-            </View>
-          </View>
-
-          <Pressable
-            style={[styles.searchButton, { backgroundColor: theme.colors.card, borderColor: theme.colors.border, borderWidth: 1 }]}
-            onPress={() => {
-              Haptics.selectionAsync().catch(() => {});
-              setIsSearchActive(true);
-            }}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel="CERCA ANIME"
-          >
-            <Ionicons name="search" size={20} color={theme.colors.text} />
-          </Pressable>
-        </View>
+        <HomeAppBar
+          onSearchPress={() => {
+            Haptics.selectionAsync().catch(() => {});
+            setIsSearchActive(true);
+          }}
+        />
       )}
 
       {isSearchActive ? (
         <View style={styles.searchContainer}>
           {/* Active Filter Chips */}
           {activeFilterCount > 0 && (
-            <View style={styles.activeFiltersRow}>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.activeFiltersScroll}>
-                {filterState.dub && (
-                  <Pressable
-                    style={[styles.activeFilterChip, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
-                    onPress={() => removeFilter('dub')}
-                  >
-                    <Text style={[styles.activeFilterText, { color: theme.colors.text }]}>
-                      AUDIO: {filterState.dub === '1' ? 'DOPPIATI (ITA)' : 'SUB ITA'}
-                    </Text>
-                    <Ionicons name="close-circle" size={14} color={theme.colors.textMuted} />
-                  </Pressable>
-                )}
-                {filterState.type && (
-                  <Pressable
-                    style={[styles.activeFilterChip, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
-                    onPress={() => removeFilter('type')}
-                  >
-                    <Text style={[styles.activeFilterText, { color: theme.colors.text }]}>
-                      TIPO: {(ANIME_TYPES.find((t) => t.value === filterState.type)?.label || filterState.type).toUpperCase()}
-                    </Text>
-                    <Ionicons name="close-circle" size={14} color={theme.colors.textMuted} />
-                  </Pressable>
-                )}
-                {filterState.status && (
-                  <Pressable
-                    style={[styles.activeFilterChip, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
-                    onPress={() => removeFilter('status')}
-                  >
-                    <Text style={[styles.activeFilterText, { color: theme.colors.text }]}>
-                      STATO: {(ANIME_STATUSES.find((s) => s.value === filterState.status)?.label || filterState.status).toUpperCase()}
-                    </Text>
-                    <Ionicons name="close-circle" size={14} color={theme.colors.textMuted} />
-                  </Pressable>
-                )}
-                {filterState.sort && (
-                  <Pressable
-                    style={[styles.activeFilterChip, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
-                    onPress={() => removeFilter('sort')}
-                  >
-                    <Text style={[styles.activeFilterText, { color: theme.colors.text }]}>
-                      ORDINA: {(ANIME_SORTS.find((s) => s.value === filterState.sort)?.label || filterState.sort).toUpperCase()}
-                    </Text>
-                    <Ionicons name="close-circle" size={14} color={theme.colors.textMuted} />
-                  </Pressable>
-                )}
-                {activeGenres.map((gId) => {
-                  const genreLabel = ANIME_GENRES.find((g) => g.id === gId)?.label || gId;
-                  return (
-                    <Pressable
-                      key={`active-genre-${gId}`}
-                      style={[styles.activeFilterChip, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
-                      onPress={() => removeGenre(gId)}
-                    >
-                      <Text style={[styles.activeFilterText, { color: theme.colors.text }]}>
-                        GENERE: {genreLabel.toUpperCase()}
-                      </Text>
-                      <Ionicons name="close-circle" size={14} color={theme.colors.textMuted} />
-                    </Pressable>
-                  );
-                })}
-              </ScrollView>
-            </View>
+            <SearchFilterChips
+              filterState={filterState}
+              activeGenres={activeGenres}
+              onRemoveFilter={removeFilter}
+              onRemoveGenre={removeGenre}
+            />
           )}
 
           {isSearchLoading ? (
@@ -762,122 +645,22 @@ export default function HomeScreen() {
               </Pressable>
             </View>
           ) : hasSearchInput ? (
-            (searchResults?.items || []).length > 0 ? (
-              <FlashList
-                data={searchResults?.items || []}
-                keyExtractor={(item, index) => item.id || `search-${index}`}
-                numColumns={2}
-                contentContainerStyle={styles.searchListContent}
-                showsVerticalScrollIndicator={false}
-                keyboardShouldPersistTaps="handled"
-                keyboardDismissMode="on-drag"
-                renderItem={({ item }) => (
-                  <View style={styles.searchCardWrapper}>
-                    <AnimeCard
-                      anime={item}
-                      width={cardWidth}
-                      height={cardHeight}
-                      onPress={() => navigateToAnime(item.id, item.title)}
-                    />
-                  </View>
-                )}
-              />
-            ) : (
-              <View style={styles.centerBox}>
-                <Ionicons name="search-outline" size={48} color={theme.colors.textMuted} />
-                <Text style={[styles.emptyText, { color: theme.colors.textMuted }]}>
-                  NESSUN ANIME TROVATO CON I CRITERI INDICATI
-                </Text>
-              </View>
-            )
+            <SearchResultsGrid
+              items={searchResults?.items || []}
+              cardWidth={cardWidth}
+              cardHeight={cardHeight}
+              onItemPress={(item) => navigateToAnime(item.id, item.title)}
+            />
           ) : (
-            <ScrollView
-              style={styles.searchHistoryContainer}
-              contentContainerStyle={styles.searchHistoryContent}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-            >
-              {isSearchHistoryActive ? (
-                searchHistoryList.length > 0 ? (
-                  <>
-                    <View style={styles.searchHistoryHeader}>
-                      <View style={styles.searchHistoryTitleRow}>
-                        <Ionicons name="time-outline" size={16} color={theme.colors.textSecondary} />
-                        <Text style={[styles.searchHistoryTitle, { color: theme.colors.textSecondary }]}>
-                          RICERCHE RECENTI
-                        </Text>
-                      </View>
-                      <Pressable
-                        onPress={() => setIsClearAllSearchConfirmOpen(true)}
-                        hitSlop={8}
-                        style={styles.clearAllSearchBtn}
-                        accessibilityRole="button"
-                        accessibilityLabel="CANCELLA TUTTA LA CRONOLOGIA DI RICERCA"
-                      >
-                        <Text style={[styles.clearAllSearchText, { color: theme.colors.textMuted }]}>
-                          CANCELLA TUTTE
-                        </Text>
-                      </Pressable>
-                    </View>
-
-                    <View style={[styles.searchHistoryList, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-                      {searchHistoryList.map((item, index) => (
-                        <View
-                          key={`${item.query}-${item.timestamp}-${index}`}
-                          style={[
-                            styles.searchHistoryItem,
-                            index < searchHistoryList.length - 1 && {
-                              borderBottomWidth: StyleSheet.hairlineWidth,
-                              borderBottomColor: theme.colors.border,
-                            },
-                          ]}
-                        >
-                          <Pressable
-                            style={styles.searchHistoryItemContent}
-                            onPress={() => handleSelectSearchHistory(item.query)}
-                            hitSlop={4}
-                            accessibilityRole="button"
-                            accessibilityLabel={`CERCA ${item.query.toUpperCase()}`}
-                          >
-                            <Ionicons name="time-outline" size={18} color={theme.colors.textMuted} style={styles.searchHistoryItemIcon} />
-                            <Text style={[styles.searchHistoryItemText, { color: theme.colors.text }]} numberOfLines={1}>
-                              {item.query.toUpperCase()}
-                            </Text>
-                          </Pressable>
-
-                          <Pressable
-                            style={styles.searchHistoryDeleteBtn}
-                            onPress={() => handleDeleteSearchHistoryItem(item.query)}
-                            hitSlop={10}
-                            accessibilityRole="button"
-                            accessibilityLabel={`ELIMINA ${item.query.toUpperCase()} DALLA CRONOLOGIA`}
-                          >
-                            <Ionicons name="close-outline" size={20} color={theme.colors.textMuted} />
-                          </Pressable>
-                        </View>
-                      ))}
-                    </View>
-                  </>
-                ) : (
-                  <View style={styles.centerBox}>
-                    <Ionicons name="search-outline" size={44} color={theme.colors.textMuted} />
-                    <Text style={[styles.emptyText, { color: theme.colors.textMuted }]}>
-                      DIGITA UN TITOLO PER CERCARE O UTILIZZA I FILTRI
-                    </Text>
-                  </View>
-                )
-              ) : (
-                <View style={styles.centerBox}>
-                  <Ionicons name="time-outline" size={44} color={theme.colors.textMuted} />
-                  <Text style={[styles.emptyText, { color: theme.colors.textMuted }]}>
-                    CRONOLOGIA DI RICERCA DISATTIVATA
-                  </Text>
-                  <Text style={[styles.emptySubText, { color: theme.colors.textSecondary }]}>
-                    PUOI ATTIVARLA NELLA SCHEDA IMPOSTAZIONI DELL&apos;APP
-                  </Text>
-                </View>
-              )}
-            </ScrollView>
+            <SearchHistoryList
+              title="RICERCHE RECENTI"
+              icon="time-outline"
+              items={searchHistoryList}
+              isHistoryActive={isSearchHistoryActive}
+              onSelectQuery={handleSelectSearchHistory}
+              onDeleteItem={handleDeleteSearchHistoryItem}
+              onClearAll={() => setIsClearAllSearchConfirmOpen(true)}
+            />
           )}
         </View>
       ) : (
@@ -1247,217 +1030,65 @@ export default function HomeScreen() {
 
             {/* 3. Riprendi a guardare - Visibile SOLO quando vi sono serie con visione in corso */}
             {continueWatching.length > 0 && (
-              <View style={styles.section}>
-                <View style={styles.sectionHeader}>
-                  <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>RIPRENDI A GUARDARE</Text>
-                  <Text style={[styles.sectionBadge, { backgroundColor: theme.colors.primary, color: getContrastTextColor(theme.colors.primary) }]}>{continueWatching.length}</Text>
-                </View>
-
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.horizontalScroll}
-                >
-                  {continueWatching.map((item) => (
-                    <Pressable
-                      key={`${item.animeId}-${item.episodeId}`}
-                      style={styles.continueCard}
-                      onPress={() => navigateToPlayer(item)}
-                    >
-                      <View style={[styles.continueThumbWrapper, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-                        {item.thumbnail ? (
-                          <Image
-                            source={{ uri: item.thumbnail }}
-                            style={styles.continueThumb}
-                            contentFit="cover"
-                            transition={200}
-                          />
-                        ) : (
-                          <View style={[styles.continueThumb, styles.continueFallback, { backgroundColor: theme.colors.card }]}>
-                            <Ionicons name="film" size={24} color={theme.colors.textMuted} />
-                          </View>
-                        )}
-
-                        {/* Tasto rimozione in alto a destra */}
-                        <Pressable
-                          style={styles.removeContinueBtn}
-                          onPress={(e) => {
-                            e.stopPropagation();
-                            handleRemoveContinue(item);
-                          }}
-                          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                          accessibilityRole="button"
-                          accessibilityLabel={`RIMUOVI ${item.title.toUpperCase()} DA RIPRENDI A GUARDARE`}
-                        >
-                          <View style={styles.removeContinueIconWrapper}>
-                            <Ionicons name="remove" size={14} color="#FFFFFF" />
-                          </View>
-                        </Pressable>
-
-                        <View style={styles.playOverlay}>
-                          <Ionicons name="play-circle" size={32} color="#FFFFFF" />
-                        </View>
-                        <View style={styles.progressBarWrapper}>
-                          <View
-                            style={[
-                              styles.progressBarFill,
-                              {
-                                width: `${Math.min(100, item.percentage || 0)}%`,
-                                backgroundColor: theme.colors.primary,
-                              },
-                            ]}
-                          />
-                        </View>
-                      </View>
-                      <Text style={[styles.continueTitle, { color: theme.colors.text }]} numberOfLines={1}>
-                        {item.title}
-                      </Text>
-                      <Text style={[styles.continueSubtitle, { color: theme.colors.textMuted }]}>
-                        EPISODIO {item.episodeNumber} ({item.percentage}%)
-                      </Text>
-                    </Pressable>
-                  ))}
-                </ScrollView>
-              </View>
+              <ContinueWatchingSection
+                items={continueWatching}
+                onItemPress={navigateToPlayer}
+                onRemoveItem={handleRemoveContinue}
+              />
             )}
 
             {/* 4. Ultime Uscite (Ultimi Episodi Usciti) */}
             {homeData?.all && homeData.all.length > 0 && (
-              <View style={styles.section}>
-                <View style={styles.sectionHeader}>
-                  <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>ULTIMI EPISODI USCITI</Text>
-                  <Pressable
-                    onPress={() => {
-                      Haptics.selectionAsync().catch(() => {});
-                      setIsSearchActive(true);
-                    }}
-                    hitSlop={8}
-                    accessibilityRole="button"
-                    accessibilityLabel="VEDI TUTTI GLI EPISODI"
-                  >
-                    <Text style={[styles.seeAllText, { color: theme.colors.primary }]}>VEDI TUTTI</Text>
-                  </Pressable>
-                </View>
-
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.horizontalScroll}
-                >
-                  {homeData.all.slice(0, 20).map((anime: AnimeItem) => (
-                    <AnimeCard
-                      key={`all-${anime.id}`}
-                      anime={anime}
-                      onPress={() => navigateToAnime(anime.id, anime.title)}
-                    />
-                  ))}
-                </ScrollView>
-              </View>
+              <HomeSection
+                title="ULTIMI EPISODI USCITI"
+                items={homeData.all}
+                maxItems={20}
+                onItemPress={(anime) => navigateToAnime(anime.id, anime.title)}
+                onSeeAll={() => {
+                  Haptics.selectionAsync().catch(() => {});
+                  setIsSearchActive(true);
+                }}
+              />
             )}
 
             {/* 5. Tendenze */}
             {homeData?.trending && homeData.trending.length > 0 && (
-              <View style={styles.section}>
-                <View style={styles.sectionHeader}>
-                  <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>TENDENZE</Text>
-                </View>
-
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.horizontalScroll}
-                >
-                  {homeData.trending.map((anime: AnimeItem) => (
-                    <AnimeCard
-                      key={`trending-${anime.id}`}
-                      anime={anime}
-                      onPress={() => navigateToAnime(anime.id, anime.title)}
-                    />
-                  ))}
-                </ScrollView>
-              </View>
+              <HomeSection
+                title="TENDENZE"
+                items={homeData.trending}
+                onItemPress={(anime) => navigateToAnime(anime.id, anime.title)}
+              />
             )}
 
             {/* 6. Anime in Corso */}
             {homeData?.ongoing && homeData.ongoing.length > 0 && (
-              <View style={styles.section}>
-                <View style={styles.sectionHeader}>
-                  <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>ANIME IN CORSO</Text>
-                </View>
-
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.horizontalScroll}
-                >
-                  {homeData.ongoing.map((anime: AnimeItem) => (
-                    <AnimeCard
-                      key={`ongoing-${anime.id}`}
-                      anime={anime}
-                      onPress={() => navigateToAnime(anime.id, anime.title)}
-                    />
-                  ))}
-                </ScrollView>
-              </View>
+              <HomeSection
+                title="ANIME IN CORSO"
+                items={homeData.ongoing}
+                onItemPress={(anime) => navigateToAnime(anime.id, anime.title)}
+              />
             )}
 
             {/* 7. Uscite della stagione corrente (Upcoming) */}
             {homeData?.upcoming && homeData.upcoming.length > 0 && (
-              <View style={styles.section}>
-                <View style={styles.sectionHeader}>
-                  <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
-                    {(homeData.upcomingTitle || 'PROSSIME USCITE').toUpperCase()}
-                  </Text>
-                  <Pressable
-                    onPress={() => {
-                      Haptics.selectionAsync().catch(() => {});
-                      setIsSearchActive(true);
-                    }}
-                    hitSlop={8}
-                    accessibilityRole="button"
-                    accessibilityLabel="VEDI TUTTE LE PROSSIME USCITE"
-                  >
-                    <Text style={[styles.seeAllText, { color: theme.colors.primary }]}>VEDI TUTTI</Text>
-                  </Pressable>
-                </View>
-
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.horizontalScroll}
-                >
-                  {homeData.upcoming.map((anime: AnimeItem) => (
-                    <AnimeCard
-                      key={`upcoming-${anime.id}`}
-                      anime={anime}
-                      onPress={() => navigateToAnime(anime.id, anime.title)}
-                    />
-                  ))}
-                </ScrollView>
-              </View>
+              <HomeSection
+                title={(homeData.upcomingTitle || 'PROSSIME USCITE').toUpperCase()}
+                items={homeData.upcoming}
+                onItemPress={(anime) => navigateToAnime(anime.id, anime.title)}
+                onSeeAll={() => {
+                  Haptics.selectionAsync().catch(() => {});
+                  setIsSearchActive(true);
+                }}
+              />
             )}
 
             {/* 8. Nuove Aggiunte */}
             {homeData?.newAdded && homeData.newAdded.length > 0 && (
-              <View style={styles.section}>
-                <View style={styles.sectionHeader}>
-                  <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>NUOVE AGGIUNTE</Text>
-                </View>
-
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.horizontalScroll}
-                >
-                  {homeData.newAdded.map((anime: AnimeItem) => (
-                    <AnimeCard
-                      key={`new-${anime.id}`}
-                      anime={anime}
-                      onPress={() => navigateToAnime(anime.id, anime.title)}
-                    />
-                  ))}
-                </ScrollView>
-              </View>
+              <HomeSection
+                title="NUOVE AGGIUNTE"
+                items={homeData.newAdded}
+                onItemPress={(anime) => navigateToAnime(anime.id, anime.title)}
+              />
             )}
           </>
         )}
@@ -1501,604 +1132,3 @@ export default function HomeScreen() {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: '#000000',
-  },
-  appBar: {
-    minHeight: 48,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#141414',
-    backgroundColor: '#000000',
-  },
-  brandRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  brandPrefix: {
-    color: '#FFFFFF',
-    fontSize: 20,
-    fontWeight: '900',
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
-    letterSpacing: -0.5,
-  },
-  brandSuffix: {
-    color: oledTheme.colors.primary,
-    fontSize: 20,
-    fontWeight: '900',
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
-    letterSpacing: -0.5,
-  },
-  mobileBadge: {
-    marginLeft: 8,
-    backgroundColor: '#1F1F1F',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  mobileBadgeText: {
-    color: '#A3A3A3',
-    fontSize: 9,
-    fontWeight: '700',
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  searchButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#141414',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  searchHeader: {
-    minHeight: 56,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    gap: 8,
-    borderBottomWidth: 1,
-  },
-  searchBackBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  searchBar: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: oledTheme.radius.full,
-    paddingHorizontal: 12,
-    height: 44,
-    borderWidth: 1,
-    gap: 8,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 13,
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
-    paddingVertical: 0,
-  },
-  clearBtn: {
-    padding: 4,
-  },
-  filterBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    position: 'relative',
-  },
-  filterBadge: {
-    position: 'absolute',
-    top: 6,
-    right: 6,
-    minWidth: 16,
-    height: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 3,
-  },
-  filterBadgeText: {
-    fontSize: 9,
-    fontWeight: '900',
-    fontFamily: 'monospace',
-  },
-  searchContainer: {
-    flex: 1,
-  },
-  activeFiltersRow: {
-    paddingVertical: 8,
-  },
-  activeFiltersScroll: {
-    paddingHorizontal: 16,
-    gap: 8,
-  },
-  activeFilterChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: oledTheme.radius.full,
-    borderWidth: 1,
-    minHeight: 32,
-  },
-  activeFilterText: {
-    fontSize: 11,
-    fontWeight: '700',
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
-  },
-  searchListContent: {
-    paddingHorizontal: 12,
-    paddingTop: 8,
-    paddingBottom: 32,
-  },
-  searchCardWrapper: {
-    flex: 1,
-    padding: 4,
-    alignItems: 'center',
-  },
-  centerBox: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 32,
-    gap: 12,
-    minHeight: 320,
-  },
-  emptyText: {
-    fontSize: 13,
-    fontWeight: '700',
-    textAlign: 'center',
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
-  },
-  searchHistoryContainer: {
-    flex: 1,
-  },
-  searchHistoryContent: {
-    padding: 16,
-    paddingBottom: 32,
-  },
-  searchHistoryHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-    paddingHorizontal: 4,
-  },
-  searchHistoryTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  searchHistoryTitle: {
-    fontSize: 12,
-    fontWeight: '800',
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  clearAllSearchBtn: {
-    minHeight: 44,
-    justifyContent: 'center',
-    paddingHorizontal: 8,
-  },
-  clearAllSearchText: {
-    fontSize: 11,
-    fontWeight: '700',
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
-  },
-  searchHistoryList: {
-    borderRadius: oledTheme.radius.md,
-    borderWidth: 1,
-    overflow: 'hidden',
-  },
-  searchHistoryItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    minHeight: 48,
-    paddingLeft: 14,
-    paddingRight: 6,
-  },
-  searchHistoryItemContent: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    minHeight: 48,
-    gap: 12,
-  },
-  searchHistoryItemIcon: {
-    marginRight: 2,
-  },
-  searchHistoryItemText: {
-    flex: 1,
-    fontSize: 13,
-    fontWeight: '700',
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
-    letterSpacing: 0.2,
-  },
-  searchHistoryDeleteBtn: {
-    width: 44,
-    height: 48,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  emptySubText: {
-    fontSize: 11,
-    fontWeight: '600',
-    textAlign: 'center',
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
-    marginTop: -4,
-  },
-  scroll: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: 32,
-  },
-  errorContainer: {
-    padding: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-  },
-  errorTitle: {
-    color: oledTheme.colors.text,
-    fontSize: 16,
-    fontWeight: '700',
-    textAlign: 'center',
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
-  },
-  errorSubtitle: {
-    color: oledTheme.colors.textMuted,
-    fontSize: 13,
-    textAlign: 'center',
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
-  },
-  retryBtn: {
-    marginTop: 12,
-    backgroundColor: oledTheme.colors.primary,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: oledTheme.radius.full,
-    minHeight: 44,
-    justifyContent: 'center',
-  },
-  retryBtnText: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-    fontSize: 14,
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
-  },
-  heroContainer: {
-    width: '100%',
-    height: HERO_HEIGHT,
-    position: 'relative',
-    backgroundColor: '#0D0D0D',
-  },
-  heroSlide: {
-    height: HERO_HEIGHT,
-    position: 'relative',
-    backgroundColor: '#0D0D0D',
-    overflow: 'hidden',
-  },
-  heroImage: {
-    width: '100%',
-    height: '100%',
-  },
-  heroOverlay: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(0,0,0,0.52)',
-  },
-  heroContent: {
-    position: 'absolute',
-    bottom: 16,
-    left: 16,
-    right: 16,
-    gap: 8,
-  },
-  heroBadgeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  heroRankBadge: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: oledTheme.radius.xs,
-  },
-  heroRankBadgeText: {
-    fontSize: 10,
-    fontWeight: '900',
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  heroSubBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: oledTheme.radius.xs,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.15)',
-  },
-  heroSubBadgeText: {
-    fontSize: 10,
-    fontWeight: '700',
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
-  },
-  heroTitle: {
-    color: '#FFFFFF',
-    fontSize: 22,
-    fontWeight: '900',
-    lineHeight: 26,
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
-    textShadowColor: 'rgba(0,0,0,0.9)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 8,
-  },
-  heroSynopsis: {
-    color: '#D4D4D4',
-    fontSize: 12,
-    lineHeight: 16,
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
-    textShadowColor: 'rgba(0,0,0,0.8)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
-  },
-  heroActionsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginTop: 4,
-  },
-  heroPlayBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: oledTheme.radius.full,
-    minHeight: 44,
-  },
-  heroPlayBtnText: {
-    fontSize: 13,
-    fontWeight: '800',
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  heroInfoBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: oledTheme.radius.full,
-    minHeight: 44,
-    borderWidth: 1,
-  },
-  heroInfoBtnText: {
-    fontSize: 13,
-    fontWeight: '700',
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  heroBtnDisabled: {
-    opacity: 0.7,
-  },
-  section: {
-    marginTop: 24,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    marginBottom: 12,
-  },
-  sectionTitle: {
-    color: oledTheme.colors.text,
-    fontSize: 16,
-    fontWeight: '800',
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
-    letterSpacing: -0.3,
-  },
-  sectionBadge: {
-    fontSize: 11,
-    fontWeight: '800',
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 8,
-  },
-  seeAllText: {
-    fontSize: 12,
-    fontWeight: '700',
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
-  },
-  horizontalScroll: {
-    paddingLeft: 16,
-    paddingRight: 4,
-  },
-  recommendedScrollContent: {
-    paddingLeft: 16,
-    paddingRight: 6,
-    gap: RECOMMENDED_ITEM_GAP,
-  },
-  recommendedCard: {
-    width: RECOMMENDED_ITEM_WIDTH,
-    height: 160,
-    borderRadius: oledTheme.radius.md,
-    overflow: 'hidden',
-    position: 'relative',
-    borderWidth: 2,
-  },
-  recommendedImage: {
-    width: '100%',
-    height: '100%',
-  },
-  recommendedOverlay: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(0, 0, 0, 0.35)',
-  },
-  rankBadge: {
-    position: 'absolute',
-    top: 6,
-    left: 6,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    borderWidth: 1,
-  },
-  rankBadgeText: {
-    fontSize: 11,
-    fontWeight: '900',
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
-  },
-  recommendedSubBadge: {
-    position: 'absolute',
-    top: 6,
-    right: 6,
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderRadius: 3,
-  },
-  recommendedSubBadgeText: {
-    color: '#E5E5E5',
-    fontSize: 9,
-    fontWeight: '700',
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
-  },
-  recommendedTitleBox: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    paddingHorizontal: 6,
-    paddingVertical: 6,
-    backgroundColor: 'rgba(0, 0, 0, 0.75)',
-  },
-  recommendedTitle: {
-    fontSize: 10,
-    fontWeight: '800',
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
-    textAlign: 'center',
-  },
-  continueCard: {
-    width: 160,
-    marginRight: 12,
-    minHeight: 44,
-  },
-  continueThumbWrapper: {
-    width: 160,
-    height: 96,
-    borderRadius: oledTheme.radius.md,
-    overflow: 'hidden',
-    backgroundColor: '#171717',
-    position: 'relative',
-    borderWidth: 1,
-    borderColor: '#262626',
-  },
-  continueThumb: {
-    width: '100%',
-    height: '100%',
-  },
-  continueFallback: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  playOverlay: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(0,0,0,0.3)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  progressBarWrapper: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 4,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-  },
-  progressBarFill: {
-    height: '100%',
-  },
-  continueTitle: {
-    color: oledTheme.colors.text,
-    fontSize: 13,
-    fontWeight: '600',
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
-    marginTop: 6,
-  },
-  continueSubtitle: {
-    color: oledTheme.colors.textMuted,
-    fontSize: 11,
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
-    marginTop: 2,
-  },
-  removeContinueBtn: {
-    position: 'absolute',
-    top: 6,
-    right: 6,
-    zIndex: 10,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  removeContinueIconWrapper: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: 'rgba(0, 0, 0, 0.75)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
-  },
-});

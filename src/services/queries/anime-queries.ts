@@ -9,17 +9,13 @@ import type {
   AnimeDetail,
   AnimeHomePage,
   AnimeItem,
-  AniListMedia,
   AniSkipResult,
   DirectVideoSource,
   Episode,
-  EpisodeMetadata,
   SearchFilter,
 } from "@/types";
 import { AnimeWorldScraper } from "../scraper";
 import type { SearchResult } from "../scraper/parsers/search.parser";
-import { AniListService } from "../anilist";
-import { KitsuService } from "../kitsu";
 import { AniSkipService } from "../aniskip";
 import { AppStorage } from "../storage";
 
@@ -34,12 +30,6 @@ export const animeQueryKeys = {
     [...animeQueryKeys.all, "search", filter] as const,
   video: (episodeDataId: string, serverId = "9") =>
     [...animeQueryKeys.all, "video", episodeDataId, serverId] as const,
-  anilist: (id?: number | null, title?: string | null) =>
-    [...animeQueryKeys.all, "anilist", id ?? null, title ?? null] as const,
-  kitsuId: (malId?: number | null, anilistId?: number | null, title?: string | null) =>
-    [...animeQueryKeys.all, "kitsu", "id", malId ?? null, anilistId ?? null, title ?? null] as const,
-  kitsuEpisodes: (kitsuId?: string | null, numbersKey?: string | null) =>
-    [...animeQueryKeys.all, "kitsu", "episodes", kitsuId ?? null, numbersKey ?? null] as const,
   aniskip: (malId?: number | null, episodeNumber?: number | null) =>
     [...animeQueryKeys.all, "aniskip", malId ?? null, episodeNumber ?? null] as const,
 };
@@ -266,67 +256,7 @@ export const episodeVideoQueryOptions = (
     gcTime: 10 * 60 * 1000,
   });
 
-// 6. AniList Media Metadata Query Options
-export const aniListMediaQueryOptions = (
-  anilistId?: number | null,
-  fallbackTitle?: string | null,
-) =>
-  queryOptions({
-    queryKey: animeQueryKeys.anilist(anilistId, fallbackTitle),
-    queryFn: () =>
-      AniListService.fetchMediaWithFallback(anilistId, fallbackTitle),
-    enabled: Boolean(
-      (anilistId && anilistId > 0) ||
-      (fallbackTitle && fallbackTitle.trim().length > 0),
-    ),
-    staleTime: 24 * 60 * 60 * 1000, // 24 hours
-    gcTime: 48 * 60 * 60 * 1000,
-  });
-
-// 7. Kitsu Anime ID Query Options
-export const kitsuAnimeIdQueryOptions = (
-  malId?: number | null,
-  anilistId?: number | null,
-  fallbackTitle?: string | null,
-) =>
-  queryOptions({
-    queryKey: animeQueryKeys.kitsuId(malId, anilistId, fallbackTitle),
-    queryFn: () =>
-      KitsuService.findKitsuAnimeId({
-        malId,
-        anilistId,
-        title: fallbackTitle,
-      }),
-    enabled: Boolean(
-      (malId && malId > 0) ||
-      (anilistId && anilistId > 0) ||
-      (fallbackTitle && fallbackTitle.trim().length > 0),
-    ),
-    staleTime: 7 * 24 * 60 * 60 * 1000, // 7 days
-    gcTime: 14 * 24 * 60 * 60 * 1000,
-  });
-
-// 8. Kitsu Episode Metadata Query Options
-export const kitsuEpisodesQueryOptions = (
-  kitsuId?: string | null,
-  episodeNumbers?: number[],
-) => {
-  const sortedNumbers = episodeNumbers ? [...episodeNumbers].sort((a, b) => a - b) : [];
-  const numbersKey = sortedNumbers.join(",");
-
-  return queryOptions({
-    queryKey: animeQueryKeys.kitsuEpisodes(kitsuId, numbersKey),
-    queryFn: () =>
-      kitsuId && sortedNumbers.length > 0
-        ? KitsuService.fetchEpisodesBatch(kitsuId, sortedNumbers)
-        : ({} as Record<number, EpisodeMetadata>),
-    enabled: Boolean(kitsuId && sortedNumbers.length > 0),
-    staleTime: 7 * 24 * 60 * 60 * 1000, // 7 days
-    gcTime: 14 * 24 * 60 * 60 * 1000,
-  });
-};
-
-// 9. AniSkip Skip Times Query Options
+// 6. AniSkip Skip Times Query Options
 export const aniSkipQueryOptions = (
   malId?: number | null,
   episodeNumber?: number | null,
@@ -403,84 +333,6 @@ export function useEpisodeVideo(
     ...episodeVideoQueryOptions(episode, serverId),
     enabled: Boolean(options?.enabled !== false && episode?.dataId),
   });
-}
-
-export function useAniListMedia(
-  anilistId?: number | null,
-  fallbackTitle?: string | null,
-): UseQueryResult<AniListMedia | null, Error> {
-  return useQuery(aniListMediaQueryOptions(anilistId, fallbackTitle));
-}
-
-export function useKitsuAnimeId(
-  malId?: number | null,
-  anilistId?: number | null,
-  fallbackTitle?: string | null,
-  options?: { enabled?: boolean },
-): UseQueryResult<string | null, Error> {
-  const baseOptions = kitsuAnimeIdQueryOptions(malId, anilistId, fallbackTitle);
-  return useQuery({
-    ...baseOptions,
-    enabled:
-      options?.enabled !== undefined
-        ? Boolean(options.enabled && baseOptions.enabled)
-        : baseOptions.enabled,
-  });
-}
-
-export function useKitsuEpisodes(
-  kitsuId?: string | null,
-  episodeNumbers?: number[],
-  options?: { enabled?: boolean },
-): UseQueryResult<Record<number, EpisodeMetadata>, Error> {
-  const baseOptions = kitsuEpisodesQueryOptions(kitsuId, episodeNumbers);
-  return useQuery({
-    ...baseOptions,
-    enabled:
-      options?.enabled !== undefined
-        ? Boolean(options.enabled && baseOptions.enabled)
-        : baseOptions.enabled,
-  });
-}
-
-export function useAnimeEpisodeMetadata({
-  malId,
-  anilistId,
-  title,
-  episodeNumbers,
-  enabled = true,
-}: {
-  malId?: number | null;
-  anilistId?: number | null;
-  title?: string | null;
-  episodeNumbers?: number[];
-  enabled?: boolean;
-}): {
-  kitsuId: string | null | undefined;
-  metadataMap: Record<number, EpisodeMetadata>;
-  isLoading: boolean;
-} {
-  const { data: kitsuId, isLoading: isIdLoading } = useKitsuAnimeId(
-    malId,
-    anilistId,
-    title,
-    { enabled },
-  );
-  const { data: episodesData, isLoading: isEpisodesLoading } = useKitsuEpisodes(
-    kitsuId,
-    episodeNumbers,
-    {
-      enabled: Boolean(
-        enabled && kitsuId && (episodeNumbers?.length ?? 0) > 0,
-      ),
-    },
-  );
-
-  return {
-    kitsuId,
-    metadataMap: episodesData || {},
-    isLoading: isIdLoading || isEpisodesLoading,
-  };
 }
 
 export function useAniSkipTimes(params: {

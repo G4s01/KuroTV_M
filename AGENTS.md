@@ -27,6 +27,11 @@ Kuro Mobile è un'applicazione concepita **esclusivamente per smartphone Android
    - Per azzerare re-render massivi durante lo scorrimento inerziale veloce verso i limiti del carosello, gli indici correnti sono protetti da ref sincrono (`currentFocusedIndexRef`): `setFocusedIndex` viene invocato solo in caso di effettivo mutamento dell'indice (`targetIndex !== currentFocusedIndexRef.current`), e l'aggiornamento a 16ms non deve innescare ridisegni del box model.
    - Tutti gli array passati a `snapToOffsets` devono essere rigorosamente memoizzati (`useMemo`) per prevenire la ricreazione dei listener di snapping nativi su Fabric / Android ad ogni re-render.
    - Nessun elemento soggetto a focus dinamico in una lista scorrevole deve mutare il suo `borderWidth` al cambio stato: la geometria del box model deve rimanere fissa (es. 2dp) variando la sola tinta `borderColor`, azzerando le chiamate native a `requestLayout()` nel thread UI durante lo scorrimento inerziale.
+6. **Divieto Assoluto di Componenti Monolitici ('God Components') e Separazione Responsabilità**:
+   - È vietato accumulare logiche eterogenee, fogli di stile massivi e molteplici sezioni complesse all'interno di un singolo file di rotta (`app/(tabs)/*`, `app/*`) o componente.
+   - Tutti i fogli di stile complessi devono essere estratti in file dedicati (`*.styles.ts`).
+   - Le sezioni secondarie, le card tematiche, le barre di ricerca e gli overlay devono risiedere in subcomponenti modulari dedicati nelle rispettive cartelle tematiche (`src/components/home/`, `src/components/settings/`, `src/components/player/`, `src/components/anime/`).
+   - Tutti gli slider discreti e selettori a scorrimento devono utilizzare la primitiva touch-native unificata `StepSlider` (`src/components/StepSlider.tsx`), azzerando duplicazioni di gesture `PanResponder` e garantendo feedback aptico e snapping coerente.
 
 ---
 
@@ -35,7 +40,12 @@ Kuro Mobile è un'applicazione concepita **esclusivamente per smartphone Android
 - **Framework & Runtime**: Expo SDK 58 (v58.0.23), React Native 0.88.1, React 19.3.0 (Nuova Architettura / TurboModules nativi). `MainActivity.kt` adotta il costruttore moderno `DefaultReactActivityDelegate(this, mainComponentName)` senza flag Fabric obsoleti.
 - **Routing & Navigazione**: `expo-router` v58 (file-based routing con Stack e Bottom Tabs).
 - **Virtualizzazione Liste**: `@shopify/flash-list` v2 (rendering rapido di griglie e liste infinite).
-- **Componenti Modali Touch-Native**: Modali custom touch-safe basati su React Native `Modal` (`transparent={true}`, `statusBarTranslucent={true}` e slide animation) con overlay OLED e padding responsivo, in sostituzione di `@expo/ui` BottomSheet per azzerare crash Fabric/Compose in landscape, fullscreen e su scrolling annidato.
+- **Componenti Modali Touch-Native**: Modali custom touch-safe basati su React Native `Modal` (`transparent={true}`, `statusBarTranslucent={true}` e slide animation) con overlay OLED e padding responsivo, con eliminazione definitiva di `@expo/ui` BottomSheet dal bundle per azzerare crash Fabric/Compose in landscape, fullscreen e su scrolling annidato.
+- **Primitiva Slider Unificata (`StepSlider`)**: `StepSlider.tsx` gestisce in modo centralizzato e touch-safe il trascinamento (`PanResponder` con `onPanResponderTerminationRequest: () => false` e `pointerEvents="none"` su tracce e thumb), il layout dinamico e il feedback aptico (`Haptics.selectionAsync()`) per `HistorySlider`, `AniSkipSlider` e `AniSkipDurationSlider`.
+- **Architettura Componenti Modulare**:
+  - `src/components/home/`: isolamento completo di `home.styles.ts`, `HomeSection.tsx`, `ContinueWatchingSection.tsx`, `HomeSearchHeader.tsx`, `SearchFilterChips.tsx`, `SearchResultsGrid.tsx` e `SearchHistoryList.tsx`.
+  - `src/components/settings/`: isolamento completo di `settings.styles.ts`, `ThemeSettingsCard.tsx` e `SourceSettingsCard.tsx`.
+  - `src/components/anime/` & `src/components/player/`: subcomponenti dedicati per scheda tecnica metadati, backdrop, header, timeline, carosello puntate e controlli OSD.
 - **Gestione Sistema Android & Navbar**: `expo-navigation-bar` con modalità immersiva auto-hide (`BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE`) per nascondere la barra di sistema ad app aperta e richiamarla con swipe dal basso, e `react-native-safe-area-context` per l'adattamento dinamico con la navbar a 3 pulsanti.
 - **Data Fetching & Cache Remota**: `@tanstack/react-query` v5 con stale-time ottimizzato.
 - **Storage Locale ad Alte Prestazioni**: `react-native-mmkv` v3 (zero-latency key-value store sincrono per preferiti, cronologia, configurazioni e preferenze AniSkip/Navbar).

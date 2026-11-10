@@ -27,16 +27,19 @@ KuroM/
 ├── src/                         # Moduli core dell'applicazione
 │   ├── components/              # Componenti UI riutilizzabili (FlashList items, Modali touch-native)
 │   │   ├── anime/               # Moduli dettaglio anime (Backdrop, Synopsis, AnimeInfoTable, Controls)
+│   │   ├── home/                # Moduli Home Screen (home.styles, HomeSection, ContinueWatching, Search)
 │   │   ├── player/              # Moduli isolati video player (Header, Timeline, Footer, Carousel, Info)
+│   │   ├── settings/            # Moduli Impostazioni (settings.styles, ThemeSettings, SourceSettings)
 │   │   ├── skeleton/            # Primitive e layout skeleton animati (Zero CLS, OLED #161616)
 │   │   ├── FilterBottomSheet.tsx# Modale filtri di ricerca touch-safe
 │   │   ├── UpdateModal.tsx      # Modale notifica aggiornamento in-app all'avvio
-│   │   ├── HistorySlider.tsx    # Slider discreto retention cronologia (OFF, 30g, 60g, 90g, ON)
-│   │   └── AniSkipSlider.tsx    # Slider modalità salto sigle (OFF, MANUALE, AUTO)
+│   │   ├── ConfirmModal.tsx     # Modale in-app unificato di conferma (Zero Alert.alert)
+│   │   ├── StepSlider.tsx       # Primitiva touch-native slider discreto unificata
+│   │   ├── HistorySlider.tsx    # Slider retention cronologia (OFF, 30g, 60g, 90g, ON)
+│   │   ├── AniSkipSlider.tsx    # Slider modalità salto sigle (OFF, MANUALE, AUTO)
+│   │   └── AniSkipDurationSlider.tsx # Slider durata pulsante salto (5s - 60s, ∞)
 │   ├── services/
-│   │   ├── anilist/             # Integrazione metadata AniList GraphQL
 │   │   ├── aniskip/             # Servizio timestamp per skip intro/outro/recap
-│   │   ├── kitsu/               # Metadata e trending Kitsu API
 │   │   ├── queries/             # QueryOptions TanStack React Query v5
 │   │   ├── scraper/             # Web Scraper AnimeWorld con cheerio/slim
 │   │   ├── storage/             # Storage locale a zero-latenza MMKV v3
