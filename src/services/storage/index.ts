@@ -612,6 +612,10 @@ export const AppStorage = {
     return {
       ...DEFAULT_ANISKIP_SETTINGS,
       ...saved,
+      buttonDuration:
+        typeof saved?.buttonDuration === 'number'
+          ? saved.buttonDuration
+          : DEFAULT_ANISKIP_SETTINGS.buttonDuration,
     };
   },
 

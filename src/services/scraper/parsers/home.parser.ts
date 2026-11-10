@@ -19,7 +19,7 @@ export function parseHomePage(html: string, baseUrl: string): AnimeHomePage {
     sliderElements = $(".swiper-slide");
   }
 
-  sliderElements.each((_, el) => {
+  sliderElements.each((index, el) => {
     const $el = $(el);
     const nameEl = $el.find("a.name, .title a, a.title").first();
     const title =
@@ -47,10 +47,12 @@ export function parseHomePage(html: string, baseUrl: string): AnimeHomePage {
         id: id || title,
         title,
         thumbnail,
+        image: styleBg || thumbnail,
         banner: styleBg || thumbnail,
         synopsis: synopsis || undefined,
         link,
         badge: badge || undefined,
+        rank: String(index + 1),
         genres: [],
       });
     }
@@ -127,8 +129,12 @@ export function parseHomePage(html: string, baseUrl: string): AnimeHomePage {
   // 3. Ongoing (In corso)
   let ongoing: AnimeItem[] = [];
   const ongoingWidget = $(".widget").filter((_, el) => {
-    const title = $(el).find(".widget-title").text().toLowerCase();
-    return title.includes("in corso") || title.includes("ongoing");
+    const title = $(el).find(".widget-title").text()?.toLowerCase() || "";
+    const href = $(el).find(".widget-title a").attr("href")?.toLowerCase() || "";
+    return (
+      (typeof title === "string" && (title.includes("in corso") || title.includes("ongoing"))) ||
+      href.includes("ongoing")
+    );
   });
 
   if (ongoingWidget.length > 0) {
@@ -160,8 +166,17 @@ export function parseHomePage(html: string, baseUrl: string): AnimeHomePage {
   let upcomingTitle = "Prossime Uscite";
   let upcoming: AnimeItem[] = [];
   const upcomingWidget = $(".widget").filter((_, el) => {
-    const title = $(el).find(".widget-title").text().toLowerCase();
-    return title.includes("prossime") || title.includes("upcoming");
+    const title = $(el).find(".widget-title").text()?.toLowerCase() || "";
+    const href = $(el).find(".widget-title a").attr("href")?.toLowerCase() || "";
+    return (
+      (typeof title === "string" && (
+        title.includes("prossime") ||
+        title.includes("upcoming") ||
+        title.includes("uscite") ||
+        title.includes("stagione")
+      )) ||
+      href.includes("upcoming")
+    );
   });
 
   if (upcomingWidget.length > 0) {
@@ -171,7 +186,7 @@ export function parseHomePage(html: string, baseUrl: string): AnimeHomePage {
     if (titleText) upcomingTitle = titleText;
     upcoming = parseCardList(
       upcomingWidget.find(
-        ".film-listnext .inner, div.widget-body > div.film-list .inner, .item",
+        ".film-listnext .inner, div.widget-body > div.film-list .inner, .owl-carousel .item .inner, .film-list .item, .item",
       ),
     );
   } else {

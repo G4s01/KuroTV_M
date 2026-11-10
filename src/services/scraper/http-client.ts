@@ -123,7 +123,7 @@ export class HttpClient {
           axiosErr.code === "ECONNABORTED" ||
           axiosErr.code === "ETIMEDOUT" ||
           axiosErr.code === "ERR_NETWORK" ||
-          (axiosErr.message && axiosErr.message.includes("timeout"));
+          (typeof axiosErr.message === "string" && axiosErr.message.includes("timeout"));
 
         const animeworldMatch = currentUrl.match(
           /https?:\/\/(?:www\.)?animeworld\.([a-z]+)(\/.*)?$/i,

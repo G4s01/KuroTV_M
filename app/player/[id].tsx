@@ -260,11 +260,20 @@ export default function VideoPlayerScreen() {
             setActiveSkip(null);
           }
         } else {
-          // Manual mode: show button for max 10 seconds from interval start
-          const maxDisplayEnd = Math.min(
-            matchingSkip.interval.endTime,
-            matchingSkip.interval.startTime + 10
-          );
+          // Manual mode: show button according to configured duration (0 = full interval)
+          const configuredDuration =
+            typeof settings.buttonDuration === 'number' && settings.buttonDuration > 0
+              ? settings.buttonDuration
+              : settings.buttonDuration === 0
+              ? Infinity
+              : 10;
+
+          const maxDisplayEnd = isFinite(configuredDuration)
+            ? Math.min(
+                matchingSkip.interval.endTime,
+                matchingSkip.interval.startTime + configuredDuration
+              )
+            : matchingSkip.interval.endTime;
           const isIn10sWindow = time >= matchingSkip.interval.startTime && time < maxDisplayEnd;
 
           if (isIn10sWindow) {
@@ -1198,6 +1207,11 @@ export default function VideoPlayerScreen() {
                 : activeSkip.skipType === 'recap'
                 ? 'recap'
                 : 'intro'
+            }
+            durationSeconds={
+              typeof aniSkipSettingsRef.current?.buttonDuration === 'number'
+                ? aniSkipSettingsRef.current.buttonDuration
+                : 10
             }
             onSkip={handleAniSkip}
             onTimeout={() => {

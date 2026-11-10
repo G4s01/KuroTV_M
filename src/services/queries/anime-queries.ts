@@ -27,6 +27,7 @@ export const animeQueryKeys = {
   all: ["anime"] as const,
   home: () => [...animeQueryKeys.all, "home"] as const,
   latest: (page = 1) => [...animeQueryKeys.all, "latest", page] as const,
+  upcoming: (page = 1) => [...animeQueryKeys.all, "upcoming", page] as const,
   detail: (id: string) => [...animeQueryKeys.all, "detail", id] as const,
   search: (filter: SearchFilter | string) =>
     [...animeQueryKeys.all, "search", filter] as const,
@@ -74,6 +75,15 @@ export const latestEpisodesQueryOptions = (page = 1) =>
     queryFn: () => AnimeWorldScraper.getLatestEpisodes(page),
     staleTime: 5 * 60 * 1000,
     gcTime: 20 * 60 * 1000,
+  });
+
+// 2b. Upcoming Anime Query Options
+export const upcomingAnimeQueryOptions = (page = 1) =>
+  queryOptions({
+    queryKey: animeQueryKeys.upcoming(page),
+    queryFn: () => AnimeWorldScraper.getUpcoming(page),
+    staleTime: 10 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
   });
 
 // 3. Anime Detail Query Options

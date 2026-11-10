@@ -6,6 +6,7 @@ export * from './ServerBottomSheet';
 export * from './BatchBottomSheet';
 export * from './HistorySlider';
 export * from './AniSkipSlider';
+export * from './AniSkipDurationSlider';
 export * from './ConfirmModal';
 export * from './UpdateModal';
 export * from './skeleton';

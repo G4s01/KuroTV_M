@@ -26,6 +26,7 @@ export interface AniSkipSettings {
   enableOpening: boolean;
   enableEnding: boolean;
   enableRecap: boolean;
+  buttonDuration: number;
 }
 
 export const DEFAULT_ANISKIP_SETTINGS: AniSkipSettings = {
@@ -33,4 +34,5 @@ export const DEFAULT_ANISKIP_SETTINGS: AniSkipSettings = {
   enableOpening: true,
   enableEnding: true,
   enableRecap: true,
+  buttonDuration: 10,
 };

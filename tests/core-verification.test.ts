@@ -48,7 +48,15 @@ import {
   AnimeInfoTable,
   AnimeControlsBar,
 } from '../src/components/anime/index';
-import { HistorySlider, UpdateModal } from '../src/components/index';
+import {
+  HistorySlider,
+  UpdateModal,
+  AniSkipSlider,
+  AniSkipDurationSlider,
+  ANISKIP_DURATION_STEPS,
+  formatAniSkipAutoDescription,
+  formatAniSkipManualDescription,
+} from '../src/components/index';
 import { UpdateStore, usePendingUpdate } from '../src/services/updater/index';
 import { parseDetailPage } from '../src/services/scraper/parsers/detail.parser';
 import { CURRENT_CHANGELOG, formatChangelog } from '../src/constants/changelog';
@@ -237,7 +245,7 @@ const expectedScripts = [
   'clean-r2-old-versions.mjs',
   'upload-github-release.mjs',
   'upload-r2.mjs',
-  'register-loader.mjs',
+  'apply-patches.mjs',
   'HOW-TO-RESTORE.txt',
 ];
 for (const scriptFile of expectedScripts) {
@@ -1605,6 +1613,161 @@ assert(playbackServiceCode.includes('emitPrevEpisode'), 'ExpoVideoPlaybackServic
 assert(playbackServiceCode.includes('setArtworkData'), 'ExpoVideoPlaybackService deve trasmettere artworkData a MediaSession');
 
 console.log('✓ AniSkipSlider, Player Integrated Loader & Media Notification verificati con successo.');
+
+// -----------------------------------------------------------------------------
+// 13. Test AniSkip Dynamic Auto Description, Auto-Off Fallback & Duration Slider
+// -----------------------------------------------------------------------------
+console.log('\n[13/13] Verifica AniSkip Dynamic Auto Description, Auto-Off Fallback & Duration Slider...');
+
+// 1. formatAniSkipAutoDescription tests
+assert.strictEqual(
+  formatAniSkipAutoDescription({ enableOpening: true, enableEnding: true, enableRecap: true }),
+  "SALTA AUTOMATICAMENTE INTRO, RECAP E OUTRO ALL'INIZIO DELL'INTERVALLO"
+);
+assert.strictEqual(
+  formatAniSkipAutoDescription({ enableOpening: true, enableEnding: true, enableRecap: false }),
+  "SALTA AUTOMATICAMENTE INTRO E OUTRO ALL'INIZIO DELL'INTERVALLO"
+);
+assert.strictEqual(
+  formatAniSkipAutoDescription({ enableOpening: true, enableEnding: false, enableRecap: false }),
+  "SALTA AUTOMATICAMENTE INTRO ALL'INIZIO DELL'INTERVALLO"
+);
+assert.strictEqual(
+  formatAniSkipAutoDescription({ enableOpening: false, enableEnding: false, enableRecap: false }),
+  "NESSUN INTERVALLO SELEZIONATO. SELEZIONA ALMENO UN ELEMENTO DA SALTARE"
+);
+
+// 2. formatAniSkipManualDescription tests
+assert.strictEqual(
+  formatAniSkipManualDescription({ buttonDuration: 10 }),
+  "MOSTRA IL PULSANTE 'SALTA' PER 10 SECONDI ALL'INIZIO DELL'INTERVALLO"
+);
+assert.strictEqual(
+  formatAniSkipManualDescription({ buttonDuration: 20 }),
+  "MOSTRA IL PULSANTE 'SALTA' PER 20 SECONDI ALL'INIZIO DELL'INTERVALLO"
+);
+assert.strictEqual(
+  formatAniSkipManualDescription({ buttonDuration: 0 }),
+  "MOSTRA IL PULSANTE 'SALTA' PER L'INTERA TOTALITÀ DELL'INTERVALLO (INFINITO)"
+);
+
+// 3. ANISKIP_DURATION_STEPS verification
+assert.strictEqual(ANISKIP_DURATION_STEPS.length, 8, 'ANISKIP_DURATION_STEPS deve contenere 8 step');
+assert.strictEqual(ANISKIP_DURATION_STEPS[0].value, 5, 'Primo step deve essere 5s');
+assert.strictEqual(ANISKIP_DURATION_STEPS[1].value, 10, 'Secondo step deve essere 10s');
+assert.strictEqual(ANISKIP_DURATION_STEPS[7].value, 0, 'Ultimo step deve essere 0 (infinito)');
+assert.strictEqual(ANISKIP_DURATION_STEPS[7].label, '∞', 'Ultimo step deve avere label ∞');
+
+// 4. AniSkipDurationSlider export and settings integration
+assert(typeof AniSkipDurationSlider === 'function' || typeof AniSkipDurationSlider === 'object', 'AniSkipDurationSlider deve essere esportato');
+const settingsCodeFinal = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/settings.tsx'), 'utf-8');
+assert(settingsCodeFinal.includes('AniSkipDurationSlider'), 'settings.tsx deve importare e usare AniSkipDurationSlider');
+assert(settingsCodeFinal.includes("newSettings.mode = 'disabled'"), 'settings.tsx deve impostare mode su disabled se tutti gli intervalli sono deselezionati');
+
+// 5. Defensive Updater checks: selectApkForDevice with undefined/empty manifest
+const emptyManifest: any = { version: '1.0.0', versionCode: 2 };
+const safeSelected = selectApkForDevice(emptyManifest, undefined);
+assert(safeSelected !== null && typeof safeSelected === 'object', 'selectApkForDevice deve gestire supportedAbis undefined senza crash');
+assert.strictEqual(safeSelected.abi, 'universal', 'Fallback deve essere universal');
+
+console.log('✓ AniSkip Dynamic Auto Description, Auto-Off Fallback & Duration Slider verificati con successo.');
+
+// -----------------------------------------------------------------------------
+// 14. Verifica Ridefinizione Schermata Home & Scraper
+// -----------------------------------------------------------------------------
+console.log('\n[14/14] Verifica Ridefinizione Schermata Home & Scraper (Raccomandati, Play/Info, Caroselli, Upcoming)...');
+
+// 1. Verifica Metodi Scraper & Parser Home
+const { AnimeWorldScraper: AwScraper } = await import('../src/services/scraper/index.ts');
+const { parseHomePage: testParseHome } = await import('../src/services/scraper/parsers/home.parser.ts');
+
+assert.strictEqual(typeof AwScraper.getUpcoming, 'function', 'AnimeWorldScraper deve esporre getUpcoming');
+
+// Mock HTML di test che include la top 8 raccomandati, ongoing, upcoming e newAdded
+const mockHomeHtml = `
+<html>
+  <body>
+    <div id="swiper-container">
+      <div class="items swiper-wrapper">
+        <div class="item swiper-slide" style="background-image: url(https://img.animeworld.ac/slider/1.png)">
+          <div class="info">
+            <a class="name" href="/play/rec-1.abc">Recommended Anime 1</a>
+            <p>Descrizione 1</p>
+          </div>
+        </div>
+        <div class="item swiper-slide" style="background-image: url(https://img.animeworld.ac/slider/2.png)">
+          <div class="info">
+            <a class="name" href="/play/rec-2.def">Recommended Anime 2</a>
+            <p>Descrizione 2</p>
+          </div>
+        </div>
+        <div class="item swiper-slide" style="background-image: url(https://img.animeworld.ac/slider/3.png)">
+          <div class="info">
+            <a class="name" href="/play/rec-3.ghi">Recommended Anime 3</a>
+            <p>Descrizione 3</p>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="widget hotnew">
+      <div class="widget-body">
+        <div class="content"><div class="item"><div class="inner"><a class="name" href="/play/latest-1.xyz">Latest Ep 1</a><img src="https://img/1.png"/></div></div></div>
+        <div class="content"></div>
+        <div class="content"></div>
+        <div class="content"><div class="item"><div class="inner"><a class="name" href="/play/trend-1.xyz">Trending Anime 1</a><img src="https://img/t1.png"/></div></div></div>
+      </div>
+    </div>
+    <div class="widget">
+      <div class="widget-title"><a href="/ongoing">Guarda tutto</a><div class="title">Anime in corso</div></div>
+      <div class="widget-body"><div class="film-list"><div class="item"><div class="inner"><a class="name" href="/play/ongoing-1.xyz">Ongoing Anime 1</a><img src="https://img/o1.png"/></div></div></div></div>
+    </div>
+    <div class="widget">
+      <div class="widget-title"><a href="/upcoming/2027/winter">Guarda tutto</a><div class="title">Uscite Inverno 2027</div></div>
+      <div class="widget-body"><div class="film-list"><div class="item"><div class="inner"><a class="name" href="/play/upcoming-1.xyz">Upcoming Anime 1</a><img src="https://img/u1.png"/></div></div></div></div>
+    </div>
+    <div class="widget simple-film-list">
+      <div class="widget-title"><div class="title">Nuove aggiunte</div></div>
+      <div class="widget-body"><div class="item"><a class="name" href="/play/new-1.xyz">New Anime 1</a><img src="https://img/n1.png"/></div></div>
+    </div>
+  </body>
+</html>
+`;
+
+const parsedHome = testParseHome(mockHomeHtml, 'https://www.animeworld.ac');
+assert.strictEqual(parsedHome.sliders.length, 3, 'Devono essere parsati 3 slider mock');
+assert.strictEqual(parsedHome.sliders[0].rank, '1', 'Primo slider deve avere rank 1');
+assert.strictEqual(parsedHome.sliders[1].rank, '2', 'Secondo slider deve avere rank 2');
+assert.strictEqual(parsedHome.sliders[0].image, 'https://img.animeworld.ac/slider/1.png', 'Primo slider deve contenere image estratta dallo style');
+assert.strictEqual(parsedHome.all.length, 1, 'Ultimi episodi deve contenere 1 item');
+assert.strictEqual(parsedHome.trending.length, 1, 'Tendenze deve contenere 1 item');
+assert.strictEqual(parsedHome.ongoing.length, 1, 'In corso deve contenere 1 item');
+assert.strictEqual(parsedHome.upcoming.length, 1, 'Upcoming deve contenere 1 item');
+assert.strictEqual(parsedHome.upcomingTitle, 'Uscite Inverno 2027', 'Titolo stagionale upcoming deve essere corretto');
+assert.strictEqual(parsedHome.newAdded.length, 1, 'Nuove aggiunte deve contenere 1 item');
+
+// 2. Verifica Codice Sorgente app/(tabs)/index.tsx
+const indexSource = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/index.tsx'), 'utf-8');
+assert(indexSource.includes('TOP RACCOMANDATI'), 'index.tsx deve contenere la sezione TOP RACCOMANDATI');
+assert(indexSource.includes('handlePlayHero'), 'index.tsx deve implementare handlePlayHero per avviare la riproduzione dal banner');
+assert(indexSource.includes('RIPRODUCI'), 'index.tsx deve mostrare il pulsante RIPRODUCI nel banner hero');
+assert(indexSource.includes('INFO'), 'index.tsx deve mostrare il pulsante INFO nel banner hero');
+assert(indexSource.includes('handleSelectRecommended'), 'index.tsx deve gestire la selezione dal carosello raccomandati');
+assert(indexSource.includes('handleRecommendedScroll'), 'index.tsx deve sincronizzare il focus durante lo scorrimento del carosello');
+assert(indexSource.includes('ULTIMI EPISODI USCITI'), 'index.tsx deve contenere il carosello ULTIMI EPISODI USCITI');
+assert(indexSource.includes('TENDENZE'), 'index.tsx deve contenere il carosello TENDENZE');
+assert(indexSource.includes('ANIME IN CORSO'), 'index.tsx deve contenere il carosello ANIME IN CORSO');
+assert(indexSource.includes('PROSSIME USCITE'), 'index.tsx deve supportare il titolo dinamico per le uscite di stagione');
+assert(indexSource.includes('NUOVE AGGIUNTE'), 'index.tsx deve contenere il carosello NUOVE AGGIUNTE');
+assert(indexSource.includes('hasContinueWatching={continueWatching.length > 0}'), 'index.tsx deve sincronizzare continueWatching con HomeScreenSkeleton');
+
+// 3. Verifica Struttura HomeScreenSkeleton.tsx
+const homeSkelSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/skeleton/HomeScreenSkeleton.tsx'), 'utf-8');
+assert(homeSkelSource.includes('recommendedCardSkeleton'), 'HomeScreenSkeleton deve modellare il carosello dei raccomandati');
+assert(homeSkelSource.includes('heroActionsRow'), 'HomeScreenSkeleton deve modellare i due pulsanti Play e Info nel banner');
+assert(homeSkelSource.includes('hasContinueWatching'), 'HomeScreenSkeleton deve supportare hasContinueWatching');
+assert(homeSkelSource.includes('continueThumbWrapper'), 'HomeScreenSkeleton deve supportare continueThumbWrapper');
+
+console.log('✓ Ridefinizione Schermata Home & Scraper verificate con successo.');
 
 // -----------------------------------------------------------------------------
 // Fine Test

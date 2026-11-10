@@ -255,11 +255,13 @@ export function getDeviceSupportedAbis(): string[] {
       return ['x86_64'];
     }
     const fp = String(pc.Fingerprint || pc.Model || '').toLowerCase();
-    if (fp.includes('x86_64')) {
-      return ['x86_64', 'arm64-v8a', 'armeabi-v7a'];
-    }
-    if (fp.includes('x86')) {
-      return ['x86', 'armeabi-v7a'];
+    if (fp && typeof fp === 'string') {
+      if (fp.includes('x86_64')) {
+        return ['x86_64', 'arm64-v8a', 'armeabi-v7a'];
+      }
+      if (fp.includes('x86')) {
+        return ['x86', 'armeabi-v7a'];
+      }
     }
   } catch {
     // Ignore error
@@ -297,11 +299,11 @@ export function selectApkForDevice(
   manifest: UpdateManifest,
   supportedAbis: string[] = getDeviceSupportedAbis()
 ): SelectedApk {
-  const apks = manifest.apks;
+  const apks = manifest?.apks;
 
   const fallbackUniversal: SelectedApk = {
-    url: manifest.apkUrl,
-    sha256: manifest.sha256,
+    url: manifest?.apkUrl || '',
+    sha256: manifest?.sha256 || '',
     abi: 'universal',
   };
 
@@ -317,7 +319,7 @@ export function selectApkForDevice(
         ? {
             url,
             abi: fallbackAbi,
-            sha256: fallbackAbi === 'universal' ? manifest.sha256 : undefined,
+            sha256: fallbackAbi === 'universal' ? manifest?.sha256 : undefined,
           }
         : null;
     }
@@ -330,7 +332,7 @@ export function selectApkForDevice(
           typeof entry.sha256 === 'string'
             ? entry.sha256.trim()
             : fallbackAbi === 'universal'
-            ? manifest.sha256
+            ? manifest?.sha256
             : undefined,
         size: typeof entry.size === 'number' && entry.size > 0 ? entry.size : undefined,
         abi: fallbackAbi,
@@ -340,7 +342,9 @@ export function selectApkForDevice(
   };
 
   // Match in order of device preference (including standard ABI aliases)
-  for (const rawAbi of supportedAbis) {
+  const safeAbis = Array.isArray(supportedAbis) ? supportedAbis : [];
+  for (const rawAbi of safeAbis) {
+    if (!rawAbi || typeof rawAbi !== 'string') continue;
     const abi = rawAbi.trim().toLowerCase();
     const candidateKeys = [abi, ABI_ALIASES[abi]].filter(Boolean) as string[];
     for (const key of candidateKeys) {
@@ -473,6 +477,9 @@ class UpdaterServiceImpl {
     const currentVersion = getCurrentAppVersion();
     const currentVersionCode = getCurrentAppVersionCode();
     let url = manifestUrlOverride || getManifestUrl();
+    if (!url || typeof url !== 'string') {
+      url = DEFAULT_MANIFEST_URL;
+    }
     const token = getOtaToken();
 
     const headers: Record<string, string> = {
@@ -480,7 +487,7 @@ class UpdaterServiceImpl {
       'Cache-Control': 'no-cache',
     };
 
-    if (token) {
+    if (token && typeof url === 'string') {
       headers['Authorization'] = `Bearer ${token}`;
       headers['X-OTA-Token'] = token;
       if (!url.includes('token=')) {
@@ -490,8 +497,10 @@ class UpdaterServiceImpl {
     }
 
     // Add timestamp to bypass edge / intermediate caching
-    const cacheBuster = `_t=${Date.now()}`;
-    url = `${url}${url.includes('?') ? '&' : '?'}${cacheBuster}`;
+    if (typeof url === 'string') {
+      const cacheBuster = `_t=${Date.now()}`;
+      url = `${url}${url.includes('?') ? '&' : '?'}${cacheBuster}`;
+    }
 
     try {
       const response = await axios.get(url, {
@@ -561,7 +570,11 @@ class UpdaterServiceImpl {
 
     const token = getOtaToken();
     const downloadHeaders: Record<string, string> = {};
-    let finalApkUrl = selectedApk.url || manifest.apkUrl;
+    let finalApkUrl = selectedApk?.url || manifest?.apkUrl;
+
+    if (!finalApkUrl || typeof finalApkUrl !== 'string') {
+      throw new Error('URL del pacchetto APK non disponibile o non valido');
+    }
 
     if (token) {
       downloadHeaders['Authorization'] = `Bearer ${token}`;

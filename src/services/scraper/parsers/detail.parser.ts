@@ -87,27 +87,29 @@ export function parseDetailPage(
       }
       const ddText = sanitizeText(dd.text());
 
-      if (dtText.includes("categoria")) category = ddText;
-      else if (dtText.includes("audio")) audio = ddText;
-      else if (dtText.includes("data")) releaseDate = ddText;
-      else if (dtText.includes("stagione")) season = ddText;
-      else if (dtText.includes("studio")) {
-        dd.find("a").each((_, a) => {
-          const s = sanitizeText($(a).text());
-          if (s) studios.push(s);
-        });
-        if (studios.length === 0 && ddText) studios.push(ddText);
-      } else if (dtText.includes("gener")) {
-        dd.find("a").each((_, a) => {
-          const g = sanitizeText($(a).text());
-          if (g) genres.push(g);
-        });
-        if (genres.length === 0 && ddText) genres.push(ddText);
-      } else if (dtText.includes("voto")) rating = ddText;
-      else if (dtText.includes("durata")) duration = ddText;
-      else if (dtText.includes("episod")) totalEpisodesStr = ddText;
-      else if (dtText.includes("stato")) status = ddText;
-      else if (dtText.includes("visualizzazion")) views = ddText;
+      if (dtText && typeof dtText === 'string') {
+        if (dtText.includes("categoria")) category = ddText;
+        else if (dtText.includes("audio")) audio = ddText;
+        else if (dtText.includes("data")) releaseDate = ddText;
+        else if (dtText.includes("stagione")) season = ddText;
+        else if (dtText.includes("studio")) {
+          dd.find("a").each((_, a) => {
+            const s = sanitizeText($(a).text());
+            if (s) studios.push(s);
+          });
+          if (studios.length === 0 && ddText) studios.push(ddText);
+        } else if (dtText.includes("gener")) {
+          dd.find("a").each((_, a) => {
+            const g = sanitizeText($(a).text());
+            if (g) genres.push(g);
+          });
+          if (genres.length === 0 && ddText) genres.push(ddText);
+        } else if (dtText.includes("voto")) rating = ddText;
+        else if (dtText.includes("durata")) duration = ddText;
+        else if (dtText.includes("episod")) totalEpisodesStr = ddText;
+        else if (dtText.includes("stato")) status = ddText;
+        else if (dtText.includes("visualizzazion")) views = ddText;
+      }
     });
   }
 
@@ -361,18 +363,18 @@ export function parseDetailPage(
   let totalEpisodes: number | string | undefined = undefined;
   if (totalEpisodesStr) {
     const clean = totalEpisodesStr.trim();
-    if (clean.includes('/')) {
+    if (typeof clean === 'string' && clean.includes('/')) {
       const parts = clean.split('/').map((p) => p.trim());
       if (parts.length >= 2) {
         const totalPart = parts[1];
-        if (totalPart.includes('?')) {
+        if (totalPart && typeof totalPart === 'string' && totalPart.includes('?')) {
           totalEpisodes = totalPart;
         } else {
           const num = parseInt(totalPart, 10);
           totalEpisodes = !isNaN(num) ? num : totalPart;
         }
       }
-    } else if (clean.includes('?')) {
+    } else if (typeof clean === 'string' && clean.includes('?')) {
       totalEpisodes = clean;
     } else {
       const num = parseInt(clean, 10);
@@ -388,7 +390,7 @@ export function parseDetailPage(
       if (firstEp.videoUrl) {
         trailerUrl = firstEp.videoUrl;
       } else if (
-        firstEp.referer &&
+        typeof firstEp.referer === "string" &&
         (firstEp.referer.includes("youtube") || firstEp.referer.includes("youtu.be"))
       ) {
         trailerUrl = firstEp.referer;

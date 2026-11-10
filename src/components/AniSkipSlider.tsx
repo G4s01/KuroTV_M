@@ -9,18 +9,53 @@ import {
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { oledTheme, getContrastTextColor, type Theme } from '@/theme';
-import type { AniSkipMode } from '@/services/storage';
+import type { AniSkipMode, AniSkipSettings } from '@/types';
 
 export interface AniSkipSliderProps {
   value: AniSkipMode;
   onChange: (newValue: AniSkipMode) => void;
   theme: Theme;
+  settings?: Partial<AniSkipSettings>;
 }
 
 export interface AniSkipStepItem {
   label: string;
   value: AniSkipMode;
   description: string;
+}
+
+export function formatAniSkipAutoDescription(settings?: Partial<AniSkipSettings>): string {
+  const op = settings?.enableOpening ?? true;
+  const recap = settings?.enableRecap ?? true;
+  const ed = settings?.enableEnding ?? true;
+
+  const items: string[] = [];
+  if (op) items.push('INTRO');
+  if (recap) items.push('RECAP');
+  if (ed) items.push('OUTRO');
+
+  if (items.length === 0) {
+    return 'NESSUN INTERVALLO SELEZIONATO. SELEZIONA ALMENO UN ELEMENTO DA SALTARE';
+  }
+
+  if (items.length === 1) {
+    return `SALTA AUTOMATICAMENTE ${items[0]} ALL'INIZIO DELL'INTERVALLO`;
+  }
+
+  if (items.length === 2) {
+    return `SALTA AUTOMATICAMENTE ${items[0]} E ${items[1]} ALL'INIZIO DELL'INTERVALLO`;
+  }
+
+  return `SALTA AUTOMATICAMENTE ${items[0]}, ${items[1]} E ${items[2]} ALL'INIZIO DELL'INTERVALLO`;
+}
+
+export function formatAniSkipManualDescription(settings?: Partial<AniSkipSettings>): string {
+  const dur = settings?.buttonDuration;
+  if (dur === 0) {
+    return "MOSTRA IL PULSANTE 'SALTA' PER L'INTERA TOTALITÀ DELL'INTERVALLO (INFINITO)";
+  }
+  const seconds = typeof dur === 'number' && dur > 0 ? dur : 10;
+  return `MOSTRA IL PULSANTE 'SALTA' PER ${seconds} SECONDI ALL'INIZIO DELL'INTERVALLO`;
 }
 
 export const ANISKIP_STEPS: AniSkipStepItem[] = [
@@ -48,15 +83,36 @@ export const AniSkipSlider = React.memo<AniSkipSliderProps>(function AniSkipSlid
   value,
   onChange,
   theme,
+  settings,
 }) {
   const [trackWidth, setTrackWidth] = React.useState(0);
   const trackWidthRef = React.useRef(0);
   const startLocationXRef = React.useRef(0);
 
+  const steps = React.useMemo<AniSkipStepItem[]>(() => {
+    return [
+      {
+        label: 'OFF',
+        value: 'disabled',
+        description: 'SALTO DI SIGLE E RECAP COMPLETAMENTE DISATTIVATO',
+      },
+      {
+        label: 'MANUALE',
+        value: 'manual',
+        description: formatAniSkipManualDescription(settings),
+      },
+      {
+        label: 'AUTO',
+        value: 'auto',
+        description: formatAniSkipAutoDescription(settings),
+      },
+    ];
+  }, [settings]);
+
   const activeIndex = React.useMemo(() => {
-    const idx = ANISKIP_STEPS.findIndex((s) => s.value === value);
+    const idx = steps.findIndex((s) => s.value === value);
     return idx >= 0 ? idx : 1; // Default to 'manual' (index 1)
-  }, [value]);
+  }, [steps, value]);
 
   const activeIndexRef = React.useRef(activeIndex);
   activeIndexRef.current = activeIndex;
@@ -65,13 +121,13 @@ export const AniSkipSlider = React.memo<AniSkipSliderProps>(function AniSkipSlid
   onChangeRef.current = onChange;
 
   const selectStepByIndex = React.useCallback((index: number) => {
-    const clamped = Math.max(0, Math.min(ANISKIP_STEPS.length - 1, index));
+    const clamped = Math.max(0, Math.min(steps.length - 1, index));
     if (clamped !== activeIndexRef.current) {
       Haptics.selectionAsync().catch(() => {});
       activeIndexRef.current = clamped;
-      onChangeRef.current(ANISKIP_STEPS[clamped].value);
+      onChangeRef.current(steps[clamped].value);
     }
-  }, []);
+  }, [steps]);
 
   const updateFromPositionX = React.useCallback((posX: number) => {
     const w = trackWidthRef.current;
@@ -82,15 +138,15 @@ export const AniSkipSlider = React.memo<AniSkipSliderProps>(function AniSkipSlid
     const ratio = clampedX / usableWidth;
     const newIndex = Math.max(
       0,
-      Math.min(ANISKIP_STEPS.length - 1, Math.round(ratio * (ANISKIP_STEPS.length - 1)))
+      Math.min(steps.length - 1, Math.round(ratio * (steps.length - 1)))
     );
 
     if (newIndex !== activeIndexRef.current) {
       Haptics.selectionAsync().catch(() => {});
       activeIndexRef.current = newIndex;
-      onChangeRef.current(ANISKIP_STEPS[newIndex].value);
+      onChangeRef.current(steps[newIndex].value);
     }
-  }, []);
+  }, [steps]);
 
   // PanResponder to prevent ScrollView conflict
   const panResponder = React.useRef(
@@ -119,8 +175,8 @@ export const AniSkipSlider = React.memo<AniSkipSliderProps>(function AniSkipSlid
     }
   };
 
-  const currentStep = ANISKIP_STEPS[activeIndex];
-  const activeRatio = activeIndex / (ANISKIP_STEPS.length - 1);
+  const currentStep = steps[activeIndex];
+  const activeRatio = activeIndex / (steps.length - 1);
   const primaryContrast = getContrastTextColor(theme.colors.primary);
   const usableWidth = Math.max(0, trackWidth - THUMB_SIZE);
   const thumbLeft = activeRatio * usableWidth;
@@ -152,9 +208,9 @@ export const AniSkipSlider = React.memo<AniSkipSliderProps>(function AniSkipSlid
           />
 
           {/* Step tick dots aligned to thumb center */}
-          {ANISKIP_STEPS.map((s, idx) => {
+          {steps.map((s, idx) => {
             const isFilled = idx <= activeIndex;
-            const dotRatio = idx / (ANISKIP_STEPS.length - 1);
+            const dotRatio = idx / (steps.length - 1);
             const dotLeft = trackWidth > 0 ? THUMB_RADIUS + dotRatio * usableWidth : `${dotRatio * 100}%`;
             return (
               <View
@@ -200,7 +256,7 @@ export const AniSkipSlider = React.memo<AniSkipSliderProps>(function AniSkipSlid
 
       {/* Discrete Step Labels (Tap-to-jump) */}
       <View style={styles.labelsRow}>
-        {ANISKIP_STEPS.map((s, idx) => {
+        {steps.map((s, idx) => {
           const isActive = idx === activeIndex;
           return (
             <Pressable

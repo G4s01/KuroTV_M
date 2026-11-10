@@ -102,8 +102,8 @@ export async function resolveVideoSource(
   const cleanedUrl = cleanGrabberUrl(grabber);
 
   // 1. Priority: Server 9 (AnimeWorld Server)
-  if (serverId === "9" || (!serverId && cleanedUrl.includes("animeworld"))) {
-    const isM3u8 = cleanedUrl.includes(".m3u8");
+  if (serverId === "9" || (!serverId && typeof cleanedUrl === "string" && cleanedUrl.includes("animeworld"))) {
+    const isM3u8 = typeof cleanedUrl === "string" && cleanedUrl.includes(".m3u8");
     const format = isM3u8 ? "hls" : "mp4";
 
     let qualities: DirectVideoQuality[] = [];
@@ -133,7 +133,7 @@ export async function resolveVideoSource(
 
   // 2. Server 6 (Server 2)
   if (serverId === "6") {
-    const isM3u8 = cleanedUrl.includes(".m3u8");
+    const isM3u8 = typeof cleanedUrl === "string" && cleanedUrl.includes(".m3u8");
     return {
       url: cleanedUrl,
       format: isM3u8 ? "hls" : "mp4",
@@ -144,7 +144,7 @@ export async function resolveVideoSource(
   }
 
   // 3. Server 8 (Streamtape)
-  if (serverId === "8" || cleanedUrl.includes("streamtape.com")) {
+  if (serverId === "8" || (typeof cleanedUrl === "string" && cleanedUrl.includes("streamtape.com"))) {
     try {
       const pageHtml = await httpClient.getPage(cleanedUrl, {
         Referer: episode.referer || scraperConfig.getBaseUrl(),
@@ -174,7 +174,7 @@ export async function resolveVideoSource(
   }
 
   // 4. Server 2 (DoodStream)
-  if (serverId === "2" || cleanedUrl.includes("dood.")) {
+  if (serverId === "2" || (typeof cleanedUrl === "string" && cleanedUrl.includes("dood."))) {
     try {
       const pageHtml = await httpClient.getPage(cleanedUrl);
       const md5Match = pageHtml.match(/\$\.get\('(\/pass_md5[^']+)'/);
@@ -220,8 +220,8 @@ export async function resolveVideoSource(
   }
 
   // 5. Fallback for any other valid stream URL
-  if (cleanedUrl.startsWith("http://") || cleanedUrl.startsWith("https://")) {
-    const isM3u8 = cleanedUrl.includes(".m3u8");
+  if (cleanedUrl && (cleanedUrl.startsWith("http://") || cleanedUrl.startsWith("https://"))) {
+    const isM3u8 = typeof cleanedUrl === "string" && cleanedUrl.includes(".m3u8");
     return {
       url: cleanedUrl,
       format: isM3u8 ? "hls" : "mp4",

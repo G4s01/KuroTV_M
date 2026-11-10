@@ -13,6 +13,7 @@ export interface AniSkipButtonProps {
   startTime?: number;
   endTime?: number;
   currentTime?: number;
+  durationSeconds?: number;
   onTimeout?: () => void;
 }
 
@@ -25,6 +26,7 @@ export const AniSkipButton: React.FC<AniSkipButtonProps> = ({
   startTime,
   endTime,
   currentTime: controlledTime,
+  durationSeconds,
   onTimeout,
 }) => {
   const { theme } = useTheme();
@@ -32,10 +34,17 @@ export const AniSkipButton: React.FC<AniSkipButtonProps> = ({
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const isLandscape = windowWidth > windowHeight;
 
-  const maxDuration =
-    endTime && startTime && endTime > startTime
-      ? Math.min(BUTTON_DURATION, Math.max(1, endTime - startTime))
+  const totalInterval =
+    endTime && startTime && endTime > startTime ? Math.max(1, endTime - startTime) : BUTTON_DURATION;
+
+  const targetDuration =
+    typeof durationSeconds === 'number' && durationSeconds > 0
+      ? durationSeconds
+      : durationSeconds === 0
+      ? totalInterval
       : BUTTON_DURATION;
+
+  const maxDuration = Math.min(targetDuration, totalInterval);
 
   const getInitialProgress = React.useCallback(() => {
     const time =

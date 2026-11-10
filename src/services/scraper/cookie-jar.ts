@@ -146,8 +146,8 @@ export class CookieJar {
     raw: string,
     defaultDomain: string,
   ): CookieEntry | null {
-    const parts = raw.split(";").map((s) => s.trim());
-    if (parts.length === 0 || !parts[0].includes("=")) return null;
+    const parts = (typeof raw === "string" ? raw.split(";") : []).map((s) => s.trim());
+    if (parts.length === 0 || !parts[0] || typeof parts[0] !== "string" || !parts[0].includes("=")) return null;
 
     const firstEq = parts[0].indexOf("=");
     const name = parts[0].substring(0, firstEq).trim();

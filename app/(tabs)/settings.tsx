@@ -29,6 +29,7 @@ import {
 } from '@/services/storage';
 import { HistorySlider } from '@/components/HistorySlider';
 import { AniSkipSlider } from '@/components/AniSkipSlider';
+import { AniSkipDurationSlider } from '@/components/AniSkipDurationSlider';
 import { ConfirmModal } from '@/components/ConfirmModal';
 import { scraperConfig } from '@/services/scraper/config';
 import {
@@ -99,7 +100,7 @@ export default function SettingsScreen() {
         const parsed = new URL(custom);
         const hostParts = parsed.hostname.split('.');
         const candidate = hostParts[hostParts.length - 1]?.toLowerCase();
-        if (candidate && QUICK_DOMAINS.includes(candidate as any)) {
+        if (candidate && Array.isArray(QUICK_DOMAINS) && QUICK_DOMAINS.includes(candidate as any)) {
           return candidate;
         }
         return '';
@@ -135,13 +136,49 @@ export default function SettingsScreen() {
 
   const handleUpdateAniSkipMode = (mode: AniSkipMode) => {
     Haptics.selectionAsync().catch(() => {});
-    const updated = AppStorage.saveAniSkipSettings({ mode });
+    let newSettings: Partial<AniSkipSettings> = { mode };
+    if (mode !== 'disabled') {
+      const hasAnyActive =
+        aniSkipSettings.enableOpening ||
+        aniSkipSettings.enableEnding ||
+        aniSkipSettings.enableRecap;
+      if (!hasAnyActive) {
+        newSettings = {
+          mode,
+          enableOpening: true,
+          enableEnding: true,
+          enableRecap: true,
+        };
+      }
+    }
+    const updated = AppStorage.saveAniSkipSettings(newSettings);
     setAniSkipSettings(updated);
   };
 
   const handleToggleAniSkipType = (key: 'enableOpening' | 'enableEnding' | 'enableRecap') => {
     Haptics.selectionAsync().catch(() => {});
-    const updated = AppStorage.saveAniSkipSettings({ [key]: !aniSkipSettings[key] });
+    const nextVal = !aniSkipSettings[key];
+    const newSettings = {
+      ...aniSkipSettings,
+      [key]: nextVal,
+    };
+
+    const hasAnyActive =
+      newSettings.enableOpening ||
+      newSettings.enableEnding ||
+      newSettings.enableRecap;
+
+    if (!hasAnyActive) {
+      newSettings.mode = 'disabled';
+    }
+
+    const updated = AppStorage.saveAniSkipSettings(newSettings);
+    setAniSkipSettings(updated);
+  };
+
+  const handleUpdateAniSkipDuration = (duration: number) => {
+    Haptics.selectionAsync().catch(() => {});
+    const updated = AppStorage.saveAniSkipSettings({ buttonDuration: duration });
     setAniSkipSettings(updated);
   };
 
@@ -254,7 +291,7 @@ export default function SettingsScreen() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
 
     // Check if user entered just a TLD or full domain/URL
-    if (!trimmed.includes('.') && !trimmed.includes('/')) {
+    if (typeof trimmed === 'string' && !trimmed.includes('.') && !trimmed.includes('/')) {
       const cleanTld = trimmed.toLowerCase();
       setSelectedTld(cleanTld);
       AppStorage.setTld(cleanTld);
@@ -271,7 +308,7 @@ export default function SettingsScreen() {
       const parsed = new URL(fullUrl);
       const hostParts = parsed.hostname.split('.');
       const tldCandidate = hostParts[hostParts.length - 1]?.toLowerCase();
-      if (tldCandidate && QUICK_DOMAINS.includes(tldCandidate as any)) {
+      if (tldCandidate && Array.isArray(QUICK_DOMAINS) && QUICK_DOMAINS.includes(tldCandidate as any)) {
         setSelectedTld(tldCandidate);
       } else {
         setSelectedTld('');
@@ -287,7 +324,11 @@ export default function SettingsScreen() {
 
   const handleStartDownloadUpdate = React.useCallback(async (manifestOverride?: any) => {
     const targetManifest = manifestOverride || updateResult?.manifest;
-    if (!targetManifest) return;
+    if (!targetManifest || typeof targetManifest !== 'object') {
+      setUpdateStatus('error');
+      setUpdateError('MANIFEST DI AGGIORNAMENTO NON DISPONIBILE');
+      return;
+    }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     setUpdateStatus('downloading');
     setDownloadProgress(null);
@@ -308,7 +349,7 @@ export default function SettingsScreen() {
     } catch (err: any) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
       setUpdateStatus('error');
-      setUpdateError((err.message || 'DOWNLOAD INTERROTTO').toUpperCase());
+      setUpdateError((err?.message || 'DOWNLOAD INTERROTTO').toUpperCase());
     }
   }, [updateResult]);
 
@@ -367,6 +408,13 @@ export default function SettingsScreen() {
       const result = await UpdaterService.checkForUpdates();
       setUpdateResult(result);
 
+      if (result.error) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+        setUpdateStatus('error');
+        setUpdateError(result.error.toUpperCase());
+        return;
+      }
+
       if (result.isUpdateAvailable) {
         UpdateStore.setPendingUpdate(result);
         UpdateStore.dismissModal(); // User is already in Settings, avoid redundant popup
@@ -382,7 +430,7 @@ export default function SettingsScreen() {
     } catch (err: any) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
       setUpdateStatus('error');
-      setUpdateError((err.message || 'IMPOSSIBILE VERIFICARE GLI AGGIORNAMENTI').toUpperCase());
+      setUpdateError((err?.message || 'IMPOSSIBILE VERIFICARE GLI AGGIORNAMENTI').toUpperCase());
     }
   };
 
@@ -516,6 +564,17 @@ export default function SettingsScreen() {
             value={aniSkipSettings.mode}
             onChange={handleUpdateAniSkipMode}
             theme={theme}
+            settings={aniSkipSettings}
+          />
+
+          <Text style={[styles.aniskipSubTitle, { color: theme.colors.textSecondary, marginTop: 14, marginBottom: 8 }]}>
+            DURATA PULSANTE &apos;SALTA&apos;
+          </Text>
+          <AniSkipDurationSlider
+            value={aniSkipSettings.buttonDuration ?? 10}
+            onChange={handleUpdateAniSkipDuration}
+            theme={theme}
+            disabled={aniSkipSettings.mode === 'disabled'}
           />
 
           <Text style={[styles.aniskipSubTitle, { color: theme.colors.textSecondary, marginTop: 14 }]}>

@@ -39,9 +39,9 @@
 - **⏮️ Comandi Centrali Bilanciati**: Pulsante Play/Pausa circolare affiancato dai comandi per episodio precedente (`play-skip-back`) e successivo (`play-skip-forward`).
 - **📑 Carosello Episodi Virtualizzato**: Drawer modale touch-safe con `@shopify/flash-list` per navigare istantaneamente centinaia di episodi con auto-scroll alla puntata corrente e padding simmetrico.
 - **ℹ️ Scheda Info & Trama**: Accesso rapido a locandina, badge puntata formattato rigorosamente come `'EPISODIO X/TOT'`, dettagli della serie e sinossi completa scrollabile con normalizzazione difensiva dei generi.
-- **🔄 Feedback Visivo Minimale di Caricamento**: Overlay circolare compatto (`ActivityIndicator`) senza scritte testuali durante il caricamento e buffering dello streaming.
+- **🔄 Feedback Visivo di Caricamento Integrato**: Animazione di caricamento (`ActivityIndicator` con contrasto YIQ) integrata direttamente all'interno del pulsante circolare Play/Pausa (e al centro esatto dello schermo a controlli nascosti), azzerando overlay scuri o box oscuranti che coprono la visione.
 - **☀️ Gesture HUD Volume & Luminosità**: Swipe rigorosamente verticali con isolamento asse (`activeOffsetY`, `failOffsetX`, rigetto spostamenti orizzontali) e travel range calibrato per volume (destra) e luminosità (sinistra) con modalità `AUTOMATICA`.
-- **📺 Picture-in-Picture & Controlli in Notifica (MediaStyle)**: Supporto nativo PiP, transizione fluida a schermo intero senza pause involontarie tramite `wasPlayingInPiPRef`, controlli rapidi Android MediaSession (con tasto episodio successivo e copertina asincrona via patch native) nel cassetto notifiche e chiusura anti-zombie playback.
+- **📺 Picture-in-Picture & Controlli in Notifica (MediaStyle)**: Supporto nativo PiP, transizione fluida a schermo intero senza pause involontarie tramite `wasPlayingInPiPRef`, controlli rapidi Android MediaSession simmetrici a 5 tasti (`seek -10s`, `precedente`, `play/pausa`, `successivo`, `seek +10s`) con `KuroForwardingPlayer` nativo (garantendo la disponibilità permanente dei comandi `COMMAND_SEEK_TO_NEXT` e `COMMAND_SEEK_TO_PREVIOUS`), copertina anime serializzata in byte array JPEG per `MediaMetadata.artworkData` nei Quick Settings di Android 13+ e chiusura anti-zombie playback.
 - **📑 Menù e Drawer Touch-Safe Senza Tagli Visivi**: Dimensioni responsive in base all'orientamento (portrait/landscape) con troncamento elegante dei testi per azzerare i tagli laterali su smartphone di qualsiasi fattore di forma.
 
 ### 📋 Scheda Tecnica Dettaglio & Controlli Rapidi
@@ -54,7 +54,8 @@
 ### 🖤 Design System & Esperienza Touch
 - **Nero Assoluto OLED (`#000000`)**: Spegnimento fisico dei pixel sui display AMOLED per azzerare i consumi energetici e massimizzare il contrasto.
 - **Tipografia Monospace & CAPS LOCK**: Identità coerente su tutta l'app con font monospace di sistema e testi in maiuscolo.
-- **📱 Compatibilità Navbar di Sistema Android**: Navbar fissa in-app di default con sollevamento dinamico del router dei tab per zero interferenze con i tasti di navigazione fisici/virtuali, commutazione automatica in auto-hide immersivo (`BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE`) durante la riproduzione video a schermo intero e switch dedicato in Impostazioni.
+- **📱 Compatibilità Navbar di Sistema Android**: Navbar fissa in-app di default con sollevamento dinamico del router dei tab per zero interferenze con i tasti di navigazione fisici/virtuali, commutazione automatica in auto-hide immersivo (`BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE`) durante la riproduzione video a schermo intero e switch dedicato con descrizione snellita in Impostazioni (`A SCOMPARSA, RICHIAMABILE CON SWIPE DAL BASSO.` e `SEMPRE FISSA E VISIBILE IN-APP.`).
+- **⏭️ Selettore AniSkip a Scorrimento Continuo (`AniSkipSlider`)**: Slider touch-native minimale per la modalità di salto tra `'OFF'`, `'MANUALE'` e `'AUTO'` con feedback aptico e tracciamento continuo in stile `HistorySlider`.
 - **🔍 Ricerca Unificata in Home**: Catalogo accessibile dalla Home tramite header search con debouncing 450ms, dismiss tastiera su scroll, hardware back button e filtri modali.
 - **Zero Alert di Sistema & Modal In-App Unificato (`ConfirmModal`)**: Sostituzione integrale degli alert nativi grezzi di Android con modali a tema OLED, contrasto dinamico YIQ, feedback aptico e touch target $\ge 44$dp.
 - **Bottom Tabs Solo Icone**: Barra inferiore pulita a 4 schede (**Home**, **Preferiti**, **Cronologia**, **Impostazioni**) senza etichette testuali e touch target minimi $\ge 44$dp.
@@ -93,11 +94,11 @@ cd KuroM
 npm install
 ```
 
-### 2. Test di Qualità (11 Stadi)
+### 2. Test di Qualità (12 Stadi)
 ```bash
 npm test
 ```
-*Valida SemVer, regole OLED, storage MMKV, batch puntate, intervalli AniSkip, skeleton animation, export delle rotte, touch sheets, updater, compatibilità navbar, gesture verticali, PiP no-pause e dimensioni sheets.*
+*Valida SemVer, regole OLED, storage MMKV, batch puntate, intervalli AniSkip, skeleton animation, export delle rotte, touch sheets, updater, compatibilità navbar, gesture verticali, PiP no-pause, dimensioni sheets, AniSkipSlider, loader integrato e media notification.*
 
 ### 3. Build & Verifica Bytecode Hermes
 ```bash

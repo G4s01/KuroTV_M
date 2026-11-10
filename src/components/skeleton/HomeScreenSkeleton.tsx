@@ -4,7 +4,7 @@ import { oledTheme } from '@/theme';
 import { Skeleton } from './Skeleton';
 import { AnimeCardSkeleton } from './AnimeCardSkeleton';
 
-const HERO_HEIGHT = 280;
+const HERO_HEIGHT = 300;
 
 export interface HomeScreenSkeletonProps {
   hasContinueWatching?: boolean;
@@ -20,11 +20,33 @@ export const HomeScreenSkeleton: React.FC<HomeScreenSkeletonProps> = ({
         <Skeleton width="100%" height={HERO_HEIGHT} borderRadius={0} style={styles.heroBg} />
         <View style={styles.heroOverlay} />
         <View style={styles.heroContent}>
-          <Skeleton width={56} height={20} borderRadius={oledTheme.radius.xs} style={styles.heroBadge} />
-          <Skeleton width="75%" height={22} borderRadius={4} style={styles.heroTitleLine1} />
-          <Skeleton width="45%" height={22} borderRadius={4} style={styles.heroTitleLine2} />
-          <Skeleton width={140} height={44} borderRadius={oledTheme.radius.full} style={styles.heroActionBtn} />
+          <Skeleton width={64} height={20} borderRadius={oledTheme.radius.xs} style={styles.heroBadge} />
+          <Skeleton width="80%" height={24} borderRadius={4} style={styles.heroTitleLine1} />
+          <Skeleton width="50%" height={24} borderRadius={4} style={styles.heroTitleLine2} />
+          <View style={styles.heroActionsRow}>
+            <Skeleton width={120} height={44} borderRadius={oledTheme.radius.full} />
+            <Skeleton width={90} height={44} borderRadius={oledTheme.radius.full} />
+          </View>
         </View>
+      </View>
+
+      {/* Top 8 Recommended Carousel Skeleton */}
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <Skeleton width={180} height={18} borderRadius={4} />
+          <Skeleton width={40} height={18} borderRadius={8} />
+        </View>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.horizontalScroll}
+        >
+          {[1, 2, 3, 4, 5].map((key) => (
+            <View key={`skeleton-rec-${key}`} style={styles.recommendedCardSkeleton}>
+              <Skeleton width="100%" height="100%" borderRadius={oledTheme.radius.md} />
+            </View>
+          ))}
+        </ScrollView>
       </View>
 
       {/* Optional Continue Watching Skeleton */}
@@ -55,7 +77,7 @@ export const HomeScreenSkeleton: React.FC<HomeScreenSkeletonProps> = ({
       {/* Section 1: Ultime Uscite */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
-          <Skeleton width={140} height={18} borderRadius={4} />
+          <Skeleton width={160} height={18} borderRadius={4} />
           <Skeleton width={75} height={14} borderRadius={4} />
         </View>
         <ScrollView
@@ -69,10 +91,10 @@ export const HomeScreenSkeleton: React.FC<HomeScreenSkeletonProps> = ({
         </ScrollView>
       </View>
 
-      {/* Section 2: I Più Popolari */}
+      {/* Section 2: Tendenze */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
-          <Skeleton width={150} height={18} borderRadius={4} />
+          <Skeleton width={130} height={18} borderRadius={4} />
         </View>
         <ScrollView
           horizontal
@@ -85,7 +107,39 @@ export const HomeScreenSkeleton: React.FC<HomeScreenSkeletonProps> = ({
         </ScrollView>
       </View>
 
-      {/* Section 3: Nuove Aggiunte */}
+      {/* Section 3: Anime in Corso */}
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <Skeleton width={160} height={18} borderRadius={4} />
+        </View>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.horizontalScroll}
+        >
+          {[1, 2, 3, 4].map((key) => (
+            <AnimeCardSkeleton key={`skeleton-ongoing-${key}`} />
+          ))}
+        </ScrollView>
+      </View>
+
+      {/* Section 4: Uscite Stagione (Upcoming) */}
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <Skeleton width={170} height={18} borderRadius={4} />
+        </View>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.horizontalScroll}
+        >
+          {[1, 2, 3, 4].map((key) => (
+            <AnimeCardSkeleton key={`skeleton-upcoming-${key}`} />
+          ))}
+        </ScrollView>
+      </View>
+
+      {/* Section 5: Nuove Aggiunte */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <Skeleton width={150} height={18} borderRadius={4} />
@@ -142,8 +196,10 @@ const styles = StyleSheet.create({
   heroTitleLine2: {
     marginBottom: 4,
   },
-  heroActionBtn: {
-    alignSelf: 'flex-start',
+  heroActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
     marginTop: 4,
   },
   section: {
@@ -159,6 +215,13 @@ const styles = StyleSheet.create({
   horizontalScroll: {
     paddingLeft: 16,
     paddingRight: 4,
+  },
+  recommendedCardSkeleton: {
+    width: 114,
+    height: 160,
+    marginRight: 10,
+    borderRadius: oledTheme.radius.md,
+    overflow: 'hidden',
   },
   continueCard: {
     width: 160,

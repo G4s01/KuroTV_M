@@ -79,6 +79,22 @@ export class AnimeWorldScraperService {
   }
 
   /**
+   * Fetches seasonal upcoming anime from /upcoming
+   */
+  public async getUpcoming(page = 1): Promise<AnimeItem[]> {
+    try {
+      const endpoints = scraperConfig.getEndpoints();
+      const url = `${endpoints.sitePrefixNoS}/upcoming${page > 1 ? `?page=${page}` : ""}`;
+      const html = await this.httpClient.getPage(url);
+      const result = parseSearchPage(html, endpoints.sitePrefixNoS);
+      return result.items;
+    } catch (error) {
+      console.warn("[AnimeWorldScraper] getUpcoming error:", error);
+      throw error;
+    }
+  }
+
+  /**
    * Searches anime by keyword or advanced filter options
    */
   public async searchAnime(

@@ -51,6 +51,18 @@ Kuro Mobile è un'applicazione concepita **esclusivamente per smartphone Android
    - La navigazione principale usa 4 schede con sole icone vettoriali (`tabBarShowLabel: false`): **Home**, **Preferiti**, **Cronologia**, **Impostazioni**.
    - La ricerca del catalogo con filtri avanzati è integrata direttamente nell'header della **Home** (icona lente di ingrandimento, debouncing 450ms, griglia FlashList a 2 colonne e supporto al tasto fisico Indietro di Android per chiudere la ricerca senza uscire dall'app).
    - Colore attivo delle tab agganciato dinamicamente a `theme.colors.primary`.
+   - **Struttura Sezioni Schermata Home**:
+     1. **Banner Hero in Evidenza**: Espone in testa l'anime raccomandato selezionato (di default il primo della top 8 dei raccomandati). Mostra banner/artwork, badge `#1 RACCOMANDATO`, titolo (monospace, uppercase), sinossi pulita e pulsanti d'azione dedicati:
+        - `RIPRODUCI` (icona `play`, avvio diretto dell'episodio salvato in cronologia/continua a guardare o fetch dell'episodio 1 con feedback visivo di caricamento);
+        - `INFO` (icona `information-circle-outline`, apertura dettagli);
+        - Tocco altrove sul banner: navigazione verso i dettagli della serie.
+     2. **Carosello Top Raccomandati**: Subito sotto il banner hero, carosello orizzontale con tutti i raccomandati numerati progressivamente in ordine (`#1` ... `#8`). Toccando una scheda o scorrendo orizzontalmente la lista, il focus si sincronizza dinamicamente aggiornando il banner hero soprastante con bordo e badge primario attivo.
+     3. **Riprendi a Guardare**: Visibile unicamente in presenza di visione in corso (`continueWatching.length > 0`), con swipe/pulsante rimozione sicuro tramite `ConfirmModal`.
+     4. **Ultimi Episodi Usciti**: Carosello orizzontale delle ultime puntate aggiunte con tasto rapido `VEDI TUTTI`.
+     5. **Tendenze**: Carosello orizzontale delle serie più popolari e di tendenza del momento.
+     6. **Anime in Corso**: Carosello orizzontale con le serie attualmente in trasmissione ('ongoing').
+     7. **Uscite della Stagione Corrente ('upcoming')**: Carosello con le prossime uscite stagionali (`homeData.upcoming` e titolo dinamico es. `USCITE INVERNO 2027`).
+     8. **Nuove Aggiunte**: Carosello con le ultime serie catalogate (`homeData.newAdded`).
 4. **Modal e Menu Contestuali Touch-Native (Zero Jetpack Compose Crashes)**:
    - Tutti i selettori modali (filtri di ricerca `FilterBottomSheet`, batch puntate `BatchBottomSheet`, carosello episodi `PlayerEpisodesCarouselSheet`, scheda info `PlayerInfoSheet`, e opzioni server `ServerBottomSheet`) utilizzano componenti modali touch-native custom basati su React Native `Modal` (`transparent={true}`, `statusBarTranslucent={true}` e slide animation) con overlay oscurato OLED, drag handle e padding simmetrico. È severamente vietato l'uso di `@expo/ui` `BottomSheet` (Jetpack Compose) che causa crash nativi non intercettati (`ViewTreeLifecycleOwner` / window detach) su fullscreen landscape, rotazioni o scroll annidati.
 5. **Tipografia Monospace & Caps Lock**:
@@ -118,10 +130,10 @@ Kuro Mobile è un'applicazione concepita **esclusivamente per smartphone Android
    - **Feedback Visivo di Caricamento Integrato**: Durante il recupero del flusso video o il buffering, l'animazione di caricamento (`ActivityIndicator` con contrasto YIQ) è integrata direttamente all'interno del pulsante circolare centrale Play/Pausa (e al centro esatto dello schermo a controlli nascosti), azzerando overlay scuri o box oscuranti che coprono la visione.
    - **Rientro a Schermo Intero Senza Pause**: Memorizzazione dello stato di riproduzione PiP (`wasPlayingInPiPRef`). Quando l'utente tocca il pulsante di sistema Android per rientrare a tutto schermo, l'app torna `active` e la riproduzione prosegue/riprende fluidamente con `player.play()` senza mai entrare in pausa.
    - **Chiusura Anti-Zombie Playback**: Alla chiusura esplicita della finestra PiP tramite tasto 'X', un timer a 500ms verifica se l'applicazione è rimasta in background (`AppState.currentState !== 'active'`), mettendo in pausa il flusso solo in tale circostanza e salvando la posizione su MMKV.
-4. **AniSkip con Bordo Temporizzato ad Esaurimento (10 Secondi & Recap Support)**:
+4. **AniSkip con Bordo Temporizzato ad Esaurimento & Durata Configurabile**:
    - Rilevamento automatico timestamp intro, outro e recap (`op`, `ed`, `mixed-op`, `mixed-ed`, `recap`) tramite servizio AniSkip.
    - **Testo Unificato 'SALTA'**: Tutti i tipi di salto utilizzano unicamente l'etichetta sintetica e minimale `'SALTA'`.
-   - **Finestra da 10 Secondi & Countdown**: Il pulsante manuale compare per esattamente 10 secondi dall'inizio dell'intervallo (o per la durata della sezione se inferiore a 10s) con bordo superiore e inferiore che si consuma in tempo reale. Se l'utente esegue un seek indietro (rewind) nei primi 10s della sigla, il pulsante riappare correttamente.
+   - **Finestra Temporizzata & Countdown (5s - 60s o Infinito)**: Il pulsante manuale compare per la durata impostata dall'utente (da 5s a 60s con granularità a 5s o infinito `∞` per la totalità dell'intervallo) con bordo superiore e inferiore che si consuma in tempo reale. Se l'utente esegue un seek indietro (rewind) nella finestra della sigla, il pulsante riappare correttamente.
    - **Salto Automatico**: In modalità automatica (configurabile in Impostazioni), la sezione viene saltata istantaneamente al raggiungimento del timestamp iniziale con reset automatico ad ogni cambio puntata.
    - Colore del testo calcolato dinamicamente con `getContrastTextColor(theme.colors.primary)` per la massima leggibilità su qualsiasi tema.
 5. **Timeline con Anteprima Frame Reali (Live Scrubbing)**:
@@ -166,7 +178,7 @@ Kuro Mobile è un'applicazione concepita **esclusivamente per smartphone Android
    - Tutti i testi o icone renderizzati sopra il colore primario o sfondi accentati devono utilizzare `getContrastTextColor(color)`: garantisce testo nero scuro (`#000000`) per tinte ad elevata luminanza (es. Pikachu, Rainbow) e bianco (`#FFFFFF`) per tinte scure o medie.
 4. **Schermata Impostazioni Minimale**:
    - **Tema**: Pulsanti minimalisti con sole icone SVG, senza testo aggiuntivo.
-   - **Impostazioni AniSkip con Slider a Scorrimento**: Selettore della modalità di salto implementato con il componente touch-native `AniSkipSlider` a scorrimento in stile `HistorySlider` tra `OFF` (disattivato), `MANUALE` e `AUTO`, persistito sincronicamente su MMKV con listener reattivo nel player, affiancato dai toggle per cosa saltare (`INTRO`, `RECAP`, `OUTRO`).
+   - **Impostazioni AniSkip con Slider a Scorrimento, Durata Popup & Auto-Off Fallback**: Selettore della modalità di salto implementato con il componente touch-native `AniSkipSlider` a scorrimento in stile `HistorySlider` tra `OFF` (disattivato), `MANUALE` e `AUTO`, persistito sincronicamente su MMKV con listener reattivo nel player, affiancato dai toggle per cosa saltare (`INTRO`, `RECAP`, `OUTRO`). La descrizione di `AUTO` si adatta dinamicamente agli elementi selezionati (es. "SALTA AUTOMATICAMENTE INTRO E OUTRO..."), deselezionare tutti gli elementi commuta automaticamente la modalità su `OFF`, e lo slider `AniSkipDurationSlider` consente di calibrare la permanenza del popup da 5 a 60 secondi (intervalli di 5s all'inizio) fino a `∞` (infinito, per la totalità dell'intervallo).
    - **Navbar di Sistema Android**: Descrizione snellita ed essenziale tra `NASCONDI (SWIPE)` (a scomparsa, richiamabile con swipe dal basso) e `SEMPRE VISIBILE` (sempre fissa e visibile in-app).
    - **Sorgente**: Selezione rapida dei domini supportati (`.ac`, `.so`, `.tv`) oppure URL digitabile liberamente a mano con pulsante APPLICA.
    - **Impostazioni Cronologia & Slider Reattivo**: Sezione dedicata con `HistorySlider` per la durata di conservazione: `OFF` (disattiva la registrazione e nasconde dinamicamente la tab Cronologia dalla navigazione inferiore via `href: null`), `30gg`, `60gg`, `90gg` e `ON` (conservazione permanente illimitata). Include il pulsante per svuotare l'intera cronologia con modale di conferma in-app.

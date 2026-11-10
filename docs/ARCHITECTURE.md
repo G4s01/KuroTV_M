@@ -31,7 +31,8 @@ KuroM/
 │   │   ├── skeleton/            # Primitive e layout skeleton animati (Zero CLS, OLED #161616)
 │   │   ├── FilterBottomSheet.tsx# Modale filtri di ricerca touch-safe
 │   │   ├── UpdateModal.tsx      # Modale notifica aggiornamento in-app all'avvio
-│   │   └── HistorySlider.tsx    # Slider discreto retention cronologia (OFF, 30g, 60g, 90g, ON)
+│   │   ├── HistorySlider.tsx    # Slider discreto retention cronologia (OFF, 30g, 60g, 90g, ON)
+│   │   └── AniSkipSlider.tsx    # Slider modalità salto sigle (OFF, MANUALE, AUTO)
 │   ├── services/
 │   │   ├── anilist/             # Integrazione metadata AniList GraphQL
 │   │   ├── aniskip/             # Servizio timestamp per skip intro/outro/recap
@@ -44,7 +45,7 @@ KuroM/
 │   └── types/                   # Definizioni TypeScript condivise
 ├── workers/                     # Cloudflare Worker unificato per OTA
 ├── scripts/                     # Tooling DevOps, release pipeline & patch native (apply-patches, build-release)
-└── tests/                       # Suite di verifica qualità a 11 stadi
+└── tests/                       # Suite di verifica qualità a 12 stadi
 ```
 
 ---
@@ -177,10 +178,10 @@ La schermata Dettaglio Anime arricchisce la consultazione con i componenti [`Ani
 Il sottosistema video ([`app/player/[id].tsx`](file:///home/g4s/VSCode/KuroM/app/player/[id].tsx)) adotta la gestione asincrona delle sorgenti multimediali:
 - **`replaceAsync` off-thread**: Sostituisce il metodo deprecato `player.replace` per prevenire il blocco del Main Thread durante l'inizializzazione dei formati video su iOS e Android.
 - **Gestione Stream & Ripresa**: Mantiene sincronizzato il `playbackRate` e applica il punto di ripresa memorizzato in MMKV al completamento della risoluzione della risorsa, senza glitch visivi.
-- **Feedback Visivo di Caricamento Minimale**: Durante il recupero del flusso o il cambio episodio, visualizza un badge circolare centrato (`loadingOverlay`) con solo indicatore di attività (`ActivityIndicator`), senza scritte testuali.
-- **Controlli Multimediali in Notifica & Patch Native (`scripts/apply-patches.mjs`)**: Espone `showNowPlayingNotification = true` e metadati completi dello stream (titolo `<Titolo> - EPISODIO <Num>`, locandina artwork caricata via bitmap asincrono in `largeIcon` e pulsante episodio successivo `nextEpisodeButton` / `COMMAND_SEEK_TO_NEXT`), abilitando i controlli rapidi Android MediaSession / MediaStyle persistenti nel drawer notifiche e durante il Picture-in-Picture.
+- **Feedback Visivo di Caricamento Integrato**: Durante il recupero del flusso o il buffering, l'animazione di caricamento (`ActivityIndicator` con contrasto YIQ) è integrata direttamente all'interno del pulsante circolare Play/Pausa (e al centro dello schermo a controlli nascosti), azzerando overlay scuri o box oscuranti che coprono la visione.
+- **Controlli Multimediali in Notifica & Patch Native (`scripts/apply-patches.mjs`)**: Espone `showNowPlayingNotification = true` e metadati completi dello stream (titolo `<Titolo> - EPISODIO <Num>`, artista, locandina artwork scaricata e serializzata come JPEG byte array in `artworkData` per i Quick Settings di Android 13+ e bitmap `largeIcon`), e `KuroForwardingPlayer` che garantisce la disponibilità permanente di `COMMAND_SEEK_TO_NEXT` e `COMMAND_SEEK_TO_PREVIOUS` per esporre nel cassetto delle notifiche e nei controlli di sistema Android l'intera barra simmetrica (`seek -10s`, `precedente`, `play/pausa`, `successivo`, `seek +10s`), con ascoltatori dedicati `KuroNotificationNextEpisode` e `KuroNotificationPrevEpisode`.
 - **Scheda Dettagli Player (`PlayerInfoSheet.tsx`)**: Badge puntata formattato rigorosamente come `'EPISODIO X/TOT'` (es. `'EPISODIO 1/170'`, `'EPISODIO 1/??'`), pulito da suffissi titolo puntata ridondanti.
-- **AniSkip Unificato**: Rileva sigle d'apertura (`op`), chiusura (`ed`) e recap (`recap`) con pulsante unico 'SALTA', timer ad esaurimento limitato a 10s e resilienza al riavvolgimento (rewind).
+- **AniSkip con Slider a Scorrimento**: Rileva sigle d'apertura (`op`), chiusura (`ed`) e recap (`recap`) con pulsante unico 'SALTA', timer ad esaurimento limitato a 10s, e configurazione in Impostazioni tramite il componente a scorrimento `AniSkipSlider` (`OFF`, `MANUALE`, `AUTO`).
 
 ---
 
@@ -195,7 +196,7 @@ Per massimizzare la resa visiva sui display AMOLED ed eliminare sovrapposizioni 
    - `tabBarStyle` in [`app/(tabs)/_layout.tsx`](file:///home/g4s/VSCode/KuroM/app/(tabs)/_layout.tsx) calcola l'altezza come `56 + insets.bottom` e il padding inferiore come `insets.bottom`.
    - Se la navbar a 3 pulsanti è visibile o l'utente seleziona la modalità `SEMPRE VISIBILE` in Impostazioni, la barra delle tab espande un cuscinetto inferiore OLED evitando qualsiasi collisione con le icone.
 3. **Configurazione Utente in Impostazioni**:
-   - Selezione istantanea tra `NASCONDI (SWIPE)` (default consigliato) e `SEMPRE VISIBILE`, persistita in MMKV (`AppStorage.setNavBarMode`).
+   - Selezione istantanea tra `NASCONDI (SWIPE)` (default consigliato, a scomparsa con swipe dal basso) e `SEMPRE VISIBILE` (sempre fissa e visibile in-app), con descrizione snellita ed essenziale, persistita in MMKV (`AppStorage.setNavBarMode`).
 
 ---
 

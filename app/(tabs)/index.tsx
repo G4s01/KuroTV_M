@@ -9,6 +9,9 @@ import {
   TextInput,
   Keyboard,
   BackHandler,
+  ActivityIndicator,
+  type NativeSyntheticEvent,
+  type NativeScrollEvent,
   useWindowDimensions,
 } from 'react-native';
 import { Image } from 'expo-image';
@@ -18,7 +21,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { FlashList } from '@shopify/flash-list';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
-import { homeQueryOptions, animeQueryKeys } from '@/services/queries';
+import { homeQueryOptions, animeQueryKeys, animeDetailQueryOptions } from '@/services/queries';
 import { AppStorage } from '@/services/storage';
 import { AnimeWorldScraper } from '@/services/scraper';
 import { oledTheme, useTheme, getContrastTextColor } from '@/theme';
@@ -28,7 +31,10 @@ import { FilterBottomSheet, type FilterState } from '@/components/FilterBottomSh
 import { HomeScreenSkeleton, ExploreScreenSkeleton } from '@/components/skeleton';
 import type { AnimeItem, ContinueWatchingItem, SearchFilter } from '@/types';
 
-const HERO_HEIGHT = 280;
+const HERO_HEIGHT = 320;
+const RECOMMENDED_ITEM_WIDTH = 114;
+const RECOMMENDED_ITEM_GAP = 10;
+const RECOMMENDED_ITEM_TOTAL = RECOMMENDED_ITEM_WIDTH + RECOMMENDED_ITEM_GAP;
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -43,6 +49,11 @@ export default function HomeScreen() {
   const { data: homeData, isLoading, isError, refetch, isRefetching } = useQuery(homeQueryOptions());
   const [continueWatching, setContinueWatching] = React.useState<ContinueWatchingItem[]>([]);
   const [itemToRemove, setItemToRemove] = React.useState<ContinueWatchingItem | null>(null);
+
+  // Top recommended selection & focus state
+  const [focusedIndex, setFocusedIndex] = React.useState(0);
+  const [isHeroPlayLoading, setIsHeroPlayLoading] = React.useState(false);
+  const recommendedScrollRef = React.useRef<any>(null);
 
   // Search in Home state
   const [isSearchActive, setIsSearchActive] = React.useState(false);
@@ -130,13 +141,52 @@ export default function HomeScreen() {
     if (!homeData) return;
     const urls: string[] = [];
     if (homeData.sliders && homeData.sliders.length > 0) {
-      urls.push(...homeData.sliders.slice(0, 3).map((item) => item.image || item.thumbnail || '').filter(Boolean));
+      urls.push(
+        ...homeData.sliders
+          .slice(0, 8)
+          .map((item) => item.banner || item.image || item.thumbnail || '')
+          .filter(Boolean)
+      );
+    }
+    if (homeData.all && homeData.all.length > 0) {
+      urls.push(
+        ...homeData.all
+          .slice(0, 6)
+          .map((item) => item.image || item.thumbnail || '')
+          .filter(Boolean)
+      );
     }
     if (homeData.trending && homeData.trending.length > 0) {
-      urls.push(...homeData.trending.slice(0, 6).map((item) => item.image || item.thumbnail || '').filter(Boolean));
+      urls.push(
+        ...homeData.trending
+          .slice(0, 6)
+          .map((item) => item.image || item.thumbnail || '')
+          .filter(Boolean)
+      );
+    }
+    if (homeData.ongoing && homeData.ongoing.length > 0) {
+      urls.push(
+        ...homeData.ongoing
+          .slice(0, 6)
+          .map((item) => item.image || item.thumbnail || '')
+          .filter(Boolean)
+      );
+    }
+    if (homeData.upcoming && homeData.upcoming.length > 0) {
+      urls.push(
+        ...homeData.upcoming
+          .slice(0, 6)
+          .map((item) => item.image || item.thumbnail || '')
+          .filter(Boolean)
+      );
     }
     if (homeData.newAdded && homeData.newAdded.length > 0) {
-      urls.push(...homeData.newAdded.slice(0, 6).map((item) => item.image || item.thumbnail || '').filter(Boolean));
+      urls.push(
+        ...homeData.newAdded
+          .slice(0, 6)
+          .map((item) => item.image || item.thumbnail || '')
+          .filter(Boolean)
+      );
     }
     if (urls.length > 0) {
       Image.prefetch(urls).catch(() => {});
@@ -202,7 +252,111 @@ export default function HomeScreen() {
     setItemToRemove(null);
   };
 
-  const heroItem = homeData?.sliders?.[0] || homeData?.trending?.[0];
+  // Recommended list (Top 8 / Top 10 from AnimeWorld slider)
+  const recommendedList: AnimeItem[] = React.useMemo(() => {
+    return (homeData?.sliders || []).slice(0, 10);
+  }, [homeData?.sliders]);
+
+  // Safe index within bounds
+  const safeFocusedIndex = Math.min(
+    focusedIndex,
+    Math.max(0, recommendedList.length - 1)
+  );
+
+  const focusedItem: AnimeItem | undefined =
+    recommendedList[safeFocusedIndex] ||
+    homeData?.sliders?.[0] ||
+    homeData?.trending?.[0];
+
+  // Selecting a recommended anime from the carousel
+  const handleSelectRecommended = (index: number) => {
+    Haptics.selectionAsync().catch(() => {});
+    setFocusedIndex(index);
+    recommendedScrollRef.current?.scrollTo({
+      x: Math.max(0, index * RECOMMENDED_ITEM_TOTAL - 16),
+      animated: true,
+    });
+  };
+
+  // Synchronizing focus while scrolling the horizontal recommended carousel
+  const handleRecommendedScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const offsetX = e.nativeEvent.contentOffset.x;
+    const targetIndex = Math.max(
+      0,
+      Math.min(
+        Math.round(offsetX / RECOMMENDED_ITEM_TOTAL),
+        Math.max(0, recommendedList.length - 1)
+      )
+    );
+    if (targetIndex !== focusedIndex) {
+      setFocusedIndex(targetIndex);
+    }
+  };
+
+  // Start playback of the hero anime (check continue watching, saved progress, or fetch Episode 1)
+  const handlePlayHero = async (item: AnimeItem) => {
+    if (!item || !item.id) return;
+    Haptics.selectionAsync().catch(() => {});
+
+    // 1. Resume from active Continue Watching if present
+    const continueItem = continueWatching.find((cw) => cw.animeId === item.id);
+    if (continueItem) {
+      navigateToPlayer(continueItem);
+      return;
+    }
+
+    // 2. Check latest watch progress in MMKV storage
+    const latestProgress = AppStorage.getLatestAnimeProgress(item.id);
+    if (latestProgress) {
+      router.push({
+        pathname: '/player/[id]',
+        params: {
+          id: latestProgress.episodeId,
+          animeId: latestProgress.animeId,
+          episodeNumber: String(latestProgress.episodeNumber),
+          animeTitle: item.title,
+          thumbnail: item.banner || item.image || item.thumbnail || latestProgress.thumbnail || '',
+          position: String(latestProgress.isCompleted ? 0 : latestProgress.currentTime || 0),
+          episodeDataId: latestProgress.dataId || '',
+          serverId: latestProgress.serverId || '',
+          totalEpisodes: String(latestProgress.totalEpisodes || ''),
+        },
+      });
+      return;
+    }
+
+    // 3. Not in history: fetch details to get Episode 1
+    setIsHeroPlayLoading(true);
+    try {
+      const detail = await queryClient.fetchQuery(
+        animeDetailQueryOptions(item.id, queryClient)
+      );
+
+      const episodes = detail?.episodes || [];
+      if (episodes.length > 0) {
+        const firstEp = episodes[0];
+        router.push({
+          pathname: '/player/[id]',
+          params: {
+            id: firstEp.id,
+            animeId: detail.id,
+            episodeNumber: String(firstEp.number),
+            episodeDataId: firstEp.dataId || '',
+            animeTitle: detail.title,
+            thumbnail: detail.image || detail.thumbnail || item.thumbnail || '',
+            position: '0',
+            totalEpisodes: String(detail.totalEpisodes ?? (episodes.length || '')),
+          },
+        });
+      } else {
+        navigateToAnime(item.id, item.title);
+      }
+    } catch {
+      navigateToAnime(item.id, item.title);
+    } finally {
+      setIsHeroPlayLoading(false);
+    }
+  };
 
   return (
     <View style={[styles.root, { paddingTop: insets.top, backgroundColor: theme.colors.background }]}>
@@ -446,14 +600,16 @@ export default function HomeScreen() {
           </View>
         ) : (
           <>
-            {/* Hero Banner */}
-            {heroItem && (
+            {/* 1. Hero Banner: Anime in evidenza (primo della top 8 o selezionato) */}
+            {focusedItem && (
               <Pressable
                 style={styles.heroContainer}
-                onPress={() => navigateToAnime(heroItem.id, heroItem.title)}
+                onPress={() => navigateToAnime(focusedItem.id, focusedItem.title)}
+                accessibilityRole="button"
+                accessibilityLabel={`DETTAGLI ${focusedItem.title.toUpperCase()}`}
               >
                 <Image
-                  source={{ uri: heroItem.image || heroItem.thumbnail }}
+                  source={{ uri: focusedItem.banner || focusedItem.image || focusedItem.thumbnail }}
                   style={styles.heroImage}
                   contentFit="cover"
                   transition={300}
@@ -461,27 +617,190 @@ export default function HomeScreen() {
                 <View style={styles.heroOverlay} />
 
                 <View style={styles.heroContent}>
-                  {heroItem.subOrDub && (
-                    <View style={[styles.heroBadge, { backgroundColor: theme.colors.primary }]}>
-                      <Text style={[styles.heroBadgeText, { color: getContrastTextColor(theme.colors.primary) }]}>{heroItem.subOrDub}</Text>
+                  <View style={styles.heroBadgeRow}>
+                    <View style={[styles.heroRankBadge, { backgroundColor: theme.colors.primary }]}>
+                      <Text style={[styles.heroRankBadgeText, { color: getContrastTextColor(theme.colors.primary) }]}>
+                        #{safeFocusedIndex + 1} RACCOMANDATO
+                      </Text>
                     </View>
-                  )}
+                    {focusedItem.subOrDub && (
+                      <View style={[styles.heroSubBadge, { backgroundColor: theme.colors.surface }]}>
+                        <Text style={[styles.heroSubBadgeText, { color: theme.colors.textSecondary }]}>
+                          {focusedItem.subOrDub}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+
                   <Text style={styles.heroTitle} numberOfLines={2}>
-                    {heroItem.title}
+                    {focusedItem.title}
                   </Text>
 
-                  <Pressable
-                    style={[styles.heroActionBtn, { backgroundColor: theme.colors.primary }]}
-                    onPress={() => navigateToAnime(heroItem.id, heroItem.title)}
-                  >
-                    <Ionicons name="play" size={16} color={getContrastTextColor(theme.colors.primary)} />
-                    <Text style={[styles.heroActionBtnText, { color: getContrastTextColor(theme.colors.primary) }]}>GUARDA ORA</Text>
-                  </Pressable>
+                  {focusedItem.synopsis ? (
+                    <Text style={styles.heroSynopsis} numberOfLines={2}>
+                      {focusedItem.synopsis}
+                    </Text>
+                  ) : null}
+
+                  {/* Pulsanti d'azione: PLAY (inizia riproduzione) e INFO (scheda dettagli) */}
+                  <View style={styles.heroActionsRow}>
+                    <Pressable
+                      style={[
+                        styles.heroPlayBtn,
+                        { backgroundColor: theme.colors.primary },
+                        isHeroPlayLoading && styles.heroBtnDisabled,
+                      ]}
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        handlePlayHero(focusedItem);
+                      }}
+                      hitSlop={8}
+                      disabled={isHeroPlayLoading}
+                      accessibilityRole="button"
+                      accessibilityLabel={`RIPRODUCI ${focusedItem.title.toUpperCase()}`}
+                    >
+                      {isHeroPlayLoading ? (
+                        <ActivityIndicator size="small" color={getContrastTextColor(theme.colors.primary)} />
+                      ) : (
+                        <>
+                          <Ionicons name="play" size={18} color={getContrastTextColor(theme.colors.primary)} />
+                          <Text
+                            style={[
+                              styles.heroPlayBtnText,
+                              { color: getContrastTextColor(theme.colors.primary) },
+                            ]}
+                          >
+                            RIPRODUCI
+                          </Text>
+                        </>
+                      )}
+                    </Pressable>
+
+                    <Pressable
+                      style={[
+                        styles.heroInfoBtn,
+                        { backgroundColor: theme.colors.card, borderColor: theme.colors.border },
+                      ]}
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        navigateToAnime(focusedItem.id, focusedItem.title);
+                      }}
+                      hitSlop={8}
+                      accessibilityRole="button"
+                      accessibilityLabel={`INFO ${focusedItem.title.toUpperCase()}`}
+                    >
+                      <Ionicons name="information-circle-outline" size={18} color={theme.colors.text} />
+                      <Text style={[styles.heroInfoBtnText, { color: theme.colors.text }]}>INFO</Text>
+                    </Pressable>
+                  </View>
                 </View>
               </Pressable>
             )}
 
-            {/* Riprendi a guardare - Visibile SOLO quando vi sono serie con visione in corso */}
+            {/* 2. Carosello Raccomandati Numerati in Ordine (#1 .. #8) */}
+            {recommendedList.length > 0 && (
+              <View style={styles.section}>
+                <View style={styles.sectionHeader}>
+                  <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
+                    TOP RACCOMANDATI
+                  </Text>
+                  <Text
+                    style={[
+                      styles.sectionBadge,
+                      {
+                        backgroundColor: theme.colors.primary,
+                        color: getContrastTextColor(theme.colors.primary),
+                      },
+                    ]}
+                  >
+                    {safeFocusedIndex + 1}/{recommendedList.length}
+                  </Text>
+                </View>
+
+                <ScrollView
+                  ref={recommendedScrollRef}
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.recommendedScrollContent}
+                  onScroll={handleRecommendedScroll}
+                  scrollEventThrottle={32}
+                >
+                  {recommendedList.map((item, index) => {
+                    const isFocused = index === safeFocusedIndex;
+                    return (
+                      <Pressable
+                        key={`recommended-${item.id}-${index}`}
+                        style={[
+                          styles.recommendedCard,
+                          {
+                            backgroundColor: theme.colors.card,
+                            borderColor: isFocused ? theme.colors.primary : theme.colors.border,
+                            borderWidth: isFocused ? 2 : 1,
+                          },
+                        ]}
+                        onPress={() => handleSelectRecommended(index)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`RACCOMANDATO NUMERO ${index + 1}: ${item.title.toUpperCase()}`}
+                      >
+                        <Image
+                          source={{ uri: item.thumbnail || item.banner || item.image }}
+                          style={styles.recommendedImage}
+                          contentFit="cover"
+                          transition={200}
+                        />
+                        <View style={styles.recommendedOverlay} />
+
+                        {/* Rank Badge top-left */}
+                        <View
+                          style={[
+                            styles.rankBadge,
+                            {
+                              backgroundColor: isFocused ? theme.colors.primary : 'rgba(0, 0, 0, 0.75)',
+                              borderColor: isFocused ? theme.colors.primary : 'rgba(255, 255, 255, 0.25)',
+                            },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.rankBadgeText,
+                              {
+                                color: isFocused
+                                  ? getContrastTextColor(theme.colors.primary)
+                                  : '#FFFFFF',
+                              },
+                            ]}
+                          >
+                            #{index + 1}
+                          </Text>
+                        </View>
+
+                        {/* Sub / Dub tag */}
+                        {item.subOrDub && (
+                          <View style={[styles.recommendedSubBadge, { backgroundColor: theme.colors.surface }]}>
+                            <Text style={styles.recommendedSubBadgeText}>{item.subOrDub}</Text>
+                          </View>
+                        )}
+
+                        {/* Title Box */}
+                        <View style={styles.recommendedTitleBox}>
+                          <Text
+                            style={[
+                              styles.recommendedTitle,
+                              { color: isFocused ? theme.colors.primary : theme.colors.text },
+                            ]}
+                            numberOfLines={1}
+                          >
+                            {item.title}
+                          </Text>
+                        </View>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+            )}
+
+            {/* 3. Riprendi a guardare - Visibile SOLO quando vi sono serie con visione in corso */}
             {continueWatching.length > 0 && (
               <View style={styles.section}>
                 <View style={styles.sectionHeader}>
@@ -514,7 +833,7 @@ export default function HomeScreen() {
                           </View>
                         )}
 
-                        {/* Tasto meno in alto a destra per rimuovere da 'riprendi a guardare' con conferma */}
+                        {/* Tasto rimozione in alto a destra */}
                         <Pressable
                           style={styles.removeContinueBtn}
                           onPress={(e) => {
@@ -557,11 +876,11 @@ export default function HomeScreen() {
               </View>
             )}
 
-            {/* Ultime Uscite */}
+            {/* 4. Ultime Uscite (Ultimi Episodi Usciti) */}
             {homeData?.all && homeData.all.length > 0 && (
               <View style={styles.section}>
                 <View style={styles.sectionHeader}>
-                  <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>ULTIME USCITE</Text>
+                  <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>ULTIMI EPISODI USCITI</Text>
                   <Pressable
                     onPress={() => {
                       Haptics.selectionAsync().catch(() => {});
@@ -569,7 +888,7 @@ export default function HomeScreen() {
                     }}
                     hitSlop={8}
                     accessibilityRole="button"
-                    accessibilityLabel="VEDI TUTTI GLI ANIME"
+                    accessibilityLabel="VEDI TUTTI GLI EPISODI"
                   >
                     <Text style={[styles.seeAllText, { color: theme.colors.primary }]}>VEDI TUTTI</Text>
                   </Pressable>
@@ -580,9 +899,9 @@ export default function HomeScreen() {
                   showsHorizontalScrollIndicator={false}
                   contentContainerStyle={styles.horizontalScroll}
                 >
-                  {homeData.all.slice(0, 15).map((anime: AnimeItem) => (
+                  {homeData.all.slice(0, 20).map((anime: AnimeItem) => (
                     <AnimeCard
-                      key={anime.id}
+                      key={`all-${anime.id}`}
                       anime={anime}
                       onPress={() => navigateToAnime(anime.id, anime.title)}
                     />
@@ -591,11 +910,11 @@ export default function HomeScreen() {
               </View>
             )}
 
-            {/* Popolari / Trending */}
+            {/* 5. Tendenze */}
             {homeData?.trending && homeData.trending.length > 0 && (
               <View style={styles.section}>
                 <View style={styles.sectionHeader}>
-                  <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>I PIÙ POPOLARI</Text>
+                  <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>TENDENZE</Text>
                 </View>
 
                 <ScrollView
@@ -614,7 +933,55 @@ export default function HomeScreen() {
               </View>
             )}
 
-            {/* Nuove Aggiunte */}
+            {/* 6. Anime in Corso */}
+            {homeData?.ongoing && homeData.ongoing.length > 0 && (
+              <View style={styles.section}>
+                <View style={styles.sectionHeader}>
+                  <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>ANIME IN CORSO</Text>
+                </View>
+
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.horizontalScroll}
+                >
+                  {homeData.ongoing.map((anime: AnimeItem) => (
+                    <AnimeCard
+                      key={`ongoing-${anime.id}`}
+                      anime={anime}
+                      onPress={() => navigateToAnime(anime.id, anime.title)}
+                    />
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+
+            {/* 7. Uscite della stagione corrente (Upcoming) */}
+            {homeData?.upcoming && homeData.upcoming.length > 0 && (
+              <View style={styles.section}>
+                <View style={styles.sectionHeader}>
+                  <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
+                    {(homeData.upcomingTitle || 'PROSSIME USCITE').toUpperCase()}
+                  </Text>
+                </View>
+
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.horizontalScroll}
+                >
+                  {homeData.upcoming.map((anime: AnimeItem) => (
+                    <AnimeCard
+                      key={`upcoming-${anime.id}`}
+                      anime={anime}
+                      onPress={() => navigateToAnime(anime.id, anime.title)}
+                    />
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+
+            {/* 8. Nuove Aggiunte */}
             {homeData?.newAdded && homeData.newAdded.length > 0 && (
               <View style={styles.section}>
                 <View style={styles.sectionHeader}>
@@ -876,18 +1243,6 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: 32,
   },
-  loadingContainer: {
-    height: 400,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 12,
-  },
-  loadingText: {
-    color: oledTheme.colors.textMuted,
-    fontSize: 14,
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
-  },
   errorContainer: {
     padding: 32,
     alignItems: 'center',
@@ -937,7 +1292,7 @@ const styles = StyleSheet.create({
   },
   heroOverlay: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+    backgroundColor: 'rgba(0,0,0,0.52)',
   },
   heroContent: {
     position: 'absolute',
@@ -946,48 +1301,101 @@ const styles = StyleSheet.create({
     right: 16,
     gap: 8,
   },
-  heroBadge: {
+  heroBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  heroRankBadge: {
     alignSelf: 'flex-start',
-    backgroundColor: oledTheme.colors.primary,
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: oledTheme.radius.xs,
   },
-  heroBadgeText: {
-    color: '#FFFFFF',
+  heroRankBadgeText: {
     fontSize: 10,
-    fontWeight: '800',
+    fontWeight: '900',
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  heroSubBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: oledTheme.radius.xs,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+  },
+  heroSubBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
     fontFamily: 'monospace',
     textTransform: 'uppercase',
   },
   heroTitle: {
     color: '#FFFFFF',
     fontSize: 22,
-    fontWeight: '800',
+    fontWeight: '900',
     lineHeight: 26,
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
+    textShadowColor: 'rgba(0,0,0,0.9)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 8,
+  },
+  heroSynopsis: {
+    color: '#D4D4D4',
+    fontSize: 12,
+    lineHeight: 16,
     fontFamily: 'monospace',
     textTransform: 'uppercase',
     textShadowColor: 'rgba(0,0,0,0.8)',
     textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 6,
+    textShadowRadius: 4,
   },
-  heroActionBtn: {
-    alignSelf: 'flex-start',
+  heroActionsRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 10,
+    marginTop: 4,
+  },
+  heroPlayBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     gap: 8,
-    backgroundColor: oledTheme.colors.primary,
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: oledTheme.radius.full,
     minHeight: 44,
   },
-  heroActionBtnText: {
-    color: '#FFFFFF',
-    fontSize: 14,
+  heroPlayBtnText: {
+    fontSize: 13,
+    fontWeight: '800',
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  heroInfoBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: oledTheme.radius.full,
+    minHeight: 44,
+    borderWidth: 1,
+  },
+  heroInfoBtnText: {
+    fontSize: 13,
     fontWeight: '700',
     fontFamily: 'monospace',
     textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  heroBtnDisabled: {
+    opacity: 0.7,
   },
   section: {
     marginTop: 24,
@@ -1001,32 +1409,96 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     color: oledTheme.colors.text,
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: 16,
+    fontWeight: '800',
     fontFamily: 'monospace',
     textTransform: 'uppercase',
+    letterSpacing: -0.3,
   },
   sectionBadge: {
-    backgroundColor: '#262626',
-    color: '#FFFFFF',
     fontSize: 11,
-    fontWeight: '700',
+    fontWeight: '800',
     fontFamily: 'monospace',
     textTransform: 'uppercase',
-    paddingHorizontal: 6,
-    paddingVertical: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
     borderRadius: 8,
   },
   seeAllText: {
-    color: oledTheme.colors.primary,
-    fontSize: 13,
-    fontWeight: '600',
+    fontSize: 12,
+    fontWeight: '700',
     fontFamily: 'monospace',
     textTransform: 'uppercase',
   },
   horizontalScroll: {
     paddingLeft: 16,
     paddingRight: 4,
+  },
+  recommendedScrollContent: {
+    paddingLeft: 16,
+    paddingRight: 6,
+    gap: RECOMMENDED_ITEM_GAP,
+  },
+  recommendedCard: {
+    width: RECOMMENDED_ITEM_WIDTH,
+    height: 160,
+    borderRadius: oledTheme.radius.md,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  recommendedImage: {
+    width: '100%',
+    height: '100%',
+  },
+  recommendedOverlay: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: 'rgba(0, 0, 0, 0.35)',
+  },
+  rankBadge: {
+    position: 'absolute',
+    top: 6,
+    left: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 1,
+  },
+  rankBadgeText: {
+    fontSize: 11,
+    fontWeight: '900',
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
+  },
+  recommendedSubBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 3,
+  },
+  recommendedSubBadgeText: {
+    color: '#E5E5E5',
+    fontSize: 9,
+    fontWeight: '700',
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
+  },
+  recommendedTitleBox: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: 6,
+    paddingVertical: 6,
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+  },
+  recommendedTitle: {
+    fontSize: 10,
+    fontWeight: '800',
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
+    textAlign: 'center',
   },
   continueCard: {
     width: 160,
@@ -1067,7 +1539,6 @@ const styles = StyleSheet.create({
   },
   progressBarFill: {
     height: '100%',
-    backgroundColor: oledTheme.colors.primary,
   },
   continueTitle: {
     color: oledTheme.colors.text,
