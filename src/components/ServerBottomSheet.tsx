@@ -51,7 +51,7 @@ export const ServerBottomSheet: React.FC<ServerBottomSheetProps> = ({
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const isLandscape = windowWidth > windowHeight;
 
-  const { translateY, panHandlers } = useBottomSheetDragDismiss({
+  const { translateY, dragStripHandlers, headerPanHandlers } = useBottomSheetDragDismiss({
     isVisible,
     onClose,
   });
@@ -95,15 +95,13 @@ export const ServerBottomSheet: React.FC<ServerBottomSheetProps> = ({
           ]}
           /* contentPadding={0} */
         >
-          {/* Draggable Header Area (Drag Handle + Header Row) */}
-          <View {...panHandlers} style={styles.dragHeaderArea}>
-            {/* Drag Handle Indicator */}
-            <View style={styles.dragIndicatorWrapper}>
-              <View style={styles.dragIndicator} />
-            </View>
+          {/* Striscia Drag Handle a tutta larghezza — zona di presa primaria per swipe-down */}
+          <View {...dragStripHandlers} style={styles.dragStripArea}>
+            <View style={styles.dragIndicator} />
+          </View>
 
-            {/* Header Row */}
-            <View style={styles.headerRow}>
+          {/* Header Row — cattura gesture verticali in fase di cattura senza bloccare tap sui bottoni */}
+          <View {...headerPanHandlers} style={styles.headerRow}>
               <View style={styles.headerTitleGroup}>
                 <Ionicons name="options" size={18} color={theme.colors.primary} />
                 <Text
@@ -123,7 +121,6 @@ export const ServerBottomSheet: React.FC<ServerBottomSheetProps> = ({
               >
                 <Ionicons name="close" size={20} color={theme.colors.textMuted} />
               </Pressable>
-            </View>
           </View>
 
           <ScrollView
@@ -285,13 +282,13 @@ const styles = StyleSheet.create({
     maxWidth: 680,
     alignSelf: 'center',
   },
-  dragHeaderArea: {
+  dragStripArea: {
     width: '100%',
-  },
-  dragIndicatorWrapper: {
     alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 44,
     paddingVertical: 10,
-    width: '100%',
+    cursor: 'grab' as any,
   },
   dragIndicator: {
     width: 44,
