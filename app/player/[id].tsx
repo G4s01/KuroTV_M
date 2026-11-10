@@ -614,6 +614,8 @@ export default function VideoPlayerScreen() {
     };
   }, [showControls, resetControlsTimer]);
 
+  const isBufferingOrLoading = Boolean(videoUrl && (isLoadingSource || playerStatus === 'loading'));
+
   const toggleControls = () => {
     Haptics.selectionAsync().catch(() => {});
     setShowControls((prev) => !prev);
@@ -638,6 +640,24 @@ export default function VideoPlayerScreen() {
     currEpIndex >= 0 && currEpIndex + 1 < episodesList.length
       ? episodesList[currEpIndex + 1]
       : null;
+
+  const prevEpisodeRef = React.useRef<{
+    id: string;
+    number: number;
+    dataId?: string;
+  } | null>(null);
+
+  React.useEffect(() => {
+    if (prevEpisode) {
+      prevEpisodeRef.current = {
+        id: prevEpisode.id,
+        number: prevEpisode.number,
+        dataId: prevEpisode.dataId,
+      };
+    } else {
+      prevEpisodeRef.current = null;
+    }
+  }, [prevEpisode]);
 
   React.useEffect(() => {
     if (nextEpisode) {
@@ -677,7 +697,7 @@ export default function VideoPlayerScreen() {
     [animeId, animeTitle, serverId, episodesList.length, router, saveProgress]
   );
 
-  // Notification Shade Next Episode Action listener
+  // Notification Shade Next & Prev Episode Action listeners
   React.useEffect(() => {
     const nextSub = DeviceEventEmitter.addListener('KuroNotificationNextEpisode', () => {
       const nextEp = nextEpisodeRef.current;
@@ -685,10 +705,19 @@ export default function VideoPlayerScreen() {
         handleNavigateToEpisode(nextEp);
       }
     });
+    const prevSub = DeviceEventEmitter.addListener('KuroNotificationPrevEpisode', () => {
+      const prevEp = prevEpisodeRef.current;
+      if (prevEp) {
+        handleNavigateToEpisode(prevEp);
+      } else if (player) {
+        player.currentTime = 0;
+      }
+    });
     return () => {
       nextSub.remove();
+      prevSub.remove();
     };
-  }, [handleNavigateToEpisode]);
+  }, [handleNavigateToEpisode, player]);
 
   const handleDoubleTap = (direction: 'left' | 'right') => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
@@ -975,16 +1004,11 @@ export default function VideoPlayerScreen() {
           </View>
         )}
 
-        {/* Loading / Buffering Feedback Overlay during episode loading */}
-        {videoUrl && (isLoadingSource || playerStatus === 'loading') && (
+        {/* Integrated Loading / Buffering feedback indicator when OSD controls are hidden */}
+        {!showControls && isBufferingOrLoading && (
           <View style={styles.loadingOverlay} pointerEvents="none">
-            <View
-              style={[
-                styles.loadingBox,
-                { backgroundColor: 'rgba(0, 0, 0, 0.85)', borderColor: theme.colors.border },
-              ]}
-            >
-              <ActivityIndicator size="small" color={theme.colors.primary} />
+            <View style={[styles.centerPlayBtn, { backgroundColor: `${theme.colors.primary}E0` }]}>
+              <ActivityIndicator size="small" color={getContrastTextColor(theme.colors.primary)} />
             </View>
           </View>
         )}
@@ -1106,13 +1130,20 @@ export default function VideoPlayerScreen() {
                 style={[styles.centerPlayBtn, { backgroundColor: `${theme.colors.primary}E0` }]}
                 onPress={handlePlayPause}
                 hitSlop={16}
-                accessibilityLabel={isPlaying ? 'PAUSA' : 'RIPRODUCI'}
+                accessibilityLabel={isBufferingOrLoading ? 'CARICAMENTO' : isPlaying ? 'PAUSA' : 'RIPRODUCI'}
               >
-                <Ionicons
-                  name={isPlaying ? 'pause' : 'play'}
-                  size={44}
-                  color={getContrastTextColor(theme.colors.primary)}
-                />
+                {isBufferingOrLoading ? (
+                  <ActivityIndicator
+                    size="small"
+                    color={getContrastTextColor(theme.colors.primary)}
+                  />
+                ) : (
+                  <Ionicons
+                    name={isPlaying ? 'pause' : 'play'}
+                    size={44}
+                    color={getContrastTextColor(theme.colors.primary)}
+                  />
+                )}
               </Pressable>
 
               {nextEpisode ? (
@@ -1243,18 +1274,9 @@ const styles = StyleSheet.create({
   },
   loadingOverlay: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(0, 0, 0, 0.65)',
     justifyContent: 'center',
     alignItems: 'center',
-    zIndex: 20,
-  },
-  loadingBox: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
+    zIndex: 15,
   },
   loadingWrapper: {
     ...StyleSheet.absoluteFill,

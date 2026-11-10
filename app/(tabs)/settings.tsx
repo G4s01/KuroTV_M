@@ -28,6 +28,7 @@ import {
   type NavBarMode,
 } from '@/services/storage';
 import { HistorySlider } from '@/components/HistorySlider';
+import { AniSkipSlider } from '@/components/AniSkipSlider';
 import { ConfirmModal } from '@/components/ConfirmModal';
 import { scraperConfig } from '@/services/scraper/config';
 import {
@@ -508,44 +509,14 @@ export default function SettingsScreen() {
         <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
           <Text style={[styles.cardTitle, { color: theme.colors.text }]}>ANISKIP</Text>
 
-          <Text style={[styles.aniskipSubTitle, { color: theme.colors.textSecondary }]}>
+          <Text style={[styles.aniskipSubTitle, { color: theme.colors.textSecondary, marginBottom: 8 }]}>
             MODALITÀ DI SALTO
           </Text>
-          <View style={styles.aniskipRow}>
-            {[
-              { mode: 'manual' as AniSkipMode, label: 'MANUALE' },
-              { mode: 'auto' as AniSkipMode, label: 'AUTOMATICO' },
-              { mode: 'disabled' as AniSkipMode, label: 'DISATTIVATO' },
-            ].map((item) => {
-              const active = aniSkipSettings.mode === item.mode;
-              const contrastColor = active ? getContrastTextColor(theme.colors.primary) : theme.colors.text;
-              return (
-                <Pressable
-                  key={item.mode}
-                  style={[
-                    styles.aniskipChip,
-                    {
-                      backgroundColor: active ? theme.colors.primary : theme.colors.card,
-                      borderColor: active ? theme.colors.primary : theme.colors.border,
-                    },
-                  ]}
-                  onPress={() => handleUpdateAniSkipMode(item.mode)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`MODALITÀ ANISKIP ${item.label}${active ? ' ATTIVA' : ''}`}
-                >
-                  <Text
-                    style={[
-                      styles.aniskipChipText,
-                      { color: contrastColor },
-                      active && styles.aniskipChipTextActive,
-                    ]}
-                  >
-                    {item.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
+          <AniSkipSlider
+            value={aniSkipSettings.mode}
+            onChange={handleUpdateAniSkipMode}
+            theme={theme}
+          />
 
           <Text style={[styles.aniskipSubTitle, { color: theme.colors.textSecondary, marginTop: 14 }]}>
             COSA SALTARE
@@ -646,8 +617,8 @@ export default function SettingsScreen() {
             </View>
             <Text style={[styles.navBarHelpText, { color: theme.colors.textMuted }]}>
               {navBarMode === 'auto-hide'
-                ? 'LA BARRA DI SISTEMA SPARISCE AUTOMATICAMENTE DURANTE L\'USO DELL\'APP PER UN\'ESPERIENZA IMMERSIVA. PUOI RICHIAMARLA IN QUALSIASI MOMENTO CON UNO SWIPE DAL BORDO INFERIORE.'
-                : 'I PULSANTI DI SISTEMA RIMANGONO SEMPRE VISIBILI CON SPAZIATURA DI SICUREZZA PER NON COPRIRE LE TAB DI NAVIGAZIONE.'}
+                ? 'A SCOMPARSA, RICHIAMABILE CON SWIPE DAL BASSO.'
+                : 'SEMPRE FISSA E VISIBILE IN-APP.'}
             </Text>
           </View>
         )}

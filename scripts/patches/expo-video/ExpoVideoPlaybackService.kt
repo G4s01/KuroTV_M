@@ -15,6 +15,10 @@ import android.os.IBinder
 import androidx.annotation.MainThread
 import androidx.annotation.OptIn
 import androidx.core.app.NotificationCompat
+import androidx.media3.common.ForwardingPlayer
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
+import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.CommandButton
@@ -29,9 +33,59 @@ import expo.modules.video.R
 import expo.modules.video.getPlaybackServiceErrorMessage
 import expo.modules.video.player.VideoPlayer
 import kotlinx.coroutines.launch
+import java.io.ByteArrayOutputStream
 import java.lang.ref.WeakReference
 
 class PlaybackServiceBinder(val service: ExpoVideoPlaybackService) : Binder()
+
+@OptIn(UnstableApi::class)
+class KuroForwardingPlayer(
+  val underlyingPlayer: ExoPlayer,
+  private val service: ExpoVideoPlaybackService
+) : ForwardingPlayer(underlyingPlayer) {
+  var customArtworkBytes: ByteArray? = null
+
+  override fun isCommandAvailable(command: Int): Boolean {
+    if (command == Player.COMMAND_SEEK_TO_NEXT || command == Player.COMMAND_SEEK_TO_PREVIOUS) {
+      return true
+    }
+    return super.isCommandAvailable(command)
+  }
+
+  override fun getAvailableCommands(): Player.Commands {
+    return super.getAvailableCommands().buildUpon()
+      .add(Player.COMMAND_SEEK_TO_NEXT)
+      .add(Player.COMMAND_SEEK_TO_PREVIOUS)
+      .build()
+  }
+
+  override fun seekToNext() {
+    service.emitNextEpisode()
+  }
+
+  override fun seekToNextMediaItem() {
+    service.emitNextEpisode()
+  }
+
+  override fun seekToPrevious() {
+    service.emitPrevEpisode()
+  }
+
+  override fun seekToPreviousMediaItem() {
+    service.emitPrevEpisode()
+  }
+
+  override fun getMediaMetadata(): MediaMetadata {
+    val base = super.getMediaMetadata()
+    val bytes = customArtworkBytes
+    if (bytes != null) {
+      return base.buildUpon()
+        .setArtworkData(bytes, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
+        .build()
+    }
+    return base
+  }
+}
 
 @OptIn(UnstableApi::class)
 class ExpoVideoPlaybackService : MediaSessionService() {
@@ -42,6 +96,8 @@ class ExpoVideoPlaybackService : MediaSessionService() {
       weakContext = WeakReference(value)
     }
   private val mediaSessions = mutableMapOf<ExoPlayer, MediaSession>()
+  private val forwardingPlayers = mutableMapOf<ExoPlayer, KuroForwardingPlayer>()
+  private val playerListeners = mutableMapOf<ExoPlayer, Player.Listener>()
   private val binder = PlaybackServiceBinder(this)
   private var mostRecentInteractionSession: MediaSession? = null
   private var isForeground: Boolean = false
@@ -75,6 +131,22 @@ class ExpoVideoPlaybackService : MediaSessionService() {
     .setIconResId(android.R.drawable.ic_media_previous)
     .build()
 
+  fun emitNextEpisode() {
+    appContext.mainQueue.launch {
+      appContext.reactContext
+        ?.getJSModule(com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+        ?.emit("KuroNotificationNextEpisode", null)
+    }
+  }
+
+  fun emitPrevEpisode() {
+    appContext.mainQueue.launch {
+      appContext.reactContext
+        ?.getJSModule(com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+        ?.emit("KuroNotificationPrevEpisode", null)
+    }
+  }
+
   fun setShowNotification(showNotification: Boolean, player: ExoPlayer) {
     appContext.mainQueue.launch {
       val sessionExtras = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -97,10 +169,12 @@ class ExpoVideoPlaybackService : MediaSessionService() {
         return@launch
       }
 
-      val mediaSession = MediaSession.Builder(this@ExpoVideoPlaybackService, player)
+      val forwardingPlayer = KuroForwardingPlayer(player, this@ExpoVideoPlaybackService)
+
+      val mediaSession = MediaSession.Builder(this@ExpoVideoPlaybackService, forwardingPlayer)
         .setId("ExpoVideoPlaybackService_${player.hashCode()}")
         .setCallback(VideoMediaSessionCallback(this@ExpoVideoPlaybackService))
-        .setCustomLayout(ImmutableList.of(seekBackwardButton, seekForwardButton, nextEpisodeButton))
+        .setCustomLayout(ImmutableList.of(seekBackwardButton, seekForwardButton))
         .build()
 
       // Replace the basic media session with a session connected to our playback service.
@@ -108,7 +182,46 @@ class ExpoVideoPlaybackService : MediaSessionService() {
       videoPlayer.mediaSession = mediaSession
 
       mediaSessions[player] = mediaSession
+      forwardingPlayers[player] = forwardingPlayer
       addSession(mediaSession)
+
+      // Listener to automatically refresh notification and metadata on item/playback changes
+      val listener = object : Player.Listener {
+        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+          appContext.mainQueue.launch {
+            mediaSessions[player]?.let { session ->
+              onUpdateNotification(session, videoPlayer.showNowPlayingNotification && player.playWhenReady)
+            }
+          }
+        }
+
+        override fun onMediaMetadataChanged(mediaMetadata: MediaMetadata) {
+          appContext.mainQueue.launch {
+            mediaSessions[player]?.let { session ->
+              onUpdateNotification(session, videoPlayer.showNowPlayingNotification && player.playWhenReady)
+            }
+          }
+        }
+
+        override fun onPlaybackStateChanged(playbackState: Int) {
+          appContext.mainQueue.launch {
+            mediaSessions[player]?.let { session ->
+              onUpdateNotification(session, videoPlayer.showNowPlayingNotification && player.playWhenReady)
+            }
+          }
+        }
+
+        override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+          appContext.mainQueue.launch {
+            mediaSessions[player]?.let { session ->
+              onUpdateNotification(session, videoPlayer.showNowPlayingNotification && playWhenReady)
+            }
+          }
+        }
+      }
+      playerListeners[player] = listener
+      player.addListener(listener)
+
       setShowNotification(videoPlayer.showNowPlayingNotification, player)
     }
   }
@@ -116,6 +229,10 @@ class ExpoVideoPlaybackService : MediaSessionService() {
   fun unregisterPlayer(player: ExoPlayer) {
     appContext.mainQueue.launch {
       hidePlayerNotification(player)
+      playerListeners.remove(player)?.let {
+        player.removeListener(it)
+      }
+      forwardingPlayers.remove(player)
       val session = mediaSessions.remove(player)
       session?.release()
       if (mediaSessions.isEmpty()) {
@@ -225,7 +342,9 @@ class ExpoVideoPlaybackService : MediaSessionService() {
 
   @MainThread
   private fun createNotification(session: MediaSession, startInForegroundRequired: Boolean = false) {
-    if (session.player.currentMediaItem == null) {
+    val player = session.player
+    val mediaItem = player.currentMediaItem
+    if (mediaItem == null && player.mediaMetadata.title == null) {
       return
     }
 
@@ -234,9 +353,24 @@ class ExpoVideoPlaybackService : MediaSessionService() {
       notificationManager.createNotificationChannel(NotificationChannel(CHANNEL_ID, CHANNEL_ID, NotificationManager.IMPORTANCE_LOW))
     }
 
-    val mediaItem = session.player.currentMediaItem
-    val contentTitle = mediaItem?.mediaMetadata?.title ?: "\u200E"
-    val contentText = mediaItem?.mediaMetadata?.artist
+    val titleCandidate = mediaItem?.mediaMetadata?.title?.toString()
+      ?: player.mediaMetadata.title?.toString()
+    val contentTitle = if (!titleCandidate.isNullOrBlank() && titleCandidate != "\u200E") {
+      titleCandidate
+    } else {
+      "KURO MOBILE"
+    }
+
+    val artistCandidate = mediaItem?.mediaMetadata?.artist?.toString()
+      ?: player.mediaMetadata.artist?.toString()
+    val contentText = if (!artistCandidate.isNullOrBlank()) {
+      artistCandidate
+    } else {
+      "KURO MOBILE"
+    }
+
+    val artworkUri = mediaItem?.mediaMetadata?.artworkUri ?: player.mediaMetadata.artworkUri
+    val forwardingPlayer = if (player is KuroForwardingPlayer) player else null
 
     val notificationCompat = NotificationCompat.Builder(this, CHANNEL_ID)
       .setSmallIcon(androidx.media3.session.R.drawable.media3_icon_circular_play)
@@ -244,10 +378,23 @@ class ExpoVideoPlaybackService : MediaSessionService() {
       .setContentText(contentText)
       .setStyle(MediaStyleNotificationHelper.MediaStyle(session))
 
-    val artworkUri = mediaItem?.mediaMetadata?.artworkUri
     if (artworkUri != null) {
       loadArtworkBitmap(artworkUri) { bitmap ->
         if (bitmap != null && session == mostRecentInteractionSession) {
+          try {
+            val baos = ByteArrayOutputStream()
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 85, baos)
+            val bytes = baos.toByteArray()
+            forwardingPlayer?.customArtworkBytes = bytes
+
+            val updatedMetadata = (session.player.mediaMetadata.buildUpon())
+              .setTitle(contentTitle)
+              .setArtist(contentText)
+              .setArtworkData(bytes, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
+              .build()
+            forwardingPlayer?.underlyingPlayer?.playlistMetadata = updatedMetadata
+          } catch (_: Exception) {}
+
           val updatedNotification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(androidx.media3.session.R.drawable.media3_icon_circular_play)
             .setContentTitle(contentTitle)
@@ -287,6 +434,9 @@ class ExpoVideoPlaybackService : MediaSessionService() {
       for (session in sessionsToRelease) {
         session.release()
       }
+
+      forwardingPlayers.clear()
+      playerListeners.clear()
 
       val notificationManager: NotificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

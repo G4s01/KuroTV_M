@@ -47,14 +47,10 @@ class VideoMediaSessionCallback(
     playerCommand: Int
   ): Int {
     if (playerCommand == Player.COMMAND_SEEK_TO_NEXT) {
-      playbackService.appContext.reactContext
-        ?.getJSModule(com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
-        ?.emit("KuroNotificationNextEpisode", null)
+      playbackService.emitNextEpisode()
       return MediaSession.ConnectionResult.RESULT_SUCCESS
     } else if (playerCommand == Player.COMMAND_SEEK_TO_PREVIOUS) {
-      playbackService.appContext.reactContext
-        ?.getJSModule(com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
-        ?.emit("KuroNotificationPrevEpisode", null)
+      playbackService.emitPrevEpisode()
       return MediaSession.ConnectionResult.RESULT_SUCCESS
     }
     return super.onPlayerCommandRequest(session, controller, playerCommand)
@@ -65,14 +61,10 @@ class VideoMediaSessionCallback(
       ExpoVideoPlaybackService.SEEK_FORWARD_COMMAND -> session.player.seekTo(session.player.currentPosition + ExpoVideoPlaybackService.SEEK_INTERVAL_MS)
       ExpoVideoPlaybackService.SEEK_BACKWARD_COMMAND -> session.player.seekTo(session.player.currentPosition - ExpoVideoPlaybackService.SEEK_INTERVAL_MS)
       ExpoVideoPlaybackService.NEXT_EPISODE_COMMAND -> {
-        playbackService.appContext.reactContext
-          ?.getJSModule(com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
-          ?.emit("KuroNotificationNextEpisode", null)
+        playbackService.emitNextEpisode()
       }
       ExpoVideoPlaybackService.PREVIOUS_EPISODE_COMMAND -> {
-        playbackService.appContext.reactContext
-          ?.getJSModule(com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
-          ?.emit("KuroNotificationPrevEpisode", null)
+        playbackService.emitPrevEpisode()
       }
     }
     return super.onCustomCommand(session, controller, customCommand, args)

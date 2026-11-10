@@ -1570,6 +1570,43 @@ assert(
 console.log('✓ Gestures Verticali, PiP No-Pause, Sheets Dimensioni & Update Scroll verificati con successo.');
 
 // -----------------------------------------------------------------------------
+// [12/12] Verifica AniSkipSlider, Player Integrated Loader & Media Notification
+// -----------------------------------------------------------------------------
+console.log('\n[12/12] Verifica AniSkipSlider, Player Integrated Loader & Media Notification...');
+
+// 1. AniSkipSlider component and steps
+const { ANISKIP_STEPS } = await import('../src/components/AniSkipSlider');
+assert.strictEqual(ANISKIP_STEPS.length, 3, 'ANISKIP_STEPS deve avere esattamente 3 opzioni');
+assert.strictEqual(ANISKIP_STEPS[0].label, 'OFF', 'Prima opzione deve essere OFF');
+assert.strictEqual(ANISKIP_STEPS[0].value, 'disabled', 'OFF deve corrispondere a disabled');
+assert.strictEqual(ANISKIP_STEPS[1].label, 'MANUALE', 'Seconda opzione deve essere MANUALE');
+assert.strictEqual(ANISKIP_STEPS[1].value, 'manual', 'MANUALE deve corrispondere a manual');
+assert.strictEqual(ANISKIP_STEPS[2].label, 'AUTO', 'Terza opzione deve essere AUTO');
+assert.strictEqual(ANISKIP_STEPS[2].value, 'auto', 'AUTO deve corrispondere a auto');
+
+// 2. Settings screen uses AniSkipSlider and streamlined navbar description
+const settingsCodeAfter = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/settings.tsx'), 'utf-8');
+assert(settingsCodeAfter.includes('AniSkipSlider'), 'app/(tabs)/settings.tsx deve utilizzare AniSkipSlider');
+assert(settingsCodeAfter.includes('A SCOMPARSA, RICHIAMABILE CON SWIPE DAL BASSO.'), 'app/(tabs)/settings.tsx deve avere la descrizione snellita per NAVBAR auto-hide');
+assert(settingsCodeAfter.includes('SEMPRE FISSA E VISIBILE IN-APP.'), 'app/(tabs)/settings.tsx deve avere la descrizione snellita per NAVBAR visible');
+
+// 3. Player integrated loading animation and notification listeners
+const playerSourceAfter = fs.readFileSync(path.resolve(process.cwd(), 'app/player/[id].tsx'), 'utf-8');
+assert(playerSourceAfter.includes('isBufferingOrLoading'), 'app/player/[id].tsx deve tracciare isBufferingOrLoading');
+assert(playerSourceAfter.includes('KuroNotificationPrevEpisode'), 'app/player/[id].tsx deve ascoltare KuroNotificationPrevEpisode');
+assert(playerSourceAfter.includes('KuroNotificationNextEpisode'), 'app/player/[id].tsx deve ascoltare KuroNotificationNextEpisode');
+
+// 4. Native ExpoVideoPlaybackService patch verification
+const playbackServiceCode = fs.readFileSync(path.resolve(process.cwd(), 'scripts/patches/expo-video/ExpoVideoPlaybackService.kt'), 'utf-8');
+assert(playbackServiceCode.includes('KuroForwardingPlayer'), 'ExpoVideoPlaybackService deve includere KuroForwardingPlayer');
+assert(playbackServiceCode.includes('COMMAND_SEEK_TO_NEXT'), 'ExpoVideoPlaybackService deve abilitare COMMAND_SEEK_TO_NEXT');
+assert(playbackServiceCode.includes('emitNextEpisode'), 'ExpoVideoPlaybackService deve supportare emitNextEpisode');
+assert(playbackServiceCode.includes('emitPrevEpisode'), 'ExpoVideoPlaybackService deve supportare emitPrevEpisode');
+assert(playbackServiceCode.includes('setArtworkData'), 'ExpoVideoPlaybackService deve trasmettere artworkData a MediaSession');
+
+console.log('✓ AniSkipSlider, Player Integrated Loader & Media Notification verificati con successo.');
+
+// -----------------------------------------------------------------------------
 // Fine Test
 // -----------------------------------------------------------------------------
 console.log('\n==============================================');
