@@ -4,7 +4,6 @@ import {
   Text,
   View,
   Pressable,
-  useWindowDimensions,
   RefreshControl,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -15,16 +14,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { AppStorage } from '@/services/storage';
 import { oledTheme, useTheme, getContrastTextColor } from '@/theme';
 import { AnimeCard } from '@/components/AnimeCard';
+import { useResponsiveLayout } from '@/hooks';
 import type { AnimeItem } from '@/types';
 
 export default function FavoritesScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { width: windowWidth } = useWindowDimensions();
   const { theme } = useTheme();
-
-  const cardWidth = (windowWidth - 48) / 2;
-  const cardHeight = cardWidth * 1.45;
+  const { numColumns, cardWidth, cardHeight } = useResponsiveLayout();
 
   const [favorites, setFavorites] = React.useState<AnimeItem[]>([]);
   const [isRefreshing, setIsRefreshing] = React.useState(false);
@@ -89,8 +86,9 @@ export default function FavoritesScreen() {
       ) : (
         <View style={styles.listWrapper}>
           <FlashList
+            key={`favorites-grid-${numColumns}`}
             data={favorites}
-            numColumns={2}
+            numColumns={numColumns}
             keyExtractor={(item) => item.id}
             renderItem={({ item }) => (
               <AnimeCard

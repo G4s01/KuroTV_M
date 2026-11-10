@@ -35,7 +35,7 @@ export function SearchFilterChips({
             onPress={() => onRemoveFilter('dub')}
           >
             <Text style={[styles.activeFilterText, { color: theme.colors.text }]}>
-              AUDIO: {filterState.dub === '1' ? 'DOPPIATI (ITA)' : 'SUB ITA'}
+              AUDIO: {filterState.dub === '1' ? 'DOPPIATI' : 'SOTTOTITOLATI'}
             </Text>
             <Ionicons name="close-circle" size={14} color={theme.colors.textMuted} />
           </Pressable>

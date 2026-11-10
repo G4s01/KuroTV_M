@@ -3,6 +3,7 @@ import {
   StyleSheet,
   Text,
   View,
+  ScrollView,
   Pressable,
   useWindowDimensions,
   Share,
@@ -28,12 +29,14 @@ import {
   AnimeInfoTable,
   AnimeControlsBar,
 } from '@/components/anime';
+import { useResponsiveLayout } from '@/hooks';
 import type { Episode, VideoServer } from '@/types';
 
 export default function AnimeDetailScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
+  const { isMasterDetail, leftMasterWidth, rightDetailWidth, episodeColumns } = useResponsiveLayout();
   const queryClient = useQueryClient();
   const { theme } = useTheme();
   const { id } = useLocalSearchParams<{ id: string; title?: string }>();

@@ -2100,9 +2100,13 @@ assert(Array.isArray(ANIME_GENRES) && ANIME_GENRES.length >= 40, 'ANIME_GENRES d
 assert(ANIME_GENRES.some((g: any) => g.id === '1' && g.label === 'Azione'), 'ANIME_GENRES deve contenere Azione con id 1');
 assert(ANIME_GENRES.some((g: any) => g.id === '49' && g.label === 'Isekai'), 'ANIME_GENRES deve contenere Isekai');
 
-assert(Array.isArray(ANIME_DUB) && ANIME_DUB.length === 3, 'ANIME_DUB deve contenere TUTTI, DOPPIATI e SOTTOTITOLATI');
-assert(ANIME_DUB.some((d: any) => d.value === '1'), 'ANIME_DUB deve supportare Doppiati (1)');
-assert(ANIME_DUB.some((d: any) => d.value === '0'), 'ANIME_DUB deve supportare Sottotitolati (0)');
+assert(Array.isArray(ANIME_DUB) && ANIME_DUB.length === 2, 'ANIME_DUB deve contenere DOPPIATI e SOTTOTITOLATI');
+assert(ANIME_DUB.some((d: any) => d.value === '1' && d.label === 'DOPPIATI'), 'ANIME_DUB deve supportare Doppiati (1)');
+assert(ANIME_DUB.some((d: any) => d.value === '0' && d.label === 'SOTTOTITOLATI'), 'ANIME_DUB deve supportare Sottotitolati (0)');
+assert(!ANIME_DUB.some((d: any) => d.value === ''), 'ANIME_DUB non deve contenere valori vuoti TUTTI');
+assert(!ANIME_TYPES.some((t: any) => t.value === ''), 'ANIME_TYPES non deve contenere valori vuoti TUTTI');
+assert(!ANIME_STATUSES.some((s: any) => s.value === ''), 'ANIME_STATUSES non deve contenere valori vuoti TUTTI');
+assert(!ANIME_SORTS.some((s: any) => s.value === ''), 'ANIME_SORTS non deve contenere valori vuoti TUTTI');
 
 assert(ANIME_TYPES.some((t: any) => t.value === '4' && t.label === 'FILM ANIME'), 'ANIME_TYPES deve mappare FILM ANIME a 4');
 assert(ANIME_SORTS.some((s: any) => s.value === '5' && s.label.includes('RECENTI')), 'ANIME_SORTS deve mappare PIÙ RECENTI a 5');
@@ -2123,6 +2127,145 @@ assert(settingsSearchSource.includes('SEARCH_RETENTION_STEPS'), 'settings.tsx de
 assert(settingsSearchSource.includes('isClearSearchHistoryConfirmOpen'), 'settings.tsx deve gestire la modale ConfirmModal per svuotare le ricerche');
 
 console.log('✓ Cronologia Ricerche, Filtri Avanzati (Multi-Genere & Audio) & Fix Scraper verificati con successo.');
+
+// -----------------------------------------------------------------------------
+// [17/17] Verifica Sincronizzazione Focus Carosello Raccomandati & Simmetria Filtri Touch-Native
+// -----------------------------------------------------------------------------
+console.log('\n[17/17] Verifica Sincronizzazione Focus Carosello Raccomandati & Simmetria Filtri Touch-Native...');
+
+// 1. Verifica Sincronizzazione Focus Settling in app/(tabs)/index.tsx
+assert(homeSearchSource.includes('lastSettledRecommendedIndexRef'), 'index.tsx deve tracciare lastSettledRecommendedIndexRef');
+assert(homeSearchSource.includes('lastSettledHeroIndexRef'), 'index.tsx deve tracciare lastSettledHeroIndexRef');
+assert(
+  homeSearchSource.includes('heroScrollRef.current?.scrollTo({\n      x: targetIndex * windowWidth,'),
+  'settleRecommendedScroll deve sincronizzare heroScrollRef allo settling dello scorrimento'
+);
+assert(
+  homeSearchSource.includes('recommendedScrollRef.current?.scrollTo({\n      x: targetIndex * RECOMMENDED_ITEM_TOTAL,'),
+  'settleHeroScroll deve sincronizzare recommendedScrollRef allo settling dello scorrimento'
+);
+
+// 2. Verifica Simmetria & Rimozione TUTTI in FilterBottomSheet.tsx
+const filterSheetSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/FilterBottomSheet.tsx'), 'utf-8');
+assert(!filterSheetSource.includes('TUTTI GLI AUDIO'), 'FilterBottomSheet non deve più mostrare TUTTI GLI AUDIO');
+assert(!filterSheetSource.includes('TUTTI I TIPI'), 'FilterBottomSheet non deve più mostrare TUTTI I TIPI');
+assert(!filterSheetSource.includes('TUTTI GLI STATI'), 'FilterBottomSheet non deve più mostrare TUTTI GLI STATI');
+assert(filterSheetSource.includes('genresGrid'), 'FilterBottomSheet deve usare una griglia simmetrica genresGrid per i generi');
+assert(filterSheetSource.includes('renderFilterButton'), 'FilterBottomSheet deve usare il render helper per layout simmetrico');
+
+// 3. Verifica SearchFilterChips.tsx con label generiche DOPPIATI e SOTTOTITOLATI
+const filterChipsSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/home/SearchFilterChips.tsx'), 'utf-8');
+assert(filterChipsSource.includes("AUDIO: {filterState.dub === '1' ? 'DOPPIATI' : 'SOTTOTITOLATI'}"), 'SearchFilterChips deve mostrare etichette generiche DOPPIATI e SOTTOTITOLATI');
+assert(!filterChipsSource.includes('DOPPIATI (ITA)'), 'SearchFilterChips non deve più mostrare DOPPIATI (ITA)');
+
+console.log('✓ Sincronizzazione Focus Carosello Raccomandati & Simmetria Filtri Touch-Native verificate con successo.');
+
+// -----------------------------------------------------------------------------
+// [18/18] Verifica Chiusura Menù Player Tramite Scorrimento (Swipe-Down Dismiss)
+// -----------------------------------------------------------------------------
+console.log('\n[18/18] Verifica Chiusura Menù Player Tramite Scorrimento (Swipe-Down Dismiss)...');
+
+// 1. Verifica Hook useBottomSheetDragDismiss
+const { useBottomSheetDragDismiss } = await import('../src/components/useBottomSheetDragDismiss');
+assert(typeof useBottomSheetDragDismiss === 'function', 'useBottomSheetDragDismiss deve essere esportato come funzione');
+
+const hookSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/useBottomSheetDragDismiss.ts'), 'utf-8');
+assert(hookSource.includes('PanResponder.create'), 'useBottomSheetDragDismiss deve implementare PanResponder');
+assert(hookSource.includes('useNativeDriver: true'), 'useBottomSheetDragDismiss deve animare su driver nativo a 60/120 FPS');
+assert(hookSource.includes('translateY'), 'useBottomSheetDragDismiss deve esporre translateY');
+assert(hookSource.includes('panHandlers'), 'useBottomSheetDragDismiss deve esporre i panHandlers');
+
+// 2. Verifica Integrazione in ServerBottomSheet.tsx (Opzioni di Riproduzione)
+const serverSheetSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/ServerBottomSheet.tsx'), 'utf-8');
+assert(serverSheetSource.includes('useBottomSheetDragDismiss'), 'ServerBottomSheet deve integrare useBottomSheetDragDismiss');
+assert(serverSheetSource.includes('Animated.View'), 'ServerBottomSheet container deve essere un Animated.View');
+assert(serverSheetSource.includes('transform: [{ translateY }]'), 'ServerBottomSheet deve applicare translateY');
+assert(serverSheetSource.includes('dragHeaderArea'), 'ServerBottomSheet deve applicare panHandlers all area intestazione dragHeaderArea');
+
+// 3. Verifica Integrazione in PlayerInfoSheet.tsx (Scheda Informazioni)
+const playerInfoSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/player/PlayerInfoSheet.tsx'), 'utf-8');
+assert(playerInfoSource.includes('useBottomSheetDragDismiss'), 'PlayerInfoSheet deve integrare useBottomSheetDragDismiss');
+assert(playerInfoSource.includes('Animated.View'), 'PlayerInfoSheet container deve essere un Animated.View');
+assert(playerInfoSource.includes('transform: [{ translateY }]'), 'PlayerInfoSheet deve applicare translateY');
+assert(playerInfoSource.includes('dragHeaderArea'), 'PlayerInfoSheet deve applicare panHandlers all area intestazione dragHeaderArea');
+
+// 4. Verifica Integrazione in PlayerEpisodesCarouselSheet.tsx (Carosello Episodi)
+const carouselSheetSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/player/PlayerEpisodesCarouselSheet.tsx'), 'utf-8');
+assert(carouselSheetSource.includes('useBottomSheetDragDismiss'), 'PlayerEpisodesCarouselSheet deve integrare useBottomSheetDragDismiss');
+assert(carouselSheetSource.includes('Animated.View'), 'PlayerEpisodesCarouselSheet container deve essere un Animated.View');
+assert(carouselSheetSource.includes('transform: [{ translateY }]'), 'PlayerEpisodesCarouselSheet deve applicare translateY');
+assert(carouselSheetSource.includes('dragHeaderArea'), 'PlayerEpisodesCarouselSheet deve applicare panHandlers all area intestazione dragHeaderArea');
+
+console.log('✓ Chiusura Menù Player Tramite Scorrimento (Swipe-Down Dismiss) verificata con successo.');
+
+// -----------------------------------------------------------------------------
+// [19/19] Verifica Gestione Anime in Corso 'IN PARI' & Sincronizzazione Ibrida Smart
+// -----------------------------------------------------------------------------
+console.log('\n[19/19] Verifica Gestione Anime in Corso \'IN PARI\' & Sincronizzazione Ibrida Smart...');
+
+const { syncCaughtUpWithHomeList, syncCaughtUpWithRemote } = await import('../src/services/storage/continue-watching-sync');
+assert(typeof syncCaughtUpWithHomeList === 'function', 'syncCaughtUpWithHomeList deve essere esportato come funzione');
+assert(typeof syncCaughtUpWithRemote === 'function', 'syncCaughtUpWithRemote deve essere esportato come funzione');
+
+// 1. Test salvataggio completamento episodio per anime in corso (totale '?')
+AppStorage.clearWatchHistory();
+AppStorage.saveWatchProgress({
+  animeId: 'one-piece-test',
+  animeTitle: 'One Piece',
+  episodeId: 'ep-1100',
+  episodeNumber: 1100,
+  totalEpisodes: '?',
+  currentTime: 1440,
+  duration: 1440,
+  thumbnail: 'https://example.com/one-piece.jpg',
+  // Nessun nextEpisode disponibile
+});
+
+let testContinueList = AppStorage.getContinueWatching();
+const caughtUpAnime = testContinueList.find((c) => c.animeId === 'one-piece-test');
+assert(caughtUpAnime !== undefined, 'L anime in corso con totale ? deve rimanere nel carosello Continua a Guardare');
+assert(caughtUpAnime.isCaughtUp === true, 'L anime in corso deve essere contrassegnato con isCaughtUp = true');
+assert(caughtUpAnime.episodeNumber === 1100, 'L episodio registrato deve essere 1100');
+
+// 2. Test avanzamento automatico al rilascio di un nuovo episodio
+const updated = AppStorage.updateContinueWatchingEpisode(
+  'one-piece-test',
+  { id: 'ep-1101', number: 1101, dataId: 'data-1101' },
+  '?'
+);
+assert(updated === true, 'updateContinueWatchingEpisode deve restituire true');
+
+testContinueList = AppStorage.getContinueWatching();
+const promotedAnime = testContinueList[0];
+assert(promotedAnime.animeId === 'one-piece-test', 'L anime aggiornato deve essere promosso in cima al carosello');
+assert(promotedAnime.episodeNumber === 1101, 'Il nuovo episodio deve essere 1101');
+assert(promotedAnime.percentage === 0, 'La percentuale del nuovo episodio deve essere 0%');
+assert(promotedAnime.isCaughtUp === false, 'isCaughtUp deve tornare false');
+
+// 3. Test anime concluso con totale noto (es. 12 episodi, non contiene '?'): deve essere rimosso
+AppStorage.saveWatchProgress({
+  animeId: 'concluded-anime-test',
+  animeTitle: 'Anime Concluso',
+  episodeId: 'ep-12',
+  episodeNumber: 12,
+  totalEpisodes: 12,
+  currentTime: 1440,
+  duration: 1440,
+  thumbnail: 'https://example.com/concluded.jpg',
+  // Nessun nextEpisode
+});
+
+testContinueList = AppStorage.getContinueWatching();
+const concludedInContinue = testContinueList.find((c) => c.animeId === 'concluded-anime-test');
+assert(concludedInContinue === undefined, 'Le serie concluse a totale noto senza episodi successivi non devono restare in Continua a Guardare');
+
+// 4. Verifica sorgenti UI
+const continueSectionSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/home/ContinueWatchingSection.tsx'), 'utf-8');
+assert(continueSectionSource.includes('item.isCaughtUp'), 'ContinueWatchingSection deve verificare isCaughtUp');
+assert(continueSectionSource.includes('IN PARI'), 'ContinueWatchingSection deve mostrare il badge e sottotitolo IN PARI');
+assert(continueSectionSource.includes('checkmark-done-circle'), 'ContinueWatchingSection deve mostrare icona checkmark per serie in pari');
+
+console.log('✓ Gestione Anime in Corso \'IN PARI\' & Sincronizzazione Ibrida Smart verificate con successo.');
 
 // -----------------------------------------------------------------------------
 // Fine Test

@@ -11,6 +11,7 @@ export interface SearchResultsGridProps {
   items: AnimeItem[];
   cardWidth: number;
   cardHeight: number;
+  numColumns?: number;
   onItemPress: (item: AnimeItem) => void;
 }
 
@@ -18,6 +19,7 @@ export function SearchResultsGrid({
   items,
   cardWidth,
   cardHeight,
+  numColumns = 2,
   onItemPress,
 }: SearchResultsGridProps) {
   const { theme } = useTheme();
@@ -35,9 +37,10 @@ export function SearchResultsGrid({
 
   return (
     <FlashList
+      key={`search-grid-${numColumns}`}
       data={items}
       keyExtractor={(item, index) => item.id || `search-${index}`}
-      numColumns={2}
+      numColumns={numColumns}
       contentContainerStyle={styles.searchListContent}
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"

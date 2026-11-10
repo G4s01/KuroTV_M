@@ -18,6 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { AppStorage } from '@/services/storage';
 import { oledTheme, useTheme, getContrastTextColor } from '@/theme';
 import { ConfirmModal } from '@/components/ConfirmModal';
+import { useResponsiveLayout } from '@/hooks';
 import type { WatchHistoryItem } from '@/types';
 
 interface HistoryItemRowProps {
@@ -210,6 +211,7 @@ const HistoryItemRow = React.memo<HistoryItemRowProps>(function HistoryItemRow({
 export default function HistoryScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { isTablet } = useResponsiveLayout();
   const { theme } = useTheme();
   const [history, setHistory] = React.useState<WatchHistoryItem[]>([]);
   const [isRefreshing, setIsRefreshing] = React.useState(false);
@@ -389,7 +391,10 @@ export default function HistoryScreen() {
                 formatDate={formatDate}
               />
             )}
-            contentContainerStyle={styles.listContent}
+            contentContainerStyle={[
+              styles.listContent,
+              isTablet && { maxWidth: 900, width: '100%', alignSelf: 'center' },
+            ]}
             refreshControl={
               <RefreshControl
                 refreshing={isRefreshing}

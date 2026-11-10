@@ -93,6 +93,9 @@ export default function VideoPlayerScreen() {
   const totalEpisodesRef = React.useRef<number | string | undefined>(
     params.totalEpisodes || undefined
   );
+  const isOngoingRef = React.useRef<boolean>(
+    params.totalEpisodes ? String(params.totalEpisodes).includes('?') : false
+  );
   const nextEpisodeRef = React.useRef<{ id: string; number: number; dataId?: string } | null>(null);
   const hasResumedRef = React.useRef(false);
   const detailLoadedRef = React.useRef(false);
@@ -137,6 +140,7 @@ export default function VideoPlayerScreen() {
         dataId: episodeDataId,
         serverId,
         thumbnail: thumbnailRef.current,
+        isOngoing: isOngoingRef.current,
         nextEpisode: nextEp
           ? {
               id: nextEp.id,
@@ -536,6 +540,10 @@ export default function VideoPlayerScreen() {
           detailLoadedRef.current = true;
           if (detail) {
             setAnimeDetail(detail);
+            const statusStr = (detail.status || detail.state || '').toLowerCase();
+            const totalStr = String(detail.totalEpisodes || '').trim();
+            isOngoingRef.current =
+              totalStr.includes('?') || statusStr.includes('in corso') || statusStr.includes('ongoing');
             if (detail.image) {
               thumbnailRef.current = detail.image;
               setThumbnail((prev) => prev || detail.image || '');

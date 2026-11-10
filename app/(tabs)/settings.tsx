@@ -43,6 +43,7 @@ import {
 } from '@/services/updater';
 import type { UpdateCheckResult, DownloadProgress } from '@/services/updater';
 import { CURRENT_CHANGELOG, formatChangelog } from '@/constants/changelog';
+import { useResponsiveLayout } from '@/hooks';
 
 export default function SettingsScreen() {
   const params = useLocalSearchParams<{ scrollTo?: string }>();
@@ -50,6 +51,7 @@ export default function SettingsScreen() {
   const shouldScrollToUpdateRef = React.useRef(false);
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
+  const { isTablet } = useResponsiveLayout();
   const primaryContrast = getContrastTextColor(theme.colors.primary);
 
   const [activeTheme, setActiveTheme] = React.useState<string>(() => {
@@ -470,14 +472,23 @@ export default function SettingsScreen() {
   return (
     <View style={[styles.root, { paddingTop: insets.top, backgroundColor: theme.colors.background }]}>
       {/* App Bar */}
-      <View style={[styles.appBar, { borderBottomColor: theme.colors.border }]}>
+      <View
+        style={[
+          styles.appBar,
+          { borderBottomColor: theme.colors.border },
+          isTablet && { maxWidth: 840, width: '100%', alignSelf: 'center' },
+        ]}
+      >
         <Text style={[styles.appBarTitle, { color: theme.colors.text }]}>IMPOSTAZIONI</Text>
       </View>
 
       <ScrollView
         ref={scrollViewRef}
         style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          isTablet && { maxWidth: 840, width: '100%', alignSelf: 'center' },
+        ]}
         showsVerticalScrollIndicator={false}
         onContentSizeChange={() => {
           if (shouldScrollToUpdateRef.current) {

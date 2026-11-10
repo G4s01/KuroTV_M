@@ -8,11 +8,14 @@ import {
   Modal,
   TouchableWithoutFeedback,
   useWindowDimensions,
+  Animated,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme, oledTheme } from '@/theme';
+import { useResponsiveLayout } from '@/hooks';
+import { useBottomSheetDragDismiss } from '../useBottomSheetDragDismiss';
 
 export interface PlayerInfoSheetProps {
   isVisible: boolean;
@@ -45,8 +48,14 @@ export const PlayerInfoSheet: React.FC<PlayerInfoSheetProps> = React.memo(({
 }) => {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
+  const { isTablet } = useResponsiveLayout();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const isLandscape = windowWidth > windowHeight;
+
+  const { translateY, panHandlers } = useBottomSheetDragDismiss({
+    isVisible,
+    onClose,
+  });
 
   const safeGenres = Array.isArray(genres) ? genres : [];
   const activeDescription = episodeDescription || description;
@@ -81,44 +90,57 @@ export const PlayerInfoSheet: React.FC<PlayerInfoSheetProps> = React.memo(({
           <View style={styles.backdrop} />
         </TouchableWithoutFeedback>
 
-        <View
+        <Animated.View
           style={[
             styles.container,
             {
               backgroundColor: theme.colors.card,
               borderColor: theme.colors.border,
+              transform: [{ translateY }],
               paddingLeft: horizontalPadding,
               paddingRight: horizontalPadding,
               paddingBottom: Math.max(24, insets.bottom + 12),
             },
+            isTablet && {
+              maxWidth: 620,
+              width: '100%',
+              alignSelf: 'center',
+              borderTopLeftRadius: 24,
+              borderTopRightRadius: 24,
+              borderLeftWidth: 1,
+              borderRightWidth: 1,
+            },
           ]}
         >
-          {/* Drag Handle Indicator */}
-          <View style={styles.dragIndicatorWrapper}>
-            <View style={styles.dragIndicator} />
-          </View>
-
-          {/* Header Row */}
-          <View style={styles.headerRow}>
-            <View style={styles.headerTitleGroup}>
-              <Ionicons name="information-circle-outline" size={18} color={theme.colors.primary} />
-              <Text
-                style={[styles.headerTitle, { color: theme.colors.text }]}
-                numberOfLines={1}
-                ellipsizeMode="tail"
-              >
-                SCHEDA INFORMAZIONI
-              </Text>
+          {/* Draggable Header Area (Drag Handle + Header Row) */}
+          <View {...panHandlers} style={styles.dragHeaderArea}>
+            {/* Drag Handle Indicator */}
+            <View style={styles.dragIndicatorWrapper}>
+              <View style={styles.dragIndicator} />
             </View>
-            <Pressable
-              onPress={onClose}
-              hitSlop={12}
-              style={styles.closeBtn}
-              accessibilityRole="button"
-              accessibilityLabel="CHIUDI SCHEDA INFORMAZIONI"
-            >
-              <Ionicons name="close" size={20} color={theme.colors.textMuted} />
-            </Pressable>
+
+            {/* Header Row */}
+            <View style={styles.headerRow}>
+              <View style={styles.headerTitleGroup}>
+                <Ionicons name="information-circle-outline" size={18} color={theme.colors.primary} />
+                <Text
+                  style={[styles.headerTitle, { color: theme.colors.text }]}
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
+                >
+                  SCHEDA INFORMAZIONI
+                </Text>
+              </View>
+              <Pressable
+                onPress={onClose}
+                hitSlop={12}
+                style={styles.closeBtn}
+                accessibilityRole="button"
+                accessibilityLabel="CHIUDI SCHEDA INFORMAZIONI"
+              >
+                <Ionicons name="close" size={20} color={theme.colors.textMuted} />
+              </Pressable>
+            </View>
           </View>
 
           <ScrollView
@@ -255,7 +277,7 @@ export const PlayerInfoSheet: React.FC<PlayerInfoSheetProps> = React.memo(({
               <Text style={[styles.bottomCloseBtnText, { color: theme.colors.text }]}>CHIUDI</Text>
             </Pressable>
           </ScrollView>
-        </View>
+        </Animated.View>
       </View>
     </Modal>
   );
@@ -281,16 +303,19 @@ const styles = StyleSheet.create({
     maxWidth: 680,
     alignSelf: 'center',
   },
+  dragHeaderArea: {
+    width: '100%',
+  },
   dragIndicatorWrapper: {
     alignItems: 'center',
-    paddingVertical: 4,
-    marginBottom: 6,
+    paddingVertical: 10,
+    width: '100%',
   },
   dragIndicator: {
-    width: 38,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    width: 44,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: 'rgba(255, 255, 255, 0.35)',
   },
   headerRow: {
     flexDirection: 'row',

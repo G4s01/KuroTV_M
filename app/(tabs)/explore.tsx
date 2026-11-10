@@ -6,7 +6,6 @@ import {
   ScrollView,
   Pressable,
   RefreshControl,
-  useWindowDimensions,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -18,12 +17,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { scheduleQueryOptions } from '@/services/queries';
 import { oledTheme, useTheme, getContrastTextColor } from '@/theme';
 import { ScheduleScreenSkeleton } from '@/components/skeleton';
+import { useResponsiveLayout } from '@/hooks';
 import type { ScheduleDay, ScheduleItem } from '@/types';
 
 export default function ExploreScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { width: windowWidth } = useWindowDimensions();
+  const { isTablet } = useResponsiveLayout();
   const { theme } = useTheme();
   const primaryContrast = getContrastTextColor(theme.colors.primary);
 
@@ -136,7 +136,13 @@ export default function ExploreScreen() {
       ) : (
         <View style={styles.contentContainer}>
           {/* Day Selector Tabs (Horizontal Scroll) */}
-          <View style={[styles.daySelectorWrapper, { borderBottomColor: theme.colors.border }]}>
+          <View
+            style={[
+              styles.daySelectorWrapper,
+              { borderBottomColor: theme.colors.border },
+              isTablet && { maxWidth: 900, width: '100%', alignSelf: 'center' },
+            ]}
+          >
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -329,7 +335,10 @@ export default function ExploreScreen() {
                   </View>
                 );
               }}
-              contentContainerStyle={styles.listContent}
+              contentContainerStyle={[
+                styles.listContent,
+                isTablet && { maxWidth: 900, width: '100%', alignSelf: 'center' },
+              ]}
               ListHeaderComponent={
                 showHero && heroItem ? (
                   <Pressable

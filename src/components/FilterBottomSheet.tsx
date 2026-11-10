@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { oledTheme, useTheme, getContrastTextColor } from '@/theme';
+import { useResponsiveLayout } from '@/hooks';
 
 export interface FilterState {
   genres?: string[]; // IDs dei generi multipli, es. ['1', '9']
@@ -81,13 +82,11 @@ export const ANIME_GENRES = [
 ];
 
 export const ANIME_DUB = [
-  { label: 'TUTTI GLI AUDIO', value: '' },
-  { label: 'DOPPIATI (ITA)', value: '1' },
-  { label: 'SOTTOTITOLATI (SUB)', value: '0' },
+  { label: 'DOPPIATI', value: '1' },
+  { label: 'SOTTOTITOLATI', value: '0' },
 ];
 
 export const ANIME_TYPES = [
-  { label: 'TUTTI I TIPI', value: '' },
   { label: 'SERIE TV', value: '0' },
   { label: 'FILM ANIME', value: '4' },
   { label: 'OAV', value: '1' },
@@ -96,20 +95,18 @@ export const ANIME_TYPES = [
 ];
 
 export const ANIME_STATUSES = [
-  { label: 'TUTTI GLI STATI', value: '' },
   { label: 'IN CORSO', value: '0' },
   { label: 'COMPLETATO', value: '1' },
   { label: 'NON RILASCIATO', value: '2' },
 ];
 
 export const ANIME_SORTS = [
-  { label: 'STANDARD', value: '' },
-  { label: 'PIÙ RECENTI (USCITA)', value: '5' },
+  { label: 'PIÙ RECENTI', value: '5' },
   { label: 'ULTIME AGGIUNTE', value: '1' },
   { label: 'PIÙ VISTI', value: '6' },
   { label: 'MEGLIO VALUTATI', value: '7' },
-  { label: 'ALFABETICO A-Z', value: '2' },
-  { label: 'ALFABETICO Z-A', value: '3' },
+  { label: 'A-Z', value: '2' },
+  { label: 'Z-A', value: '3' },
 ];
 
 export const FilterBottomSheet: React.FC<FilterBottomSheetProps> = ({
@@ -121,6 +118,7 @@ export const FilterBottomSheet: React.FC<FilterBottomSheetProps> = ({
 }) => {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
+  const { isTablet } = useResponsiveLayout();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const isLandscape = windowWidth > windowHeight;
 
@@ -150,6 +148,26 @@ export const FilterBottomSheet: React.FC<FilterBottomSheetProps> = ({
     setSelectedStatus(filters.status);
     setSelectedSort(filters.sort);
   }, [filters, isVisible]);
+
+  const toggleDub = (val: string) => {
+    Haptics.selectionAsync().catch(() => {});
+    setSelectedDub((prev) => (prev === val ? undefined : val));
+  };
+
+  const toggleType = (val: string) => {
+    Haptics.selectionAsync().catch(() => {});
+    setSelectedType((prev) => (prev === val ? undefined : val));
+  };
+
+  const toggleStatus = (val: string) => {
+    Haptics.selectionAsync().catch(() => {});
+    setSelectedStatus((prev) => (prev === val ? undefined : val));
+  };
+
+  const toggleSort = (val: string) => {
+    Haptics.selectionAsync().catch(() => {});
+    setSelectedSort((prev) => (prev === val ? undefined : val));
+  };
 
   const toggleGenre = (genreId: string) => {
     Haptics.selectionAsync().catch(() => {});
@@ -194,6 +212,52 @@ export const FilterBottomSheet: React.FC<FilterBottomSheetProps> = ({
     (selectedStatus ? 1 : 0) +
     (selectedSort ? 1 : 0);
 
+  const renderFilterButton = (
+    item: { label: string; value: string },
+    isSelected: boolean,
+    onPress: () => void,
+    flex = 1,
+    accessibilityPrefix = ''
+  ) => {
+    const contrastColor = isSelected ? primaryContrast : theme.colors.textSecondary;
+    return (
+      <Pressable
+        key={item.value}
+        style={[
+          styles.chip,
+          {
+            flex,
+            backgroundColor: isSelected ? theme.colors.primary : theme.colors.surface,
+            borderColor: isSelected ? theme.colors.primary : theme.colors.border,
+          },
+        ]}
+        onPress={onPress}
+        hitSlop={4}
+        accessibilityRole="button"
+        accessibilityLabel={`${accessibilityPrefix} ${item.label}${isSelected ? ' ATTIVO' : ''}`}
+      >
+        {isSelected && (
+          <Ionicons
+            name="checkmark-sharp"
+            size={13}
+            color={contrastColor}
+            style={styles.chipCheckIcon}
+          />
+        )}
+        <Text
+          style={[
+            styles.chipText,
+            { color: contrastColor },
+            isSelected && styles.chipTextActive,
+          ]}
+          numberOfLines={1}
+        >
+          {item.label}
+        </Text>
+      </Pressable>
+    );
+  };
+
   return (
     <Modal
       visible={isVisible}
@@ -216,6 +280,15 @@ export const FilterBottomSheet: React.FC<FilterBottomSheetProps> = ({
               paddingLeft: horizontalPadding,
               paddingRight: horizontalPadding,
               paddingBottom: Math.max(24, insets.bottom + 12),
+            },
+            isTablet && {
+              maxWidth: 620,
+              width: '100%',
+              alignSelf: 'center',
+              borderTopLeftRadius: 24,
+              borderTopRightRadius: 24,
+              borderLeftWidth: 1,
+              borderRightWidth: 1,
             },
           ]}
         >
@@ -265,166 +338,108 @@ export const FilterBottomSheet: React.FC<FilterBottomSheetProps> = ({
             nestedScrollEnabled={true}
             keyboardShouldPersistTaps="handled"
           >
-            {/* Audio: Doppiati e Sottotitolati */}
+            {/* 1. Audio: Doppiati e Sottotitolati (Simmetria 50% / 50%) */}
             <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>AUDIO</Text>
-            <View style={styles.chipRow}>
-              {ANIME_DUB.map((item) => {
-                const active = selectedDub === item.value || (!selectedDub && !item.value);
-                const contrastColor = active ? primaryContrast : theme.colors.textSecondary;
-                return (
-                  <Pressable
-                    key={item.label}
-                    style={[
-                      styles.chip,
-                      { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
-                      active && [
-                        styles.chipActive,
-                        { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
-                      ],
-                    ]}
-                    onPress={() => {
-                      Haptics.selectionAsync().catch(() => {});
-                      setSelectedDub(item.value || undefined);
-                    }}
-                    hitSlop={4}
-                    accessibilityRole="button"
-                    accessibilityLabel={`AUDIO ${item.label}${active ? ' ATTIVO' : ''}`}
-                  >
-                    <Text
-                      style={[
-                        styles.chipText,
-                        { color: contrastColor },
-                        active && styles.chipTextActive,
-                      ]}
-                    >
-                      {item.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
+            <View style={styles.row}>
+              {ANIME_DUB.map((item) =>
+                renderFilterButton(
+                  item,
+                  selectedDub === item.value,
+                  () => toggleDub(item.value),
+                  1,
+                  'AUDIO'
+                )
+              )}
             </View>
 
-            {/* Formato / Tipo */}
+            {/* 2. Formato: Row 1 (Serie TV, Film Anime - 50%/50%), Row 2 (OAV, ONA, Special - 33.3% each) */}
             <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>FORMATO</Text>
-            <View style={styles.chipRow}>
-              {ANIME_TYPES.map((item) => {
-                const active = selectedType === item.value || (!selectedType && !item.value);
-                const contrastColor = active ? primaryContrast : theme.colors.textSecondary;
-                return (
-                  <Pressable
-                    key={item.label}
-                    style={[
-                      styles.chip,
-                      { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
-                      active && [
-                        styles.chipActive,
-                        { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
-                      ],
-                    ]}
-                    onPress={() => {
-                      Haptics.selectionAsync().catch(() => {});
-                      setSelectedType(item.value || undefined);
-                    }}
-                    hitSlop={4}
-                    accessibilityRole="button"
-                    accessibilityLabel={`FORMATO ${item.label}${active ? ' ATTIVO' : ''}`}
-                  >
-                    <Text
-                      style={[
-                        styles.chipText,
-                        { color: contrastColor },
-                        active && styles.chipTextActive,
-                      ]}
-                    >
-                      {item.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
+            <View style={styles.row}>
+              {ANIME_TYPES.slice(0, 2).map((item) =>
+                renderFilterButton(
+                  item,
+                  selectedType === item.value,
+                  () => toggleType(item.value),
+                  1,
+                  'FORMATO'
+                )
+              )}
+            </View>
+            <View style={styles.row}>
+              {ANIME_TYPES.slice(2).map((item) =>
+                renderFilterButton(
+                  item,
+                  selectedType === item.value,
+                  () => toggleType(item.value),
+                  1,
+                  'FORMATO'
+                )
+              )}
             </View>
 
-            {/* Stato di uscita */}
-            <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>STATO DI USCITA</Text>
-            <View style={styles.chipRow}>
-              {ANIME_STATUSES.map((item) => {
-                const active = selectedStatus === item.value || (!selectedStatus && !item.value);
-                const contrastColor = active ? primaryContrast : theme.colors.textSecondary;
-                return (
-                  <Pressable
-                    key={item.label}
-                    style={[
-                      styles.chip,
-                      { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
-                      active && [
-                        styles.chipActive,
-                        { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
-                      ],
-                    ]}
-                    onPress={() => {
-                      Haptics.selectionAsync().catch(() => {});
-                      setSelectedStatus(item.value || undefined);
-                    }}
-                    hitSlop={4}
-                    accessibilityRole="button"
-                    accessibilityLabel={`STATO ${item.label}${active ? ' ATTIVO' : ''}`}
-                  >
-                    <Text
-                      style={[
-                        styles.chipText,
-                        { color: contrastColor },
-                        active && styles.chipTextActive,
-                      ]}
-                    >
-                      {item.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
+            {/* 3. Stato di Uscita: Row 1 (In Corso, Completato - 50%/50%), Row 2 (Non Rilasciato - 100%) */}
+            <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>STATO</Text>
+            <View style={styles.row}>
+              {ANIME_STATUSES.slice(0, 2).map((item) =>
+                renderFilterButton(
+                  item,
+                  selectedStatus === item.value,
+                  () => toggleStatus(item.value),
+                  1,
+                  'STATO'
+                )
+              )}
+            </View>
+            <View style={styles.row}>
+              {renderFilterButton(
+                ANIME_STATUSES[2],
+                selectedStatus === ANIME_STATUSES[2].value,
+                () => toggleStatus(ANIME_STATUSES[2].value),
+                1,
+                'STATO'
+              )}
             </View>
 
-            {/* Ordinamento */}
+            {/* 4. Ordinamento: 3 righe simmetriche a 2 colonne (50%/50%) */}
             <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>ORDINA PER</Text>
-            <View style={styles.chipRow}>
-              {ANIME_SORTS.map((item) => {
-                const active = selectedSort === item.value || (!selectedSort && !item.value);
-                const contrastColor = active ? primaryContrast : theme.colors.textSecondary;
-                return (
-                  <Pressable
-                    key={item.label}
-                    style={[
-                      styles.chip,
-                      { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
-                      active && [
-                        styles.chipActive,
-                        { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
-                      ],
-                    ]}
-                    onPress={() => {
-                      Haptics.selectionAsync().catch(() => {});
-                      setSelectedSort(item.value || undefined);
-                    }}
-                    hitSlop={4}
-                    accessibilityRole="button"
-                    accessibilityLabel={`ORDINA PER ${item.label}${active ? ' ATTIVO' : ''}`}
-                  >
-                    <Text
-                      style={[
-                        styles.chipText,
-                        { color: contrastColor },
-                        active && styles.chipTextActive,
-                      ]}
-                    >
-                      {item.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
+            <View style={styles.row}>
+              {ANIME_SORTS.slice(0, 2).map((item) =>
+                renderFilterButton(
+                  item,
+                  selectedSort === item.value,
+                  () => toggleSort(item.value),
+                  1,
+                  'ORDINA'
+                )
+              )}
+            </View>
+            <View style={styles.row}>
+              {ANIME_SORTS.slice(2, 4).map((item) =>
+                renderFilterButton(
+                  item,
+                  selectedSort === item.value,
+                  () => toggleSort(item.value),
+                  1,
+                  'ORDINA'
+                )
+              )}
+            </View>
+            <View style={styles.row}>
+              {ANIME_SORTS.slice(4, 6).map((item) =>
+                renderFilterButton(
+                  item,
+                  selectedSort === item.value,
+                  () => toggleSort(item.value),
+                  1,
+                  'ORDINA'
+                )
+              )}
             </View>
 
-            {/* Generi (Selezione Multipla) */}
+            {/* 5. Generi: Griglia simmetrica a 2 colonne (48.8% / 48.8%) */}
             <View style={styles.sectionHeaderRow}>
               <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary, marginBottom: 0 }]}>
-                GENERI {selectedGenres.length > 0 ? `(${selectedGenres.length} SELEZIONATI)` : '(TUTTI)'}
+                GENERI {selectedGenres.length > 0 ? `(${selectedGenres.length} SELEZIONATI)` : ''}
               </Text>
               {selectedGenres.length > 0 && (
                 <Pressable
@@ -438,7 +453,7 @@ export const FilterBottomSheet: React.FC<FilterBottomSheetProps> = ({
                 </Pressable>
               )}
             </View>
-            <View style={styles.chipRow}>
+            <View style={styles.genresGrid}>
               {ANIME_GENRES.map((g) => {
                 const active = selectedGenres.includes(g.id);
                 const contrastColor = active ? primaryContrast : theme.colors.textSecondary;
@@ -446,12 +461,11 @@ export const FilterBottomSheet: React.FC<FilterBottomSheetProps> = ({
                   <Pressable
                     key={g.id}
                     style={[
-                      styles.chip,
-                      { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
-                      active && [
-                        styles.chipActive,
-                        { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
-                      ],
+                      styles.genreCard,
+                      {
+                        backgroundColor: active ? theme.colors.primary : theme.colors.surface,
+                        borderColor: active ? theme.colors.primary : theme.colors.border,
+                      },
                     ]}
                     onPress={() => toggleGenre(g.id)}
                     hitSlop={4}
@@ -463,7 +477,7 @@ export const FilterBottomSheet: React.FC<FilterBottomSheetProps> = ({
                         name="checkmark-sharp"
                         size={12}
                         color={contrastColor}
-                        style={{ marginRight: 4 }}
+                        style={styles.chipCheckIcon}
                       />
                     )}
                     <Text
@@ -472,6 +486,7 @@ export const FilterBottomSheet: React.FC<FilterBottomSheetProps> = ({
                         { color: contrastColor },
                         active && styles.chipTextActive,
                       ]}
+                      numberOfLines={1}
                     >
                       {g.label}
                     </Text>
@@ -606,22 +621,24 @@ const styles = StyleSheet.create({
     fontFamily: oledTheme.typography.caption.fontFamily,
     textTransform: 'uppercase',
   },
-  chipRow: {
+  row: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: 8,
+    marginBottom: 8,
   },
   chip: {
-    minHeight: 40,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: oledTheme.radius.full,
+    minHeight: 44,
+    paddingHorizontal: 8,
+    paddingVertical: 10,
+    borderRadius: oledTheme.radius.md,
     borderWidth: 1,
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  chipActive: {},
+  chipCheckIcon: {
+    marginRight: 6,
+  },
   chipText: {
     fontSize: 12,
     fontWeight: '600',
@@ -630,6 +647,23 @@ const styles = StyleSheet.create({
   },
   chipTextActive: {
     fontWeight: '800',
+  },
+  genresGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    rowGap: 8,
+  },
+  genreCard: {
+    width: '48.8%',
+    minHeight: 44,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    borderRadius: oledTheme.radius.md,
+    borderWidth: 1,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   footer: {
     marginTop: 14,

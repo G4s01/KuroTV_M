@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { oledTheme, useTheme } from '@/theme';
+import { useResponsiveLayout } from '@/hooks';
 
 export interface EpisodeBatch {
   id: string;
@@ -49,6 +50,7 @@ export const BatchBottomSheet: React.FC<BatchBottomSheetProps> = ({
 }) => {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
+  const { isTablet } = useResponsiveLayout();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const isLandscape = windowWidth > windowHeight;
 
@@ -83,6 +85,15 @@ export const BatchBottomSheet: React.FC<BatchBottomSheetProps> = ({
               paddingLeft: horizontalPadding,
               paddingRight: horizontalPadding,
               paddingBottom: Math.max(28, insets.bottom + 16),
+            },
+            isTablet && {
+              maxWidth: 580,
+              width: '100%',
+              alignSelf: 'center',
+              borderTopLeftRadius: 24,
+              borderTopRightRadius: 24,
+              borderLeftWidth: 1,
+              borderRightWidth: 1,
             },
           ]}
         >

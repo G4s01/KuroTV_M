@@ -5,6 +5,25 @@ Tutte le modifiche degne di nota a questo progetto saranno documentate in questo
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/)
 e questo progetto aderisce al [Semantic Versioning](https://semver.org/lang/it/).
 
+## [1.0.3] - 2026-11-10
+
+### Aggiunto
+- **Gestione Anime in Corso "IN PARI"**:
+  - Quando l'utente completa l'ultimo episodio attualmente disponibile di una serie ongoing (totale sconosciuto `'?'` o stato *in corso*), la serie non viene più rimossa da *Riprendi a guardare*.
+  - Stato visivo dedicato `isCaughtUp: true` con badge OLED `IN PARI` verde (`#10B981`), icona `checkmark-done-circle`, progress bar al 100% e sottotitolo `EP. X • IN PARI`.
+  - Tap diretto sulla card per aprire la scheda tecnica dell'anime e consultare dettagli, palinsesto o rewatch.
+- **Sincronizzazione Ibrida Smart (`continue-watching-sync.ts`)**:
+  - *Check passivo istantaneo*: confronta a costo zero di rete le serie in pari con gli ultimi episodi caricati nella Home (`homeData.all`, `homeData.newAdded`), promuovendo subito la serie al primo posto nel carosello all'Episodio X+1 a 0:00 non appena esce una nuova puntata.
+  - *Check remoto periodico*: controllo di rete mirato in background all'avvio/focus della Home (`useFocusEffect`) se sono trascorse almeno 4 ore dall'ultima verifica.
+  - *Pull-to-Refresh forzato*: lo swipe verso il basso nella Home forza istantaneamente il controllo remoto di tutte le serie in pari.
+  - *Rimozione automatica a conclusione*: rimozione automatica da *Riprendi a guardare* se la serie risulta definitivamente conclusa (totale noto e raggiunto).
+- **Chiusura Menù Player Tramite Scorrimento (Swipe-Down Dismiss)**:
+  - Implementato l'hook touch-native `useBottomSheetDragDismiss` su driver nativo a 60/120 FPS per `ServerBottomSheet`, `PlayerInfoSheet` e `PlayerEpisodesCarouselSheet`.
+  - Chiusura naturale trascinando la maniglia drag handle o l'area di intestazione verso il basso con soglia minima e velocità di rilascio, senza conflitti con scrolling o pulsanti interni.
+- **Simmetria Griglia Filtri & Rimozione Opzioni Ridondanti**:
+  - Eliminazione di tutte le opzioni generiche 'TUTTI...' (implicite in assenza di selezione).
+  - Griglia touch-native perfettamente bilanciata: Audio a 2 colonne (`DOPPIATI` / `SOTTOTITOLATI`), Formato bilanciato, Stato a 2 colonne e Generi a 2 colonne uniformi.
+
 ## [1.0.2] - 2026-11-10
 
 ### Aggiunto

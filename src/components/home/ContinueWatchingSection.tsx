@@ -49,7 +49,7 @@ export function ContinueWatchingSection({
             style={styles.continueCard}
             onPress={() => onItemPress(item)}
             accessibilityRole="button"
-            accessibilityLabel={`RIPRENDI ${item.title.toUpperCase()}`}
+            accessibilityLabel={item.isCaughtUp ? `${item.title.toUpperCase()} (IN PARI)` : `RIPRENDI ${item.title.toUpperCase()}`}
           >
             <View
               style={[
@@ -86,16 +86,39 @@ export function ContinueWatchingSection({
                 </View>
               </Pressable>
 
-              <View style={styles.playOverlay}>
-                <Ionicons name="play-circle" size={32} color="#FFFFFF" />
-              </View>
+              {/* Badge IN PARI in alto a sinistra */}
+              {item.isCaughtUp && (
+                <View
+                  style={[
+                    styles.caughtUpBadge,
+                    {
+                      backgroundColor: 'rgba(16, 185, 129, 0.2)',
+                      borderColor: theme.colors.success,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.caughtUpBadgeText, { color: theme.colors.success }]}>
+                    IN PARI
+                  </Text>
+                </View>
+              )}
+
+              {item.isCaughtUp ? (
+                <View style={styles.caughtUpOverlay}>
+                  <Ionicons name="checkmark-done-circle" size={32} color={theme.colors.success} />
+                </View>
+              ) : (
+                <View style={styles.playOverlay}>
+                  <Ionicons name="play-circle" size={32} color="#FFFFFF" />
+                </View>
+              )}
               <View style={styles.progressBarWrapper}>
                 <View
                   style={[
                     styles.progressBarFill,
                     {
-                      width: `${Math.min(100, item.percentage || 0)}%`,
-                      backgroundColor: theme.colors.primary,
+                      width: item.isCaughtUp ? '100%' : `${Math.min(100, item.percentage || 0)}%`,
+                      backgroundColor: item.isCaughtUp ? theme.colors.success : theme.colors.primary,
                     },
                   ]}
                 />
@@ -104,9 +127,15 @@ export function ContinueWatchingSection({
             <Text style={[styles.continueTitle, { color: theme.colors.text }]} numberOfLines={1}>
               {item.title}
             </Text>
-            <Text style={[styles.continueSubtitle, { color: theme.colors.textMuted }]}>
-              EPISODIO {item.episodeNumber} ({item.percentage}%)
-            </Text>
+            {item.isCaughtUp ? (
+              <Text style={[styles.continueSubtitle, { color: theme.colors.success }]}>
+                EP. {item.episodeNumber} • IN PARI
+              </Text>
+            ) : (
+              <Text style={[styles.continueSubtitle, { color: theme.colors.textMuted }]}>
+                EPISODIO {item.episodeNumber} ({item.percentage}%)
+              </Text>
+            )}
           </Pressable>
         ))}
       </ScrollView>

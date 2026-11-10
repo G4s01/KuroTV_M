@@ -230,6 +230,8 @@ export interface ContinueWatchingItem {
   updatedAt: number;
   dataId?: string;
   serverId?: string;
+  isCaughtUp?: boolean;
+  lastCheckedAt?: number;
 }
 
 export interface SaveProgressPayload {
@@ -250,6 +252,7 @@ export interface SaveProgressPayload {
     number: number;
     dataId?: string;
   };
+  isOngoing?: boolean;
 }
 
 export type SettingsListener = (settings: AppSettings) => void;
@@ -833,6 +836,57 @@ export const AppStorage = {
     AppStorage.setObject(StorageKeys.CONTINUE_WATCHING, current);
   },
 
+  updateContinueWatchingEpisode: (
+    animeId: string,
+    newEpisode: { id: string; number: number; dataId?: string },
+    totalEpisodes?: number | string
+  ): boolean => {
+    if (!animeId || !newEpisode?.number) return false;
+    const rawContinue = AppStorage.getObject<ContinueWatchingItem[]>(StorageKeys.CONTINUE_WATCHING);
+    if (!Array.isArray(rawContinue)) return false;
+
+    const targetIdx = rawContinue.findIndex((c) => c.animeId === animeId);
+    if (targetIdx === -1) return false;
+
+    const item = rawContinue[targetIdx];
+    if (newEpisode.number > item.episodeNumber) {
+      const updatedItem: ContinueWatchingItem = {
+        ...item,
+        episodeId: newEpisode.id,
+        episodeNumber: newEpisode.number,
+        dataId: newEpisode.dataId || item.dataId,
+        totalEpisodes: totalEpisodes ?? item.totalEpisodes,
+        position: 0,
+        duration: 0,
+        percentage: 0,
+        isCaughtUp: false,
+        updatedAt: Date.now(),
+        lastCheckedAt: Date.now(),
+      };
+      rawContinue.splice(targetIdx, 1);
+      rawContinue.unshift(updatedItem);
+      AppStorage.setObject(StorageKeys.CONTINUE_WATCHING, rawContinue.slice(0, 50));
+      return true;
+    } else if (totalEpisodes && item.totalEpisodes !== totalEpisodes) {
+      item.totalEpisodes = totalEpisodes;
+      item.lastCheckedAt = Date.now();
+      AppStorage.setObject(StorageKeys.CONTINUE_WATCHING, rawContinue);
+      return true;
+    }
+    return false;
+  },
+
+  markContinueWatchingChecked: (animeId: string): void => {
+    if (!animeId) return;
+    const rawContinue = AppStorage.getObject<ContinueWatchingItem[]>(StorageKeys.CONTINUE_WATCHING);
+    if (!Array.isArray(rawContinue)) return;
+    const item = rawContinue.find((c) => c.animeId === animeId);
+    if (item) {
+      item.lastCheckedAt = Date.now();
+      AppStorage.setObject(StorageKeys.CONTINUE_WATCHING, rawContinue);
+    }
+  },
+
   getWatchProgress: (animeId: string, episodeNumber: number): WatchProgressItem | undefined => {
     if (!animeId) return undefined;
     const progressKey = `${StorageKeys.WATCH_PROGRESS_PREFIX}${animeId}.${episodeNumber}`;
@@ -1001,10 +1055,35 @@ export const AppStorage = {
           updatedAt,
           dataId: payload.nextEpisode.dataId,
           serverId,
+          isCaughtUp: false,
         };
         continueList.unshift(nextContinueItem);
+      } else {
+        // No next episode available in current list.
+        // Check if the anime is ongoing (unknown total '?' or explicit isOngoing flag)
+        const totalStr = String(payload.totalEpisodes || existing?.totalEpisodes || '').trim();
+        const isOngoing = totalStr.includes('?') || Boolean(payload.isOngoing);
+        if (isOngoing) {
+          const caughtUpItem: ContinueWatchingItem = {
+            animeId: payload.animeId,
+            title: animeTitle,
+            thumbnail,
+            episodeId: payload.episodeId || existing?.episodeId || '',
+            episodeNumber: payload.episodeNumber,
+            totalEpisodes: payload.totalEpisodes || existing?.totalEpisodes,
+            position: currentTime,
+            duration,
+            percentage: 100,
+            updatedAt,
+            dataId,
+            serverId,
+            isCaughtUp: true,
+            lastCheckedAt: Date.now(),
+          };
+          continueList.unshift(caughtUpItem);
+        }
+        // If not ongoing (series concluded), keep it removed from continue watching
       }
-      // If no next episode available (series completed), keep it removed from continue watching
     } else {
       const continueItem: ContinueWatchingItem = {
         animeId: payload.animeId,
@@ -1019,6 +1098,7 @@ export const AppStorage = {
         updatedAt,
         dataId,
         serverId,
+        isCaughtUp: false,
       };
       continueList.unshift(continueItem);
     }
@@ -1271,3 +1351,5 @@ try {
 } catch {
   // Ignora in ambienti headless o di test dove lo storage non è ancora configurato
 }
+
+export * from './continue-watching-sync';

@@ -1,12 +1,13 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
-import { Platform, View, StyleSheet, Animated } from 'react-native';
+import { Platform, View, Text, StyleSheet, Animated } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useTheme, getContrastTextColor } from '@/theme';
 import { AppStorage } from '@/services/storage';
 import { usePendingUpdate } from '@/services/updater';
+import { useResponsiveLayout } from '@/hooks';
 
 function SettingsTabIcon({ color, focused }: { color: string; focused: boolean }) {
   const { theme } = useTheme();
@@ -75,6 +76,7 @@ function SettingsTabIcon({ color, focused }: { color: string; focused: boolean }
 export default function TabLayout() {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
+  const { isTablet } = useResponsiveLayout();
 
   const [isHistoryEnabled, setIsHistoryEnabled] = React.useState<boolean>(() => {
     return AppStorage.isHistoryEnabled();
@@ -96,21 +98,67 @@ export default function TabLayout() {
       screenOptions={{
         headerShown: false,
         tabBarShowLabel: false,
+        tabBarPosition: isTablet ? 'left' : 'bottom',
         tabBarActiveTintColor: theme.colors.primary,
         tabBarInactiveTintColor: theme.colors.textMuted,
-        tabBarStyle: {
-          backgroundColor: theme.colors.background,
-          borderTopColor: theme.colors.border,
-          borderTopWidth: 1,
-          height: Platform.OS === 'android' ? 56 + androidBottomInset : 58 + iosBottomInset,
-          paddingBottom: Platform.OS === 'android' ? androidBottomInset : iosBottomInset,
-          paddingTop: 0,
-        },
-        tabBarItemStyle: {
-          height: 56,
-          justifyContent: 'center',
-          alignItems: 'center',
-        },
+        tabBarBackground: isTablet
+          ? () => (
+              <View
+                style={[
+                  styles.railBrandWrapper,
+                  { top: Math.max(insets.top + 8, 16) },
+                ]}
+              >
+                <View
+                  style={[
+                    styles.railBrandLogoBox,
+                    {
+                      backgroundColor: theme.colors.surface,
+                      borderColor: theme.colors.border,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.railBrandText, { color: theme.colors.primary }]}>
+                    K
+                  </Text>
+                </View>
+              </View>
+            )
+          : undefined,
+        tabBarStyle: isTablet
+          ? {
+              backgroundColor: theme.colors.background,
+              borderRightColor: theme.colors.border,
+              borderRightWidth: 1,
+              borderTopWidth: 0,
+              width: 76,
+              height: '100%',
+              paddingTop: Math.max(insets.top + 8, 16) + 48,
+              paddingBottom: Math.max(insets.bottom + 12, 16),
+              paddingHorizontal: 0,
+            }
+          : {
+              backgroundColor: theme.colors.background,
+              borderTopColor: theme.colors.border,
+              borderTopWidth: 1,
+              height: Platform.OS === 'android' ? 56 + androidBottomInset : 58 + iosBottomInset,
+              paddingBottom: Platform.OS === 'android' ? androidBottomInset : iosBottomInset,
+              paddingTop: 0,
+            },
+        tabBarItemStyle: isTablet
+          ? {
+              width: 76,
+              height: 56,
+              minHeight: 44,
+              justifyContent: 'center',
+              alignItems: 'center',
+              marginVertical: 4,
+            }
+          : {
+              height: 56,
+              justifyContent: 'center',
+              alignItems: 'center',
+            },
       }}
       screenListeners={{
         tabPress: () => {
@@ -212,5 +260,26 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  railBrandWrapper: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  railBrandLogoBox: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  railBrandText: {
+    fontFamily: 'monospace',
+    fontWeight: '900',
+    fontSize: 19,
+    letterSpacing: 0.5,
   },
 });

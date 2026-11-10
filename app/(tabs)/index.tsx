@@ -12,7 +12,6 @@ import {
   ActivityIndicator,
   type NativeSyntheticEvent,
   type NativeScrollEvent,
-  useWindowDimensions,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -22,7 +21,12 @@ import { FlashList } from '@shopify/flash-list';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { homeQueryOptions, animeQueryKeys, animeDetailQueryOptions } from '@/services/queries';
-import { AppStorage, type SearchHistoryItem } from '@/services/storage';
+import {
+  AppStorage,
+  syncCaughtUpWithHomeList,
+  syncCaughtUpWithRemote,
+  type SearchHistoryItem,
+} from '@/services/storage';
 import { AnimeWorldScraper } from '@/services/scraper';
 import { oledTheme, useTheme, getContrastTextColor } from '@/theme';
 import { AnimeCard } from '@/components/AnimeCard';
@@ -47,6 +51,7 @@ import {
   SearchHistoryList,
 } from '@/components/home';
 import { HomeScreenSkeleton, ExploreScreenSkeleton } from '@/components/skeleton';
+import { useResponsiveLayout } from '@/hooks';
 import type { AnimeItem, ContinueWatchingItem, SearchFilter } from '@/types';
 
 const HERO_HEIGHT = 320;
@@ -59,10 +64,8 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const { theme } = useTheme();
-  const { width: windowWidth } = useWindowDimensions();
-
-  const cardWidth = (windowWidth - 48) / 2;
-  const cardHeight = cardWidth * 1.45;
+  const { isTablet, contentWidth, numColumns, cardWidth, cardHeight } = useResponsiveLayout();
+  const heroHeight = isTablet ? 360 : HERO_HEIGHT;
 
   const { data: homeData, isLoading, isError, refetch, isRefetching } = useQuery(homeQueryOptions());
   const [continueWatching, setContinueWatching] = React.useState<ContinueWatchingItem[]>([]);
@@ -71,6 +74,8 @@ export default function HomeScreen() {
   // Top recommended selection & focus state
   const [focusedIndex, setFocusedIndex] = React.useState(0);
   const currentFocusedIndexRef = React.useRef(0);
+  const lastSettledRecommendedIndexRef = React.useRef(-1);
+  const lastSettledHeroIndexRef = React.useRef(-1);
   const [isHeroPlayLoading, setIsHeroPlayLoading] = React.useState(false);
   const recommendedScrollRef = React.useRef<any>(null);
   const heroScrollRef = React.useRef<any>(null);
@@ -296,11 +301,32 @@ export default function HomeScreen() {
     if (urls.length > 0) {
       Image.prefetch(urls).catch(() => {});
     }
+
+    // 1. Controllo passivo istantaneo tra le ultime uscite della Home e le serie in pari
+    if (homeData) {
+      const candidates = [
+        ...(homeData.all || []),
+        ...(homeData.newAdded || []),
+        ...(homeData.sliders || []),
+      ];
+      syncCaughtUpWithHomeList(candidates).then((updated) => {
+        if (updated) {
+          setContinueWatching(AppStorage.getContinueWatching());
+        }
+      });
+    }
   }, [homeData]);
 
   useFocusEffect(
     React.useCallback(() => {
       setContinueWatching(AppStorage.getContinueWatching());
+
+      // 2. Controllo remoto periodico (Ibrido Smart: verifica ogni 4 ore in background)
+      syncCaughtUpWithRemote(false).then((updated) => {
+        if (updated) {
+          setContinueWatching(AppStorage.getContinueWatching());
+        }
+      });
     }, [])
   );
 
@@ -317,6 +343,8 @@ export default function HomeScreen() {
       refetch(),
       queryClient.invalidateQueries({ queryKey: animeQueryKeys.all }),
     ]);
+    // Forza la verifica remota delle serie in pari al pull-to-refresh
+    await syncCaughtUpWithRemote(true);
     setContinueWatching(AppStorage.getContinueWatching());
   }, [refetch, queryClient]);
 
@@ -348,6 +376,15 @@ export default function HomeScreen() {
         position: String(item.position || 0),
       },
     });
+  };
+
+  const handleContinueItemPress = (item: ContinueWatchingItem) => {
+    if (item.isCaughtUp) {
+      // Se l'utente è in pari con le uscite, il tap apre la scheda dettagli per consultare uscite o rewatch
+      navigateToAnime(item.animeId, item.title);
+    } else {
+      navigateToPlayer(item);
+    }
   };
 
   const handleRemoveContinue = (item: ContinueWatchingItem) => {
@@ -389,6 +426,8 @@ export default function HomeScreen() {
     Haptics.selectionAsync().catch(() => {});
     if (resetSourceTimeoutRef.current) clearTimeout(resetSourceTimeoutRef.current);
     activeScrollSourceRef.current = 'tap';
+    lastSettledRecommendedIndexRef.current = -1;
+    lastSettledHeroIndexRef.current = -1;
 
     const maxIndex = Math.max(0, recommendedList.length - 1);
     const targetIndex = Math.max(0, Math.min(index, maxIndex));
@@ -397,7 +436,7 @@ export default function HomeScreen() {
     setFocusedIndex(targetIndex);
 
     heroScrollRef.current?.scrollTo({
-      x: targetIndex * windowWidth,
+      x: targetIndex * contentWidth,
       animated: true,
     });
     recommendedScrollRef.current?.scrollTo({
@@ -425,21 +464,25 @@ export default function HomeScreen() {
       )
     );
 
+    if (lastSettledRecommendedIndexRef.current === targetIndex) {
+      return;
+    }
+    lastSettledRecommendedIndexRef.current = targetIndex;
+
     // Keep the recommended card snapped exactly in place
     recommendedScrollRef.current?.scrollTo({
       x: targetIndex * RECOMMENDED_ITEM_TOTAL,
       animated: true,
     });
 
-    if (targetIndex !== currentFocusedIndexRef.current) {
-      currentFocusedIndexRef.current = targetIndex;
-      setFocusedIndex(targetIndex);
+    currentFocusedIndexRef.current = targetIndex;
+    setFocusedIndex(targetIndex);
 
-      heroScrollRef.current?.scrollTo({
-        x: targetIndex * windowWidth,
-        animated: true,
-      });
-    }
+    // Synchronize hero banner with the newly focused anime
+    heroScrollRef.current?.scrollTo({
+      x: targetIndex * contentWidth,
+      animated: true,
+    });
 
     releaseScrollLock(450);
   };
@@ -456,20 +499,24 @@ export default function HomeScreen() {
     const targetIndex = Math.max(
       0,
       Math.min(
-        Math.round(offsetX / windowWidth),
+        Math.round(offsetX / contentWidth),
         maxIndex
       )
     );
 
-    if (targetIndex !== currentFocusedIndexRef.current) {
-      currentFocusedIndexRef.current = targetIndex;
-      setFocusedIndex(targetIndex);
-
-      recommendedScrollRef.current?.scrollTo({
-        x: targetIndex * RECOMMENDED_ITEM_TOTAL,
-        animated: true,
-      });
+    if (lastSettledHeroIndexRef.current === targetIndex) {
+      return;
     }
+    lastSettledHeroIndexRef.current = targetIndex;
+
+    currentFocusedIndexRef.current = targetIndex;
+    setFocusedIndex(targetIndex);
+
+    // Synchronize recommended carousel with the newly focused anime
+    recommendedScrollRef.current?.scrollTo({
+      x: targetIndex * RECOMMENDED_ITEM_TOTAL,
+      animated: true,
+    });
 
     releaseScrollLock(450);
   };
@@ -491,6 +538,7 @@ export default function HomeScreen() {
     if (targetIndex !== currentFocusedIndexRef.current) {
       currentFocusedIndexRef.current = targetIndex;
       setFocusedIndex(targetIndex);
+      Haptics.selectionAsync().catch(() => {});
     }
   };
 
@@ -504,13 +552,14 @@ export default function HomeScreen() {
     const targetIndex = Math.max(
       0,
       Math.min(
-        Math.round(offsetX / windowWidth),
+        Math.round(offsetX / contentWidth),
         maxIndex
       )
     );
     if (targetIndex !== currentFocusedIndexRef.current) {
       currentFocusedIndexRef.current = targetIndex;
       setFocusedIndex(targetIndex);
+      Haptics.selectionAsync().catch(() => {});
     }
   };
 
@@ -522,6 +571,10 @@ export default function HomeScreen() {
     // 1. Resume from active Continue Watching if present
     const continueItem = continueWatching.find((cw) => cw.animeId === item.id);
     if (continueItem) {
+      if (continueItem.isCaughtUp) {
+        navigateToAnime(item.id, item.title);
+        return;
+      }
       navigateToPlayer(continueItem);
       return;
     }
@@ -649,6 +702,7 @@ export default function HomeScreen() {
               items={searchResults?.items || []}
               cardWidth={cardWidth}
               cardHeight={cardHeight}
+              numColumns={numColumns}
               onItemPress={(item) => navigateToAnime(item.id, item.title)}
             />
           ) : (
@@ -692,7 +746,7 @@ export default function HomeScreen() {
           <>
             {/* 1. Hero Banner: Anime in evidenza (primo della top 8 dei raccomandati con swiper sincronizzato) */}
             {recommendedList.length > 0 ? (
-              <View style={[styles.heroContainer, { width: windowWidth, height: HERO_HEIGHT }]}>
+              <View style={[styles.heroContainer, { width: contentWidth, height: heroHeight }]}>
                 <ScrollView
                   ref={heroScrollRef}
                   horizontal
@@ -703,6 +757,7 @@ export default function HomeScreen() {
                   onScrollBeginDrag={() => {
                     if (resetSourceTimeoutRef.current) clearTimeout(resetSourceTimeoutRef.current);
                     activeScrollSourceRef.current = 'hero';
+                    lastSettledHeroIndexRef.current = -1;
                   }}
                   onScrollEndDrag={(e) => {
                     const velocity = e.nativeEvent.velocity?.x ?? 0;
@@ -714,14 +769,14 @@ export default function HomeScreen() {
                     settleHeroScroll(e.nativeEvent.contentOffset.x);
                   }}
                   onScroll={handleHeroScroll}
-                  style={{ width: windowWidth, height: HERO_HEIGHT }}
+                  style={{ width: contentWidth, height: heroHeight }}
                 >
                   {recommendedList.map((item, index) => {
                     const isCurrent = index === safeFocusedIndex;
                     return (
                       <Pressable
                         key={`hero-slide-${item.id}-${index}`}
-                        style={[styles.heroSlide, { width: windowWidth, height: HERO_HEIGHT }]}
+                        style={[styles.heroSlide, { width: contentWidth, height: heroHeight }]}
                         onPress={() => navigateToAnime(item.id, item.title)}
                         accessibilityRole="button"
                         accessibilityLabel={`DETTAGLI ${item.title.toUpperCase()}`}
@@ -933,7 +988,7 @@ export default function HomeScreen() {
                   contentContainerStyle={[
                     styles.recommendedScrollContent,
                     {
-                      paddingRight: Math.max(16, windowWidth - RECOMMENDED_ITEM_WIDTH - 16),
+                      paddingRight: Math.max(16, contentWidth - RECOMMENDED_ITEM_WIDTH - 16),
                     },
                   ]}
                   snapToOffsets={recommendedSnapOffsets}
@@ -942,6 +997,7 @@ export default function HomeScreen() {
                   onScrollBeginDrag={() => {
                     if (resetSourceTimeoutRef.current) clearTimeout(resetSourceTimeoutRef.current);
                     activeScrollSourceRef.current = 'recommended';
+                    lastSettledRecommendedIndexRef.current = -1;
                   }}
                   onScrollEndDrag={(e) => {
                     const velocity = e.nativeEvent.velocity?.x ?? 0;
@@ -1032,7 +1088,7 @@ export default function HomeScreen() {
             {continueWatching.length > 0 && (
               <ContinueWatchingSection
                 items={continueWatching}
-                onItemPress={navigateToPlayer}
+                onItemPress={handleContinueItemPress}
                 onRemoveItem={handleRemoveContinue}
               />
             )}
