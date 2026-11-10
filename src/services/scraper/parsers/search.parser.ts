@@ -19,17 +19,27 @@ export function parseSearchPage(html: string, baseUrl: string): SearchResult {
   const seenIds = new Set<string>();
 
   const cardElements = $(
-    ".film-list > .item, .film-list .film-item, .items .item, .simple-film-list .item",
+    ".film-list > .item, .film-list .film-item, .items .item, .simple-film-list .item, .film-listnext .item, .film-listnext > .item",
   );
 
   cardElements.each((_, el) => {
     const $el = $(el);
-    const nameEl = $el.find("a.name, .title a, a").first();
+    let nameEl = $el.find("a.name, .title a, a.title, .name a").first();
+    if (nameEl.length === 0) {
+      nameEl = $el.find("a").not(".poster, .thumb").first();
+    }
+    if (nameEl.length === 0) {
+      nameEl = $el.find("a").first();
+    }
+
     const title =
       sanitizeText(nameEl.text()) ||
+      sanitizeText(nameEl.attr("title")) ||
       sanitizeText($el.find(".name, .title").text());
     const rawHref =
-      nameEl.attr("href") || $el.find("a").first().attr("href") || "";
+      nameEl.attr("href") ||
+      $el.find("a.poster, a.thumb, a").first().attr("href") ||
+      "";
     const link = resolveUrl(rawHref, baseUrl);
     const id = extractSlugFromUrl(link);
 

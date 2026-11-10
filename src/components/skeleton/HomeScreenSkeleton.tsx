@@ -4,7 +4,7 @@ import { oledTheme } from '@/theme';
 import { Skeleton } from './Skeleton';
 import { AnimeCardSkeleton } from './AnimeCardSkeleton';
 
-const HERO_HEIGHT = 300;
+const HERO_HEIGHT = 320;
 
 export interface HomeScreenSkeletonProps {
   hasContinueWatching?: boolean;

@@ -54,6 +54,9 @@ export default function HomeScreen() {
   const [focusedIndex, setFocusedIndex] = React.useState(0);
   const [isHeroPlayLoading, setIsHeroPlayLoading] = React.useState(false);
   const recommendedScrollRef = React.useRef<any>(null);
+  const heroScrollRef = React.useRef<any>(null);
+  const activeScrollSourceRef = React.useRef<'hero' | 'recommended' | 'tap' | null>(null);
+  const resetSourceTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Search in Home state
   const [isSearchActive, setIsSearchActive] = React.useState(false);
@@ -252,7 +255,7 @@ export default function HomeScreen() {
     setItemToRemove(null);
   };
 
-  // Recommended list (Top 8 / Top 10 from AnimeWorld slider)
+  // Recommended list (Top 8 from AnimeWorld slider)
   const recommendedList: AnimeItem[] = React.useMemo(() => {
     return (homeData?.sliders || []).slice(0, 10);
   }, [homeData?.sliders]);
@@ -268,18 +271,31 @@ export default function HomeScreen() {
     homeData?.sliders?.[0] ||
     homeData?.trending?.[0];
 
-  // Selecting a recommended anime from the carousel
+  // Selecting a recommended anime from the carousel (tap)
   const handleSelectRecommended = (index: number) => {
     Haptics.selectionAsync().catch(() => {});
+    activeScrollSourceRef.current = 'tap';
+    if (resetSourceTimeoutRef.current) clearTimeout(resetSourceTimeoutRef.current);
+    resetSourceTimeoutRef.current = setTimeout(() => {
+      activeScrollSourceRef.current = null;
+    }, 400);
+
     setFocusedIndex(index);
+    heroScrollRef.current?.scrollTo({
+      x: index * windowWidth,
+      animated: true,
+    });
     recommendedScrollRef.current?.scrollTo({
-      x: Math.max(0, index * RECOMMENDED_ITEM_TOTAL - 16),
+      x: index * RECOMMENDED_ITEM_TOTAL,
       animated: true,
     });
   };
 
   // Synchronizing focus while scrolling the horizontal recommended carousel
   const handleRecommendedScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    if (activeScrollSourceRef.current === 'hero' || activeScrollSourceRef.current === 'tap') {
+      return;
+    }
     const offsetX = e.nativeEvent.contentOffset.x;
     const targetIndex = Math.max(
       0,
@@ -290,6 +306,32 @@ export default function HomeScreen() {
     );
     if (targetIndex !== focusedIndex) {
       setFocusedIndex(targetIndex);
+      heroScrollRef.current?.scrollTo({
+        x: targetIndex * windowWidth,
+        animated: true,
+      });
+    }
+  };
+
+  // Synchronizing focus while scrolling the Hero Banner
+  const handleHeroScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    if (activeScrollSourceRef.current === 'recommended' || activeScrollSourceRef.current === 'tap') {
+      return;
+    }
+    const offsetX = e.nativeEvent.contentOffset.x;
+    const targetIndex = Math.max(
+      0,
+      Math.min(
+        Math.round(offsetX / windowWidth),
+        Math.max(0, recommendedList.length - 1)
+      )
+    );
+    if (targetIndex !== focusedIndex) {
+      setFocusedIndex(targetIndex);
+      recommendedScrollRef.current?.scrollTo({
+        x: targetIndex * RECOMMENDED_ITEM_TOTAL,
+        animated: true,
+      });
     }
   };
 
@@ -346,6 +388,7 @@ export default function HomeScreen() {
             thumbnail: detail.image || detail.thumbnail || item.thumbnail || '',
             position: '0',
             totalEpisodes: String(detail.totalEpisodes ?? (episodes.length || '')),
+            serverId: firstEp.servers?.[0]?.id || '9',
           },
         });
       } else {
@@ -600,8 +643,140 @@ export default function HomeScreen() {
           </View>
         ) : (
           <>
-            {/* 1. Hero Banner: Anime in evidenza (primo della top 8 o selezionato) */}
-            {focusedItem && (
+            {/* 1. Hero Banner: Anime in evidenza (primo della top 8 dei raccomandati con swiper sincronizzato) */}
+            {recommendedList.length > 0 ? (
+              <View style={[styles.heroContainer, { width: windowWidth, height: HERO_HEIGHT }]}>
+                <ScrollView
+                  ref={heroScrollRef}
+                  horizontal
+                  pagingEnabled
+                  showsHorizontalScrollIndicator={false}
+                  decelerationRate="fast"
+                  scrollEventThrottle={16}
+                  onScrollBeginDrag={() => {
+                    activeScrollSourceRef.current = 'hero';
+                  }}
+                  onMomentumScrollEnd={(e) => {
+                    const newIndex = Math.max(
+                      0,
+                      Math.min(
+                        Math.round(e.nativeEvent.contentOffset.x / windowWidth),
+                        recommendedList.length - 1
+                      )
+                    );
+                    setFocusedIndex(newIndex);
+                    recommendedScrollRef.current?.scrollTo({
+                      x: newIndex * RECOMMENDED_ITEM_TOTAL,
+                      animated: true,
+                    });
+                    activeScrollSourceRef.current = null;
+                  }}
+                  onScroll={handleHeroScroll}
+                  style={{ width: windowWidth, height: HERO_HEIGHT }}
+                >
+                  {recommendedList.map((item, index) => {
+                    const isCurrent = index === safeFocusedIndex;
+                    return (
+                      <Pressable
+                        key={`hero-slide-${item.id}-${index}`}
+                        style={[styles.heroSlide, { width: windowWidth, height: HERO_HEIGHT }]}
+                        onPress={() => navigateToAnime(item.id, item.title)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`DETTAGLI ${item.title.toUpperCase()}`}
+                      >
+                        <Image
+                          source={{ uri: item.banner || item.image || item.thumbnail }}
+                          style={styles.heroImage}
+                          contentFit="cover"
+                          transition={300}
+                          priority="high"
+                        />
+                        <View style={styles.heroOverlay} />
+
+                        <View style={styles.heroContent}>
+                          <View style={styles.heroBadgeRow}>
+                            <View style={[styles.heroRankBadge, { backgroundColor: theme.colors.primary }]}>
+                              <Text style={[styles.heroRankBadgeText, { color: getContrastTextColor(theme.colors.primary) }]}>
+                                #{index + 1} RACCOMANDATO
+                              </Text>
+                            </View>
+                            {item.subOrDub && (
+                              <View style={[styles.heroSubBadge, { backgroundColor: theme.colors.surface }]}>
+                                <Text style={[styles.heroSubBadgeText, { color: theme.colors.textSecondary }]}>
+                                  {item.subOrDub}
+                                </Text>
+                              </View>
+                            )}
+                          </View>
+
+                          <Text style={styles.heroTitle} numberOfLines={2}>
+                            {item.title}
+                          </Text>
+
+                          {item.synopsis ? (
+                            <Text style={styles.heroSynopsis} numberOfLines={2}>
+                              {item.synopsis}
+                            </Text>
+                          ) : null}
+
+                          {/* Pulsanti d'azione: PLAY (inizia riproduzione) e INFO (scheda dettagli) */}
+                          <View style={styles.heroActionsRow}>
+                            <Pressable
+                              style={[
+                                styles.heroPlayBtn,
+                                { backgroundColor: theme.colors.primary },
+                                isHeroPlayLoading && isCurrent && styles.heroBtnDisabled,
+                              ]}
+                              onPress={(e) => {
+                                e.stopPropagation();
+                                handlePlayHero(item);
+                              }}
+                              hitSlop={8}
+                              disabled={isHeroPlayLoading && isCurrent}
+                              accessibilityRole="button"
+                              accessibilityLabel={`RIPRODUCI ${item.title.toUpperCase()}`}
+                            >
+                              {isHeroPlayLoading && isCurrent ? (
+                                <ActivityIndicator size="small" color={getContrastTextColor(theme.colors.primary)} />
+                              ) : (
+                                <>
+                                  <Ionicons name="play" size={18} color={getContrastTextColor(theme.colors.primary)} />
+                                  <Text
+                                    style={[
+                                      styles.heroPlayBtnText,
+                                      { color: getContrastTextColor(theme.colors.primary) },
+                                    ]}
+                                  >
+                                    RIPRODUCI
+                                  </Text>
+                                </>
+                              )}
+                            </Pressable>
+
+                            <Pressable
+                              style={[
+                                styles.heroInfoBtn,
+                                { backgroundColor: theme.colors.card, borderColor: theme.colors.border },
+                              ]}
+                              onPress={(e) => {
+                                e.stopPropagation();
+                                navigateToAnime(item.id, item.title);
+                              }}
+                              hitSlop={8}
+                              accessibilityRole="button"
+                              accessibilityLabel={`INFO ${item.title.toUpperCase()}`}
+                            >
+                              <Ionicons name="information-circle-outline" size={18} color={theme.colors.text} />
+                              <Text style={[styles.heroInfoBtnText, { color: theme.colors.text }]}>INFO</Text>
+                            </Pressable>
+                          </View>
+                        </View>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+            ) : focusedItem ? (
               <Pressable
                 style={styles.heroContainer}
                 onPress={() => navigateToAnime(focusedItem.id, focusedItem.title)}
@@ -620,16 +795,9 @@ export default function HomeScreen() {
                   <View style={styles.heroBadgeRow}>
                     <View style={[styles.heroRankBadge, { backgroundColor: theme.colors.primary }]}>
                       <Text style={[styles.heroRankBadgeText, { color: getContrastTextColor(theme.colors.primary) }]}>
-                        #{safeFocusedIndex + 1} RACCOMANDATO
+                        #1 RACCOMANDATO
                       </Text>
                     </View>
-                    {focusedItem.subOrDub && (
-                      <View style={[styles.heroSubBadge, { backgroundColor: theme.colors.surface }]}>
-                        <Text style={[styles.heroSubBadgeText, { color: theme.colors.textSecondary }]}>
-                          {focusedItem.subOrDub}
-                        </Text>
-                      </View>
-                    )}
                   </View>
 
                   <Text style={styles.heroTitle} numberOfLines={2}>
@@ -642,7 +810,6 @@ export default function HomeScreen() {
                     </Text>
                   ) : null}
 
-                  {/* Pulsanti d'azione: PLAY (inizia riproduzione) e INFO (scheda dettagli) */}
                   <View style={styles.heroActionsRow}>
                     <Pressable
                       style={[
@@ -695,7 +862,7 @@ export default function HomeScreen() {
                   </View>
                 </View>
               </Pressable>
-            )}
+            ) : null}
 
             {/* 2. Carosello Raccomandati Numerati in Ordine (#1 .. #8) */}
             {recommendedList.length > 0 && (
@@ -721,9 +888,34 @@ export default function HomeScreen() {
                   ref={recommendedScrollRef}
                   horizontal
                   showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.recommendedScrollContent}
+                  contentContainerStyle={[
+                    styles.recommendedScrollContent,
+                    {
+                      paddingRight: Math.max(16, windowWidth - RECOMMENDED_ITEM_WIDTH - 16),
+                    },
+                  ]}
+                  snapToOffsets={recommendedList.map((_, i) => i * RECOMMENDED_ITEM_TOTAL)}
+                  decelerationRate="fast"
+                  scrollEventThrottle={16}
+                  onScrollBeginDrag={() => {
+                    activeScrollSourceRef.current = 'recommended';
+                  }}
+                  onMomentumScrollEnd={(e) => {
+                    const targetIndex = Math.max(
+                      0,
+                      Math.min(
+                        Math.round(e.nativeEvent.contentOffset.x / RECOMMENDED_ITEM_TOTAL),
+                        recommendedList.length - 1
+                      )
+                    );
+                    setFocusedIndex(targetIndex);
+                    heroScrollRef.current?.scrollTo({
+                      x: targetIndex * windowWidth,
+                      animated: true,
+                    });
+                    activeScrollSourceRef.current = null;
+                  }}
                   onScroll={handleRecommendedScroll}
-                  scrollEventThrottle={32}
                 >
                   {recommendedList.map((item, index) => {
                     const isFocused = index === safeFocusedIndex;
@@ -963,6 +1155,17 @@ export default function HomeScreen() {
                   <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
                     {(homeData.upcomingTitle || 'PROSSIME USCITE').toUpperCase()}
                   </Text>
+                  <Pressable
+                    onPress={() => {
+                      Haptics.selectionAsync().catch(() => {});
+                      setIsSearchActive(true);
+                    }}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel="VEDI TUTTE LE PROSSIME USCITE"
+                  >
+                    <Text style={[styles.seeAllText, { color: theme.colors.primary }]}>VEDI TUTTI</Text>
+                  </Pressable>
                 </View>
 
                 <ScrollView
@@ -1285,6 +1488,12 @@ const styles = StyleSheet.create({
     height: HERO_HEIGHT,
     position: 'relative',
     backgroundColor: '#0D0D0D',
+  },
+  heroSlide: {
+    height: HERO_HEIGHT,
+    position: 'relative',
+    backgroundColor: '#0D0D0D',
+    overflow: 'hidden',
   },
   heroImage: {
     width: '100%',

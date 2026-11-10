@@ -1745,7 +1745,43 @@ assert.strictEqual(parsedHome.upcoming.length, 1, 'Upcoming deve contenere 1 ite
 assert.strictEqual(parsedHome.upcomingTitle, 'Uscite Inverno 2027', 'Titolo stagionale upcoming deve essere corretto');
 assert.strictEqual(parsedHome.newAdded.length, 1, 'Nuove aggiunte deve contenere 1 item');
 
-// 2. Verifica Codice Sorgente app/(tabs)/index.tsx
+// 2. Verifica Scraper Upcoming & parseSearchPage (.film-listnext e prevenzione corruzione titolo)
+const { parseSearchPage: testParseSearch } = await import('../src/services/scraper/parsers/search.parser.ts');
+const mockUpcomingHtml = `
+<html>
+  <body>
+    <div class="film-listnext">
+      <div class="item">
+        <div class="inner">
+          <a href="/play/im-looking-for-zombie.PuzK7" class="poster">
+            <img src="https://img/zombie.jpg"/>
+          </a>
+          <a href="/play/im-looking-for-zombie.PuzK7" class="name">#I'm Looking For a Zombie</a>
+        </div>
+      </div>
+      <div class="item">
+        <div class="inner">
+          <a href="/play/my-happy-marriage-special-ita.6vpuG" class="poster">
+            <img src="https://img/marriage.jpg"/>
+            <div class="status">
+              <div class="dub">DUB</div>
+              <div class="special">Special</div>
+            </div>
+          </a>
+          <a href="/play/my-happy-marriage-special-ita.6vpuG" class="name">My Happy Marriage Special (ITA)</a>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
+`;
+const parsedUpcoming = testParseSearch(mockUpcomingHtml, 'https://www.animeworld.ac');
+assert.strictEqual(parsedUpcoming.items.length, 2, 'parseSearchPage deve supportare .film-listnext e trovare 2 item');
+assert.strictEqual(parsedUpcoming.items[0].title, "#I'm Looking For a Zombie", 'Primo titolo deve essere corretto');
+assert.strictEqual(parsedUpcoming.items[1].title, 'My Happy Marriage Special (ITA)', 'Il titolo del secondo item NON deve essere corrotto da badge DUB/Special dentro poster');
+assert.strictEqual(parsedUpcoming.items[1].id, 'my-happy-marriage-special-ita.6vpuG', 'Slug secondo item corretto');
+
+// 3. Verifica Codice Sorgente app/(tabs)/index.tsx (Bi-directional Sync, Snapping & Zero CLS)
 const indexSource = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/index.tsx'), 'utf-8');
 assert(indexSource.includes('TOP RACCOMANDATI'), 'index.tsx deve contenere la sezione TOP RACCOMANDATI');
 assert(indexSource.includes('handlePlayHero'), 'index.tsx deve implementare handlePlayHero per avviare la riproduzione dal banner');
@@ -1753,6 +1789,11 @@ assert(indexSource.includes('RIPRODUCI'), 'index.tsx deve mostrare il pulsante R
 assert(indexSource.includes('INFO'), 'index.tsx deve mostrare il pulsante INFO nel banner hero');
 assert(indexSource.includes('handleSelectRecommended'), 'index.tsx deve gestire la selezione dal carosello raccomandati');
 assert(indexSource.includes('handleRecommendedScroll'), 'index.tsx deve sincronizzare il focus durante lo scorrimento del carosello');
+assert(indexSource.includes('handleHeroScroll'), 'index.tsx deve sincronizzare il carosello durante lo scorrimento del banner hero');
+assert(indexSource.includes('heroScrollRef'), 'index.tsx deve referenziare heroScrollRef per lo swiper orizzontale in testa');
+assert(indexSource.includes('snapToOffsets'), 'index.tsx deve implementare snapToOffsets per lo snapping touch pulito');
+assert(indexSource.includes('activeScrollSourceRef'), 'index.tsx deve usare activeScrollSourceRef per prevenire scroll loop infiniti');
+assert(indexSource.includes('paddingRight: Math.max(16, windowWidth - RECOMMENDED_ITEM_WIDTH - 16)'), 'index.tsx deve calcolare dynamic paddingRight per permettere a card #8 di raggiungere il focus');
 assert(indexSource.includes('ULTIMI EPISODI USCITI'), 'index.tsx deve contenere il carosello ULTIMI EPISODI USCITI');
 assert(indexSource.includes('TENDENZE'), 'index.tsx deve contenere il carosello TENDENZE');
 assert(indexSource.includes('ANIME IN CORSO'), 'index.tsx deve contenere il carosello ANIME IN CORSO');
@@ -1760,8 +1801,9 @@ assert(indexSource.includes('PROSSIME USCITE'), 'index.tsx deve supportare il ti
 assert(indexSource.includes('NUOVE AGGIUNTE'), 'index.tsx deve contenere il carosello NUOVE AGGIUNTE');
 assert(indexSource.includes('hasContinueWatching={continueWatching.length > 0}'), 'index.tsx deve sincronizzare continueWatching con HomeScreenSkeleton');
 
-// 3. Verifica Struttura HomeScreenSkeleton.tsx
+// 4. Verifica Struttura HomeScreenSkeleton.tsx & Zero Layout Shift (CLS)
 const homeSkelSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/skeleton/HomeScreenSkeleton.tsx'), 'utf-8');
+assert(homeSkelSource.includes('const HERO_HEIGHT = 320;'), 'HomeScreenSkeleton deve avere HERO_HEIGHT = 320 per zero CLS con index.tsx');
 assert(homeSkelSource.includes('recommendedCardSkeleton'), 'HomeScreenSkeleton deve modellare il carosello dei raccomandati');
 assert(homeSkelSource.includes('heroActionsRow'), 'HomeScreenSkeleton deve modellare i due pulsanti Play e Info nel banner');
 assert(homeSkelSource.includes('hasContinueWatching'), 'HomeScreenSkeleton deve supportare hasContinueWatching');
