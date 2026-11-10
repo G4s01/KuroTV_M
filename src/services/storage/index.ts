@@ -3,6 +3,7 @@ import type {
   AnimeItem,
   EpisodeMetadata,
   AnimeHomePage,
+  SchedulePageData,
   AniSkipSettings,
   AniSkipMode,
 } from '@/types';
@@ -126,6 +127,7 @@ export const StorageKeys = {
   KITSU_ANIME_MAPPING_PREFIX: 'kitsu.anime.',
   KITSU_EPISODES_PREFIX: 'kitsu.episodes.',
   HOME_DATA: 'cache.homeData',
+  SCHEDULE_DATA: 'cache.scheduleData',
   ANISKIP_SETTINGS: 'settings.aniSkipSettings',
 } as const;
 
@@ -1141,7 +1143,7 @@ export const AppStorage = {
   },
 
   // ----------------------------------------------------
-  // Home Data Cache
+  // Home & Schedule Data Cache
   // ----------------------------------------------------
   getHomeData: (): AnimeHomePage | null => {
     return AppStorage.getObject<AnimeHomePage>(StorageKeys.HOME_DATA);
@@ -1150,6 +1152,15 @@ export const AppStorage = {
   saveHomeData: (data: AnimeHomePage): void => {
     if (!data) return;
     AppStorage.setObject(StorageKeys.HOME_DATA, data);
+  },
+
+  getScheduleData: (): SchedulePageData | null => {
+    return AppStorage.getObject<SchedulePageData>(StorageKeys.SCHEDULE_DATA);
+  },
+
+  saveScheduleData: (data: SchedulePageData): void => {
+    if (!data) return;
+    AppStorage.setObject(StorageKeys.SCHEDULE_DATA, data);
   },
 
   clearCache: (): void => {

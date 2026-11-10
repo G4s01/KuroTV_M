@@ -105,6 +105,7 @@ class ConfigManager {
       music: `${withSlash}music?page=`,
       filter: `${withSlash}filter?`,
       upcoming: `${withSlash}upcoming/`,
+      schedule: `${withSlash}schedule`,
       hostname: this.getHostname(),
     };
   }

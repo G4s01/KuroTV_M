@@ -34,7 +34,7 @@ Kuro Mobile è un'applicazione concepita **esclusivamente per smartphone Android
 - **Storage Locale ad Alte Prestazioni**: `react-native-mmkv` v3 (zero-latency key-value store sincrono per preferiti, cronologia, configurazioni e preferenze AniSkip/Navbar).
 - **Video & Multimedialità**: `expo-video` v58 con controlli touch personalizzati, OSD immersivo, HUD luminosità/volume, AniSkip (intro, outro, recap con timer 10s e rewind safe), Picture-in-Picture nativo e controlli rapidi in notifica (`MediaSession`/`MediaStyle`).
 - **Styling & Temi**: Sistema dinamico reattivo ispirato a `react-native-unistyles` con `ThemeProvider` a clonazione di riferimento per aggiornamento istantaneo al click e `getContrastTextColor` per contrasto dinamico YIQ.
-- **Animazioni Skeleton & UX Loading**: Primitive e layout skeleton dedicati in `src/components/skeleton` (`Skeleton`, `AnimeCardSkeleton`, `HomeScreenSkeleton`, `ExploreScreenSkeleton`, `AnimeDetailScreenSkeleton`, `EpisodeItemSkeleton`, `PlayerSkeleton`) con animazione pulsing via driver nativo a 60/120 FPS, sfondo OLED surface (`#161616`) e zero Cumulative Layout Shift (CLS). Cleanup automatico dei loop nativi in unmount e allo scaricamento immagini (`onLoad`) per prevenire battery drain e resource leak.
+- **Animazioni Skeleton & UX Loading**: Primitive e layout skeleton dedicati in `src/components/skeleton` (`Skeleton`, `AnimeCardSkeleton`, `HomeScreenSkeleton`, `ExploreScreenSkeleton`, `ScheduleScreenSkeleton`, `AnimeDetailScreenSkeleton`, `EpisodeItemSkeleton`, `PlayerSkeleton`) con animazione pulsing via driver nativo a 60/120 FPS, sfondo OLED surface (`#161616`) e zero Cumulative Layout Shift (CLS). Cleanup automatico dei loop nativi in unmount e allo scaricamento immagini (`onLoad`) per prevenire battery drain e resource leak.
 - **Immagini & Asset SVG**: `expo-image` con cache disco/memoria e supporto SVG integrato.
 - **Moduli di Sistema & Font**: `expo-system-ui` per tema di sistema Android automatico, `expo-font` per il rendering dei glifi vettoriali.
 
@@ -48,9 +48,16 @@ Kuro Mobile è un'applicazione concepita **esclusivamente per smartphone Android
    - Gestire sempre notch, fotocamere punch-hole e barra di navigazione Android tramite `react-native-safe-area-context` e `react-native-edge-to-edge`.
    - Adattamento dinamico della barra inferiore delle tab (`androidBottomInset = Math.max(16, insets.bottom + 8)`): garantisce zero sovrapposizione visiva con la navbar di sistema a 3 pulsanti fissi in-app, sollevando il router dell'app e preservando l'altezza utile dei touch target $\ge 44$dp. In modalità video player, la barra di sistema torna invece automaticamente a scomparsa totale.
 3. **Navigazione a Bottom Tabs & Ricerca Unificata in Home**:
-   - La navigazione principale usa 4 schede con sole icone vettoriali (`tabBarShowLabel: false`): **Home**, **Preferiti**, **Cronologia**, **Impostazioni**.
+   - La navigazione principale usa schede con sole icone vettoriali (`tabBarShowLabel: false`): **Home** (`home`), **Palinsesto** (`calendar`), **Preferiti** (`heart`), **Cronologia** (`time`), **Impostazioni** (`settings`).
    - La ricerca del catalogo con filtri avanzati è integrata direttamente nell'header della **Home** (icona lente di ingrandimento, debouncing 450ms, griglia FlashList a 2 colonne e supporto al tasto fisico Indietro di Android per chiudere la ricerca senza uscire dall'app).
    - Colore attivo delle tab agganciato dinamicamente a `theme.colors.primary`.
+   - **Nuova Sezione Palinsesto / Programmazione Settimanale (`app/(tabs)/explore.tsx`)**:
+     - Integra le uscite settimanali con gli orari previsti da `animeworld.ac/schedule` (`AnimeWorldScraper.getSchedule()` e `parseSchedulePage`).
+     - Header dedicato con titolo `PALINSESTO` e sottotitolo della settimana corrente (`SETTIMANA D MESE – D MESE`).
+     - Hero card opzionale per la *Prossima Uscita* in evidenza con badge fiammella `PROSSIMA USCITA`, orario programmato / countdown, titolo anime, puntata e locandina (tap diretto a scheda dettaglio).
+     - Selettore orizzontale a scorrimento per i giorni della settimana (`LUN` ... `DOM`) con numero del giorno, badge uscite e indicatore `OGGI` per auto-selezionare il giorno odierno. Include il tab dedicato per le serie senza giorno fisso (`SENZA DATA`).
+     - Timeline orizzontale/verticale virtualizzata con `@shopify/flash-list`: pill orario dedicato (`15:00`), locandina ad alta risoluzione con cache, titolo serie (monospace, uppercase), titolo alternativo, badge puntata (`EPISODIO X`) e badge di stato dinamico con codifica cromatica OLED (`USCITO` in verde success, `IN PAUSA` in ambra warning, programmato `ALLE HH:MM` in colore primario).
+     - Supporto pull-to-refresh nativo con tint color coordinato e layout skeleton dedicato `ScheduleScreenSkeleton` a zero CLS.
    - **Struttura Sezioni Schermata Home**:
      1. **Banner Hero in Evidenza**: Espone in testa l'anime raccomandato selezionato (di default il primo della top 8 dei raccomandati). Implementato come slider orizzontale a tutta larghezza con `pagingEnabled={true}` e sincronizzazione bi-direzionale protetta da `activeScrollSourceRef`. Mostra banner/artwork, badge `#1 RACCOMANDATO`, titolo (monospace, uppercase), sinossi pulita e pulsanti d'azione dedicati:
         - `RIPRODUCI` (icona `play`, avvio diretto dell'episodio salvato in cronologia/continua a guardare o fetch dell'episodio 1 con feedback visivo di caricamento e fallback sicuro a scheda dettagli);
@@ -72,7 +79,7 @@ Kuro Mobile è un'applicazione concepita **esclusivamente per smartphone Android
    - `RefreshControl` nativo su tutte le schermate a lista per consentire la ricarica manuale dei dati da remoto con tint color coordinato al tema.
 7. **Animazioni Skeleton & Zero Layout Shift (CLS)**:
    - È vietato l'uso di schermate vuote o spinner bloccanti a tutto schermo durante il fetching asincrono del catalogo, del video player o delle schermate principali.
-   - Utilizzare rigorosamente i layout skeleton dedicati (`HomeScreenSkeleton`, `ExploreScreenSkeleton`, `AnimeDetailScreenSkeleton`, `AnimeCardSkeleton`, `EpisodeItemSkeleton`, `PlayerSkeleton`) che rispecchiano fedelmente e al pixel le geometrie, proporzioni, paddings e spaziature dei componenti finali (locandine, schede tecniche, pulsanti d'azione simbolici, caroselli e tabelle metadati) per prevenire sfarfallii e scatti di layout (CLS):
+   - Utilizzare rigorosamente i layout skeleton dedicati (`HomeScreenSkeleton`, `ExploreScreenSkeleton`, `ScheduleScreenSkeleton`, `AnimeDetailScreenSkeleton`, `AnimeCardSkeleton`, `EpisodeItemSkeleton`, `PlayerSkeleton`) che rispecchiano fedelmente e al pixel le geometrie, proporzioni, paddings e spaziature dei componenti finali (locandine, schede tecniche, pulsanti d'azione simbolici, caroselli e tabelle metadati) per prevenire sfarfallii e scatti di layout (CLS):
      - **Zero Doppio Padding**: Se il contenitore esterno (es. `ScrollView` con `listContent`) possiede già un padding (es. 16dp), il contenitore dello skeleton interno deve avere `padding: 0` (es. `ExploreScreenSkeleton`) per posizionare le card sulle coordinate esatte della `FlashList`.
      - **Sincronizzazione Sezioni Condizionali**: Se una schermata include sezioni dipendenti da cache o stato locale (es. *Riprendi a guardare* su Home recuperata da MMKV), lo skeleton deve supportare la prop (`hasContinueWatching`) per riservare lo spazio ed evitare salti verticali al termine del fetch remoto.
      - **Altezze e Raggi Omogenei**: Le dimensioni degli skeleton devono combaciare al millimetro con i componenti reali (es. chip puntate a 52dp con `radius.md`, backdrop a 260dp, locandina dettaglio a 110x160dp).
@@ -183,6 +190,7 @@ Kuro Mobile è un'applicazione concepita **esclusivamente per smartphone Android
    - **Sorgente**: Selezione rapida dei domini supportati (`.ac`, `.so`, `.tv`) oppure URL digitabile liberamente a mano con pulsante APPLICA.
    - **Impostazioni Cronologia & Slider Reattivo**: Sezione dedicata con `HistorySlider` per la durata di conservazione: `OFF` (disattiva la registrazione e nasconde dinamicamente la tab Cronologia dalla navigazione inferiore via `href: null`), `30gg`, `60gg`, `90gg` e `ON` (conservazione permanente illimitata). Include il pulsante per svuotare l'intera cronologia con modale di conferma in-app.
    - **Informazioni & Updater Unificati**: Sezione con Nome, Stack, Package Name, Versione+Build installata e Architettura APK. In fondo alla sezione è posizionato il pulsante per verificare/aggiornare l'app.
+   - **Gestione Affidabile Download & Aggiornamenti Manuali**: `handleStartDownloadUpdate` e `UpdaterService.downloadApk` convalidano rigorosamente che l'oggetto passato sia un `UpdateManifest` reale, neutralizzando argomenti spuri (es. oggetti evento touch `GestureResponderEvent` emessi da bottoni `Pressable`), azzerando l'errore `URL DEL PACCHETTO APK NON DISPONIBILE O NON VALIDO`. Ripristino automatico dello stato `available` al focus della tab se era presente un errore transitorio, e pulsante dedicato `VERIFICA NUOVAMENTE` anche dopo il completamento del download dell'APK.
    - **Notifica Aggiornamenti all'Avvio & Auto-Scroll Coordinato**: Controllo non-bloccante in background all'avvio con componente modale in-app `UpdateModal` (note di rilascio, "PIÙ TARDI" o "AGGIORNA ORA"). Il tocco su "AGGIORNA ORA" indirizza a `/(tabs)/settings?scrollTo=update`, aziona lo scroll progressivo verso il basso e aggancia l'evento `onContentSizeChange` sulla `ScrollView`: quando la card si espande con la progress bar e i metadati di download, la vista scorre fluidamente fino a mostrare interamente la barra e il tasto per installare l'APK. In caso di differimento ("PIÙ TARDI"), l'icona Impostazioni mostra una freccia in sù (`arrow-up`) animata con rimbalzo continuo per non perdere la notifica visiva.
    - **Endpoint OTA Nascosto**: L'URL tecnico del manifest Cloudflare è rigorosamente nascosto e protetto all'interno del client.
 
@@ -223,7 +231,7 @@ Kuro Mobile è un'applicazione concepita **esclusivamente per smartphone Android
 ## 🧪 7. Standard di Test & Verifica Qualità
 
 Prima di ogni commit o push è obbligatorio verificare la conformità tramite:
-1. `npm test`: Suite di test automatizzata a 14 stadi:
+1. `npm test`: Suite di test automatizzata a 15 stadi:
    - SemVer e Updater Service.
    - Regole di Stile Mobile & conformità OLED.
    - Storage MMKV (preferiti, cronologia visione).
@@ -238,4 +246,5 @@ Prima di ogni commit o push è obbligatorio verificare la conformità tramite:
    - AniSkipSlider, Player Integrated Loader & Media Notification.
    - AniSkip Dynamic Auto Description, Auto-Off Fallback & Duration Slider.
    - Ridefinizione Schermata Home & Scraper (Hero Swiper, Raccomandati numerati, Snapping, Play/Info, Caroselli, Upcoming `.film-listnext` & Anti-Corruzione Titoli).
+   - Palinsesto / Schedule (Parser cheerio/slim & htmlparser2, Scraper AnimeWorldScraper.getSchedule(), Query TanStack scheduleQueryOptions(), Storage MMKV cache.scheduleData, ScheduleScreenSkeleton, Virtualizzazione FlashList, Selettore giorni LUN-DOM con badge uscite e indicatore OGGI, Banner Prossima Uscita e Sezione SENZA DATA) & Fix Download Aggiornamenti Manuali (convalida UpdateManifest ed eliminazione eventi sintetici).
 2. `npx expo export --platform android`: Verifica dell'assenza di errori di bundle e corretta generazione del bytecode Hermes.

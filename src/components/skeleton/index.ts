@@ -5,3 +5,4 @@ export * from './HomeScreenSkeleton';
 export * from './ExploreScreenSkeleton';
 export * from './AnimeDetailScreenSkeleton';
 export * from './PlayerSkeleton';
+export * from './ScheduleScreenSkeleton';

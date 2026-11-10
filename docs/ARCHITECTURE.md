@@ -13,7 +13,7 @@ KuroM/
 │   ├── (tabs)/                  # Navigazione a schede inferiori
 │   │   ├── _layout.tsx          # Configurazione TabBar con tinte reattive
 │   │   ├── index.tsx            # Home: Hero Spotlight, Continua a guardare, Ultime uscite, ricerca unificata & filtri
-│   │   ├── explore.tsx          # Reindirizzamento trasparente a Home
+│   │   ├── explore.tsx          # Palinsesto: Programmazione uscite settimanali con orari previsti, selettore giorni & serie senza data
 │   │   ├── favorites.tsx        # Preferiti: Griglia anime salvati in locale
 │   │   ├── history.tsx          # Cronologia: Storico di visione e ripresa episodio
 │   │   └── settings.tsx         # Impostazioni: Temi SVG, AniSkip, Navbar Android, sorgente (.ac, .so, .tv), info & updater
@@ -145,6 +145,7 @@ Il sistema di skeleton loading in [`src/components/skeleton/`](file:///home/g4s/
    - `AnimeCardSkeleton`: replica l'aspect ratio (1.45) e le dimensioni esatte (130x190 o responsive) di `AnimeCard`, con badge posizionato a (6, 6) e linee titolo duplicate (`marginTop: 6`).
    - `HomeScreenSkeleton`: modella l'Hero Banner Spotlight a 320dp con i due pulsanti d'azione (Play e Info), il carosello compatto dei raccomandati numerati con card a 112x140dp, supporta la sezione condizionale *Riprendi a guardare* (`hasContinueWatching`) con card a 160x96dp per preservare lo spazio prima del fetch remoto, e allinea il padding orizzontale per combaciare perfettamente con i caroselli reali a zero Cumulative Layout Shift (CLS).
    - `ExploreScreenSkeleton`: griglia a 2 colonne sincronizzata con la larghezza schermo `(windowWidth - 44) / 2` con `padding: 0` interno per eliminare il doppio padding rispetto a `styles.listContent` (16dp).
+   - `ScheduleScreenSkeleton`: modella il banner Hero Prossima Uscita (108dp), la barra orizzontale dei giorni della settimana con chip a 58x52dp e le card della timeline con colonna orario dedicata (44x20dp), locandina (56x80dp), titolo e badge metadati/stato a zero Cumulative Layout Shift (CLS).
    - `AnimeDetailScreenSkeleton`: scheletro completo fedele al 100% che modella il backdrop (260dp), poster (110x160dp), pulsanti d'azione rapidi circolari di avvio/riavvio (`play` e `reload` $\ge 44$dp), sinossi a 3 righe, scheda tecnica a 4 righe (`tableCard`), 3 pulsanti link esterni (`linksRow` $\ge 44$dp), barra controlli con switch vista e chip episodi a 52dp.
    - `EpisodeItemSkeleton`: chip quadrati per vista griglia (altezza a 52dp e raggio `radius.md` conformi a `EpisodeItem`) o barre orizzontali per vista lista con badge numerico 32x32 e pulsante play circolare 24x24.
    - `PlayerSkeleton`: scheletro dell'interfaccia OSD del video player con 3 pulsanti azione circolari in header ($\ge 44$dp), controlli centrali con skip e play 64dp, e 3 controlli inferiori nel footer (episodi, velocità e orientamento) durante la connessione allo stream.

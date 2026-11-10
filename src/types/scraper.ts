@@ -47,3 +47,54 @@ export interface EpisodeInfoApiResponse {
   target?: string;
   [key: string]: unknown;
 }
+
+export interface ScheduleItem {
+  id: string;
+  title: string;
+  japaneseTitle?: string;
+  poster: string;
+  episode?: string;
+  time: string;
+  timestamp?: number;
+  status: string;
+  isDone?: boolean;
+  isPause?: boolean;
+  link: string;
+}
+
+export interface ScheduleDay {
+  dayId: string;
+  dayName: string;
+  dayLabel: string;
+  count: number;
+  isToday: boolean;
+  items: ScheduleItem[];
+}
+
+export interface ScheduleHero {
+  id: string;
+  title: string;
+  japaneseTitle?: string;
+  poster: string;
+  episode?: string;
+  timeLabel?: string;
+  countdownTimestamp?: number;
+  link: string;
+}
+
+export interface ScheduleUnscheduledItem {
+  id: string;
+  title: string;
+  japaneseTitle?: string;
+  poster: string;
+  episode?: string;
+  tag?: string;
+  link: string;
+}
+
+export interface SchedulePageData {
+  weekLabel: string;
+  hero?: ScheduleHero;
+  days: ScheduleDay[];
+  unscheduled: ScheduleUnscheduledItem[];
+}

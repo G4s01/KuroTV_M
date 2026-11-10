@@ -136,11 +136,16 @@ export default function TabLayout() {
       <Tabs.Screen
         name="explore"
         options={{
-          href: null,
-          tabBarItemStyle: { display: 'none' },
+          title: 'PALINSESTO',
           tabBarShowLabel: false,
           tabBarLabel: () => null,
-          tabBarIcon: () => null,
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons
+              name={focused ? 'calendar' : 'calendar-outline'}
+              size={24}
+              color={color as string}
+            />
+          ),
         }}
       />
       <Tabs.Screen

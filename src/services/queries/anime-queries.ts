@@ -26,6 +26,7 @@ import { AppStorage } from "../storage";
 export const animeQueryKeys = {
   all: ["anime"] as const,
   home: () => [...animeQueryKeys.all, "home"] as const,
+  schedule: () => [...animeQueryKeys.all, "schedule"] as const,
   latest: (page = 1) => [...animeQueryKeys.all, "latest", page] as const,
   upcoming: (page = 1) => [...animeQueryKeys.all, "upcoming", page] as const,
   detail: (id: string) => [...animeQueryKeys.all, "detail", id] as const,
@@ -82,6 +83,31 @@ export const upcomingAnimeQueryOptions = (page = 1) =>
   queryOptions({
     queryKey: animeQueryKeys.upcoming(page),
     queryFn: () => AnimeWorldScraper.getUpcoming(page),
+    staleTime: 10 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+  });
+
+// 2c. Weekly Anime Schedule Query Options
+export const scheduleQueryOptions = () =>
+  queryOptions({
+    queryKey: animeQueryKeys.schedule(),
+    queryFn: async () => {
+      try {
+        const data = await AnimeWorldScraper.getSchedule();
+        if (data) {
+          AppStorage.saveScheduleData(data);
+        }
+        return data;
+      } catch (err) {
+        const cached = AppStorage.getScheduleData();
+        if (cached) {
+          return cached;
+        }
+        throw err;
+      }
+    },
+    initialData: () => AppStorage.getScheduleData() ?? undefined,
+    initialDataUpdatedAt: 0,
     staleTime: 10 * 60 * 1000,
     gcTime: 30 * 60 * 1000,
   });

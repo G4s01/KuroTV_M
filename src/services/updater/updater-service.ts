@@ -546,6 +546,10 @@ class UpdaterServiceImpl {
     manifest: UpdateManifest,
     onProgress?: DownloadProgressCallback
   ): Promise<string> {
+    if (!manifest || typeof manifest !== 'object' || !manifest.version) {
+      throw new Error('Manifest di aggiornamento non valido o mancante');
+    }
+
     const cacheDir = FileSystem.cacheDirectory || FileSystem.documentDirectory;
     if (!cacheDir) {
       throw new Error('Directory cache non disponibile per il download');

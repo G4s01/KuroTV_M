@@ -323,7 +323,22 @@ export default function SettingsScreen() {
   };
 
   const handleStartDownloadUpdate = React.useCallback(async (manifestOverride?: any) => {
-    const targetManifest = manifestOverride || updateResult?.manifest;
+    // Only accept manifestOverride if it is a valid UpdateManifest object (guards against Pressable event objects)
+    const isManifest = (m: any): boolean =>
+      Boolean(
+        m &&
+        typeof m === 'object' &&
+        typeof m.version === 'string' &&
+        typeof m.versionCode === 'number' &&
+        (typeof m.apkUrl === 'string' || typeof m.apks === 'object')
+      );
+
+    const targetManifest = isManifest(manifestOverride)
+      ? manifestOverride
+      : (isManifest(updateResult?.manifest)
+          ? updateResult?.manifest
+          : UpdateStore.getPendingUpdate()?.manifest);
+
     if (!targetManifest || typeof targetManifest !== 'object') {
       setUpdateStatus('error');
       setUpdateError('MANIFEST DI AGGIORNAMENTO NON DISPONIBILE');
@@ -388,7 +403,7 @@ export default function SettingsScreen() {
         const pending = UpdateStore.getPendingUpdate();
         if (pending && pending.isUpdateAvailable && pending.manifest) {
           setUpdateResult((prev) => prev || pending);
-          setUpdateStatus((prev) => (prev === 'idle' ? 'available' : prev));
+          setUpdateStatus((prev) => (prev === 'idle' || prev === 'error' ? 'available' : prev));
         }
       }
 
@@ -886,7 +901,7 @@ export default function SettingsScreen() {
                 </View>
                 <Pressable
                   style={[styles.actionBtn, { backgroundColor: theme.colors.primary }]}
-                  onPress={handleStartDownloadUpdate}
+                  onPress={() => handleStartDownloadUpdate()}
                 >
                   <Ionicons name="download-outline" size={18} color={primaryContrast} />
                   <Text style={[styles.actionBtnText, { color: primaryContrast }]}>SCARICA E INSTALLA</Text>
@@ -929,6 +944,13 @@ export default function SettingsScreen() {
                 >
                   <Ionicons name="flash" size={18} color={primaryContrast} />
                   <Text style={[styles.actionBtnText, { color: primaryContrast }]}>INSTALLA ORA</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.smallActionBtn, { borderColor: theme.colors.border, marginTop: 6 }]}
+                  onPress={handleCheckUpdates}
+                >
+                  <Ionicons name="refresh" size={13} color={theme.colors.textMuted} />
+                  <Text style={[styles.smallActionBtnText, { color: theme.colors.textMuted }]}>VERIFICA NUOVAMENTE</Text>
                 </Pressable>
               </View>
             ) : updateStatus === 'error' ? (

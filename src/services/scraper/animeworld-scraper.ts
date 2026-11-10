@@ -5,6 +5,7 @@ import type {
   DirectVideoSource,
   Episode,
   EpisodeInfoApiResponse,
+  SchedulePageData,
   ScraperConfig,
   SearchFilter,
 } from "@/types";
@@ -12,6 +13,7 @@ import { HttpClient, defaultHttpClient } from "./http-client";
 import { scraperConfig } from "./config";
 import { parseHomePage } from "./parsers/home.parser";
 import { parseDetailPage } from "./parsers/detail.parser";
+import { parseSchedulePage } from "./parsers/schedule.parser";
 import { buildFilterQuery, parseSearchPage } from "./parsers/search.parser";
 import type { SearchResult } from "./parsers/search.parser";
 import { resolveVideoSource } from "./parsers/video.parser";
@@ -90,6 +92,21 @@ export class AnimeWorldScraperService {
       return result.items;
     } catch (error) {
       console.warn("[AnimeWorldScraper] getUpcoming error:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Fetches weekly anime schedule/palinsesto from /schedule
+   */
+  public async getSchedule(): Promise<SchedulePageData> {
+    try {
+      const endpoints = scraperConfig.getEndpoints();
+      const url = endpoints.schedule || `${endpoints.sitePrefixNoS}/schedule`;
+      const html = await this.httpClient.getPage(url);
+      return parseSchedulePage(html, endpoints.sitePrefixNoS);
+    } catch (error) {
+      console.warn("[AnimeWorldScraper] getSchedule error:", error);
       throw error;
     }
   }

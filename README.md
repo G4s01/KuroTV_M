@@ -43,6 +43,13 @@
   - **Uscite della Stagione Corrente (`upcoming`)**: Carosello con le prossime uscite stagionali (oltre 80 serie con scraper arricchito per `.film-listnext` e titoli sanitizzati).
   - **Nuove Aggiunte**: Le ultime novità introdotte nel catalogo AnimeWorld.
 
+### 📅 Palinsesto & Programmazione Settimanale
+- **🗓️ Calendario Uscite AnimeWorld**: Scraper touch-native per `animeworld.ac/schedule` che espone la programmazione settimanale completa con gli orari previsti delle puntate.
+- **🌟 Hero Card Prossima Uscita**: Card in evidenza con badge fiammella `PROSSIMA USCITA`, orario programmato, titolo, numero di puntata e tap diretto alla scheda anime.
+- **👆 Selettore Orizzontale dei Giorni (`LUN` ... `DOM`)**: Scorrimento touch dei giorni con data, badge del totale uscite per data e indicatore `OGGI` con selezione automatica del giorno odierno.
+- **⏱️ Timeline Virtualizzata con FlashList**: Schede episodio ordinate cronologicamente con pill orario dedicato (`15:00`), locandina ad alta risoluzione con cache proattiva, titoli monospace, badge puntata (`EPISODIO X`) e badge di stato con codifica cromatica OLED (`USCITO` in verde, `IN PAUSA` in ambra, programmato in colore primario).
+- **⏳ Serie in Corso Senza Data Fissa (`SENZA DATA`)**: Sezione dedicata per consultare agevolmente tutte le serie in trasmissione priva di giorno stabilito (es. One Piece ITA, Detective Conan, Pokémon).
+
 ### 🎬 Player Video Touch di Nuova Generazione
 - **⚡ Streaming Asincrono (`replaceAsync`)**: Risoluzione del flusso video off-thread (`expo-video`) senza blocchi sincroni sul Main Thread, garantendo caricamento immediato e zero freeze dell'interfaccia.
 - **🎞️ Live Real-Frame Scrubbing**: Trascina la timeline per visualizzare in tempo reale i veri fotogrammi video estratti dallo stream (`expo-video`), con cache in memoria e proximity matching a 60 FPS senza lag.
@@ -70,7 +77,7 @@
 - **⏭️ Selettore AniSkip a Scorrimento Continuo (`AniSkipSlider`)**: Slider touch-native minimale per la modalità di salto tra `'OFF'`, `'MANUALE'` e `'AUTO'` con feedback aptico e tracciamento continuo in stile `HistorySlider`.
 - **🔍 Ricerca Unificata in Home**: Catalogo accessibile dalla Home tramite header search con debouncing 450ms, dismiss tastiera su scroll, hardware back button e filtri modali.
 - **Zero Alert di Sistema & Modal In-App Unificato (`ConfirmModal`)**: Sostituzione integrale degli alert nativi grezzi di Android con modali a tema OLED, contrasto dinamico YIQ, feedback aptico e touch target $\ge 44$dp.
-- **Bottom Tabs Solo Icone**: Barra inferiore pulita a 4 schede (**Home**, **Preferiti**, **Cronologia**, **Impostazioni**) senza etichette testuali e touch target minimi $\ge 44$dp.
+- **Bottom Tabs Solo Icone**: Barra inferiore pulita a 5 schede (**Home**, **Palinsesto**, **Preferiti**, **Cronologia**, **Impostazioni**) senza etichette testuali e touch target minimi $\ge 44$dp.
 - **Temi Reattivi al Click**: Quattro palette d'accento (**OLED Puro**, **Pikachu**, **Orchidea**, **Rainbow**) con toggle scuro/chiaro al click e contrasto dinamico YIQ del testo.
 
 ### ⚡ Prestazioni Estreme & Architettura Safe
@@ -106,11 +113,11 @@ cd KuroM
 npm install
 ```
 
-### 2. Test di Qualità (14 Stadi)
+### 2. Test di Qualità (15 Stadi)
 ```bash
 npm test
 ```
-*Valida SemVer, regole OLED, storage MMKV, batch puntate, intervalli AniSkip, skeleton animation, export delle rotte, touch sheets, updater, compatibilità navbar, gesture verticali, PiP no-pause, dimensioni sheets, AniSkipSlider, loader integrato, media notification, slider hero sincronizzato, parser upcoming e anti-corruzione titoli.*
+*Valida SemVer, regole OLED, storage MMKV, batch puntate, intervalli AniSkip, skeleton animation, export delle rotte, touch sheets, updater, compatibilità navbar, gesture verticali, PiP no-pause, dimensioni sheets, AniSkipSlider, loader integrato, media notification, slider hero sincronizzato, parser upcoming, anti-corruzione titoli, palinsesto/schedule e affidabilità aggiornamenti manuali.*
 
 ### 3. Build & Verifica Bytecode Hermes
 ```bash

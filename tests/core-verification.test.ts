@@ -1353,9 +1353,10 @@ const filterSheetCode = fs.readFileSync(path.resolve(process.cwd(), 'src/compone
 assert(filterSheetCode.includes('Modal'), 'FilterBottomSheet deve utilizzare Modal nativo');
 assert(!filterSheetCode.includes("from '@expo/ui'"), 'FilterBottomSheet non deve importare da @expo/ui per evitare crash silenziosi');
 
-// 6. Tab layout hides explore tab
+// 6. Tab layout integrates explore tab (Palinsesto)
 assert(tabLayoutSource.includes('name="explore"'), 'app/(tabs)/_layout.tsx deve dichiarare la rotta explore');
-assert(tabLayoutSource.includes('href: null'), 'app/(tabs)/_layout.tsx deve nascondere la rotta explore con href: null');
+assert(tabLayoutSource.includes('PALINSESTO'), 'app/(tabs)/_layout.tsx deve configurare il titolo PALINSESTO su explore');
+assert(tabLayoutSource.includes('calendar'), 'app/(tabs)/_layout.tsx deve usare icona calendar per la tab explore');
 
 // 7. Search with filters integrated in Home
 const homeIndexCode = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/index.tsx'), 'utf-8');
@@ -1417,9 +1418,9 @@ const favCode = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/favorite
 assert(favCode.includes("router.push('/(tabs)')"), 'app/(tabs)/favorites.tsx deve navigare verso /(tabs) quando la lista è vuota');
 assert(!favCode.includes('/(tabs)/explore'), 'app/(tabs)/favorites.tsx non deve più riferenziare la rotta explore');
 
-// 13. Deep verification of explore redirect
+// 13. Deep verification of explore route (Palinsesto / Programmazione)
 const exploreCode = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/explore.tsx'), 'utf-8');
-assert(exploreCode.includes('/(tabs)'), 'app/(tabs)/explore.tsx deve reindirizzare alla home');
+assert(exploreCode.includes('PALINSESTO'), 'app/(tabs)/explore.tsx deve renderizzare la schermata PALINSESTO');
 
 console.log('✓ Sheets Cutoff Fixes, AniSkip Settings & FilterBottomSheet Modal verificati con successo.');
 
@@ -1815,6 +1816,146 @@ assert(homeSkelSource.includes('hasContinueWatching'), 'HomeScreenSkeleton deve 
 assert(homeSkelSource.includes('continueThumbWrapper'), 'HomeScreenSkeleton deve supportare continueThumbWrapper');
 
 console.log('✓ Ridefinizione Schermata Home & Scraper verificate con successo.');
+
+// -----------------------------------------------------------------------------
+// 15. Verifica Palinsesto / Schedule & Fix Aggiornamenti Manuali
+// -----------------------------------------------------------------------------
+console.log('\n[15/15] Verifica Palinsesto / Schedule & Fix Aggiornamenti Manuali...');
+
+// 1. Verifica Parser Palinsesto / Schedule
+const { parseSchedulePage } = await import('../src/services/scraper/parsers/schedule.parser');
+const mockScheduleHtml = `
+<!DOCTYPE html>
+<html>
+  <body>
+    <div class="sch" id="sch">
+      <section class="sch-hero" data-at="1794321000000">
+        <a class="sch-ht" href="/play/nia-liston.VVpfI" data-jtitle="Kyouran Reijou">Nia Liston: The Merciless Maiden</a>
+        <div class="sch-hm"><span class="sch-ep">Episodio 6</span></div>
+        <div class="sch-hw"><span class="sch-hwt">Oggi · 15:30</span></div>
+        <img class="sch-hbg" src="https://img/nia.jpg" />
+      </section>
+
+      <div class="sch-bar">
+        <div class="sch-wk">Settimana <b>9 nov – 15 nov</b></div>
+      </div>
+
+      <div class="sch-days">
+        <section class="sch-day" id="sch-d-mon" data-day="mon" data-name="Lunedì" data-label="9 nov">
+          <div class="sch-dh">
+            <h3 class="sch-hx">Lunedì <span>9 nov</span></h3>
+            <span class="sch-dc">2 uscite</span>
+          </div>
+          <ul class="sch-tl">
+            <li class="sch-row is-done" data-time="15:00">
+              <span class="sch-time">15:00</span>
+              <a class="sch-item" href="/play/witch-potion.AGegB">
+                <span class="sch-po"><img src="https://img/witch.jpg"/></span>
+                <span class="sch-cb">
+                  <span class="sch-ct" data-jtitle="Doumo Suki">Love Potion</span>
+                  <span class="sch-cm"><span class="sch-ep">Episodio 6</span><span class="sch-st">Uscito</span></span>
+                </span>
+              </a>
+            </li>
+            <li class="sch-row is-pause" data-time="15:30" data-paused="1">
+              <span class="sch-time">15:30</span>
+              <a class="sch-item" href="/play/reborn-goblin.UC3Im">
+                <span class="sch-po"><img src="https://img/goblin.jpg"/></span>
+                <span class="sch-cb">
+                  <span class="sch-ct">Reborn Goblin</span>
+                  <span class="sch-cm"><span class="sch-ep">Episodio 7</span><span class="sch-st">In pausa</span></span>
+                </span>
+              </a>
+            </li>
+          </ul>
+        </section>
+        <section class="sch-day is-today" id="sch-d-tue" data-day="tue" data-name="Martedì" data-label="10 nov">
+          <ul class="sch-tl">
+            <li class="sch-row" data-time="18:00">
+              <span class="sch-time">18:00</span>
+              <a class="sch-item" href="/play/mage-life.4SaIK">
+                <span class="sch-po"><img src="https://img/mage.jpg"/></span>
+                <span class="sch-cb">
+                  <span class="sch-ct">Mage Life</span>
+                  <span class="sch-cm"><span class="sch-ep">Episodio 5</span><span class="sch-st">Alle 18:00</span></span>
+                </span>
+              </a>
+            </li>
+          </ul>
+        </section>
+      </div>
+
+      <section class="sch-unk">
+        <ul class="sch-ul">
+          <li>
+            <a class="sch-u" href="/play/one-piece-ita.d5nahE">
+              <span class="sch-uq"><img src="https://img/op.jpg"/></span>
+              <span class="sch-ub">
+                <span class="sch-ut">One Piece (ITA)</span>
+                <span class="sch-um"><span class="sch-uep">Ep. 947</span><span class="sch-tag">ITA</span></span>
+              </span>
+            </a>
+          </li>
+        </ul>
+      </section>
+    </div>
+  </body>
+</html>
+`;
+
+const parsedSchedule = parseSchedulePage(mockScheduleHtml, 'https://www.animeworld.ac');
+assert.strictEqual(parsedSchedule.weekLabel, 'Settimana 9 nov – 15 nov', 'Week label deve essere corretta');
+assert(parsedSchedule.hero !== undefined, 'Hero deve essere presente');
+assert.strictEqual(parsedSchedule.hero?.title, 'Nia Liston: The Merciless Maiden', 'Hero title corretto');
+assert.strictEqual(parsedSchedule.hero?.id, 'nia-liston.VVpfI', 'Hero id corretto');
+assert.strictEqual(parsedSchedule.days.length, 2, 'Devono esserci 2 giorni');
+assert.strictEqual(parsedSchedule.days[0].items.length, 2, 'Lunedì deve avere 2 uscite');
+assert.strictEqual(parsedSchedule.days[0].items[0].isDone, true, 'Prima uscita Lunedì deve essere isDone');
+assert.strictEqual(parsedSchedule.days[0].items[1].isPause, true, 'Seconda uscita Lunedì deve essere isPause');
+assert.strictEqual(parsedSchedule.days[1].isToday, true, 'Martedì deve essere isToday');
+assert.strictEqual(parsedSchedule.unscheduled.length, 1, 'Unscheduled deve avere 1 elemento');
+assert.strictEqual(parsedSchedule.unscheduled[0].title, 'One Piece (ITA)', 'Titolo serie senza data fissa corretto');
+
+// 2. Storage Cache Palinsesto
+AppStorage.saveScheduleData(parsedSchedule);
+const cachedSchedule = AppStorage.getScheduleData();
+assert.strictEqual(cachedSchedule?.weekLabel, parsedSchedule.weekLabel, 'AppStorage deve memorizzare e recuperare scheduleData');
+
+// 3. Verifica Scraper & Query options
+const { AnimeWorldScraper } = await import('../src/services/scraper/index');
+assert(typeof AnimeWorldScraper.getSchedule === 'function', 'AnimeWorldScraper deve esporre getSchedule');
+const { animeQueryKeys, scheduleQueryOptions } = await import('../src/services/queries/anime-queries');
+assert.deepStrictEqual(animeQueryKeys.schedule(), ['anime', 'schedule'], 'animeQueryKeys.schedule deve essere definito');
+const schedOpts = scheduleQueryOptions();
+assert.strictEqual(typeof schedOpts.queryFn, 'function', 'scheduleQueryOptions deve avere queryFn');
+
+// 4. Verifica Skeleton Palinsesto
+const { ScheduleScreenSkeleton } = await import('../src/components/skeleton/ScheduleScreenSkeleton');
+assert(typeof ScheduleScreenSkeleton === 'function', 'ScheduleScreenSkeleton deve essere esportato');
+
+// 5. Verifica Sorgente app/(tabs)/explore.tsx (Palinsesto / Programmazione)
+const exploreSource = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/explore.tsx'), 'utf-8');
+assert(exploreSource.includes('PALINSESTO'), 'explore.tsx deve mostrare il titolo PALINSESTO');
+assert(exploreSource.includes('scheduleQueryOptions'), 'explore.tsx deve invocare scheduleQueryOptions');
+assert(exploreSource.includes('ScheduleScreenSkeleton'), 'explore.tsx deve integrare ScheduleScreenSkeleton');
+assert(exploreSource.includes('FlashList'), 'explore.tsx deve virtualizzare le liste con FlashList');
+assert(exploreSource.includes('selectedDayId'), 'explore.tsx deve gestire lo stato del giorno selezionato');
+assert(exploreSource.includes('SENZA DATA'), 'explore.tsx deve supportare la tab SENZA DATA');
+assert(exploreSource.includes('heroBanner'), 'explore.tsx deve supportare il banner Hero Prossima Uscita');
+
+// 6. Verifica Bottom Tabs Layout
+const scheduleTabLayoutSource = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/_layout.tsx'), 'utf-8');
+assert(scheduleTabLayoutSource.includes('name="explore"'), 'TabLayout deve contenere lo screen explore');
+assert(scheduleTabLayoutSource.includes('calendar'), 'TabLayout deve usare l icona calendar per explore');
+assert(!scheduleTabLayoutSource.includes('name="explore"\n        options={{\n          href: null'), 'explore non deve essere nascosto con href: null');
+
+// 7. Verifica Fix Aggiornamenti Manuali in settings.tsx
+const settingsFixedSource = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/settings.tsx'), 'utf-8');
+assert(settingsFixedSource.includes('onPress={() => handleStartDownloadUpdate()}'), 'settings.tsx non deve passare event a handleStartDownloadUpdate');
+assert(settingsFixedSource.includes('isManifest = (m: any): boolean =>'), 'settings.tsx deve validare che il manifest passato sia un UpdateManifest valido');
+assert(settingsFixedSource.includes("prev === 'idle' || prev === 'error' ? 'available' : prev"), 'settings.tsx deve recuperare dallo stato di errore al focus');
+
+console.log('✓ Palinsesto / Schedule & Fix Aggiornamenti Manuali verificati con successo.');
 
 // -----------------------------------------------------------------------------
 // Fine Test
