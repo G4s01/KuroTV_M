@@ -1801,7 +1801,7 @@ assert(indexSource.includes('handleHeroScroll'), 'index.tsx deve sincronizzare i
 assert(indexSource.includes('heroScrollRef'), 'index.tsx deve referenziare heroScrollRef per lo swiper orizzontale in testa');
 assert(indexSource.includes('snapToOffsets'), 'index.tsx deve implementare snapToOffsets per lo snapping touch pulito');
 assert(indexSource.includes('activeScrollSourceRef'), 'index.tsx deve usare activeScrollSourceRef per prevenire scroll loop infiniti');
-assert(indexSource.includes('paddingRight: Math.max(16, windowWidth - RECOMMENDED_ITEM_WIDTH - 16)'), 'index.tsx deve calcolare dynamic paddingRight per permettere a card #8 di raggiungere il focus');
+assert(indexSource.includes('paddingRight: Math.max(16, contentWidth - RECOMMENDED_ITEM_WIDTH - 16)') || indexSource.includes('paddingRight: Math.max(16, windowWidth - RECOMMENDED_ITEM_WIDTH - 16)'), 'index.tsx deve calcolare dynamic paddingRight per permettere a card #8 di raggiungere il focus');
 assert(indexSource.includes('ULTIMI EPISODI USCITI'), 'index.tsx deve contenere il carosello ULTIMI EPISODI USCITI');
 assert(indexSource.includes('TENDENZE'), 'index.tsx deve contenere il carosello TENDENZE');
 assert(indexSource.includes('ANIME IN CORSO'), 'index.tsx deve contenere il carosello ANIME IN CORSO');
@@ -2138,7 +2138,8 @@ console.log('\n[17/17] Verifica Sincronizzazione Focus Carosello Raccomandati & 
 assert(homeSearchSource.includes('lastSettledRecommendedIndexRef'), 'index.tsx deve tracciare lastSettledRecommendedIndexRef');
 assert(homeSearchSource.includes('lastSettledHeroIndexRef'), 'index.tsx deve tracciare lastSettledHeroIndexRef');
 assert(
-  homeSearchSource.includes('heroScrollRef.current?.scrollTo({\n      x: targetIndex * windowWidth,'),
+  homeSearchSource.includes('heroScrollRef.current?.scrollTo({\n      x: targetIndex * windowWidth,') ||
+  homeSearchSource.includes('heroScrollRef.current?.scrollTo({\n      x: targetIndex * contentWidth,'),
   'settleRecommendedScroll deve sincronizzare heroScrollRef allo settling dello scorrimento'
 );
 assert(
@@ -2314,31 +2315,31 @@ assert(tabLayoutRespSource.includes('width: 76'), 'Navigation rail deve avere la
 assert(tabLayoutRespSource.includes('borderRightWidth: 1'), 'Navigation rail deve avere borderRightWidth');
 
 // 3. Verifica sorgente AnimeDetailScreen (Master-Detail)
-const detailSource = fs.readFileSync(path.resolve(process.cwd(), 'app/anime/[id].tsx'), 'utf-8');
-assert(detailSource.includes('isMasterDetail'), 'AnimeDetailScreen deve supportare isMasterDetail');
-assert(detailSource.includes('masterDetailContainer'), 'AnimeDetailScreen deve avere masterDetailContainer');
-assert(detailSource.includes('leftMasterColumn'), 'AnimeDetailScreen deve avere colonna sinistra master');
-assert(detailSource.includes('rightDetailColumn'), 'AnimeDetailScreen deve avere colonna destra detail');
-assert(detailSource.includes('masterDetailDivider'), 'AnimeDetailScreen deve avere divisore centrale');
+const respDetailSource = fs.readFileSync(path.resolve(process.cwd(), 'app/anime/[id].tsx'), 'utf-8');
+assert(respDetailSource.includes('isMasterDetail'), 'AnimeDetailScreen deve supportare isMasterDetail');
+assert(respDetailSource.includes('masterDetailContainer'), 'AnimeDetailScreen deve avere masterDetailContainer');
+assert(respDetailSource.includes('leftMasterColumn'), 'AnimeDetailScreen deve avere colonna sinistra master');
+assert(respDetailSource.includes('rightDetailColumn'), 'AnimeDetailScreen deve avere colonna destra detail');
+assert(respDetailSource.includes('masterDetailDivider'), 'AnimeDetailScreen deve avere divisore centrale');
 
 // 4. Verifica sorgente FavoritesScreen e SearchResultsGrid (Colonne dinamiche)
-const favoritesSource = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/favorites.tsx'), 'utf-8');
-assert(favoritesSource.includes('useResponsiveLayout'), 'FavoritesScreen deve utilizzare useResponsiveLayout');
-assert(favoritesSource.includes('numColumns={numColumns}'), 'FavoritesScreen deve passare numColumns dinamico');
+const respFavoritesSource = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/favorites.tsx'), 'utf-8');
+assert(respFavoritesSource.includes('useResponsiveLayout'), 'FavoritesScreen deve utilizzare useResponsiveLayout');
+assert(respFavoritesSource.includes('numColumns={numColumns}'), 'FavoritesScreen deve passare numColumns dinamico');
 
-const searchGridSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/home/SearchResultsGrid.tsx'), 'utf-8');
-assert(searchGridSource.includes('numColumns?: number'), 'SearchResultsGrid deve supportare numColumns');
-assert(searchGridSource.includes('numColumns={numColumns}'), 'SearchResultsGrid deve passare numColumns a FlashList');
+const respSearchGridSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/home/SearchResultsGrid.tsx'), 'utf-8');
+assert(respSearchGridSource.includes('numColumns?: number'), 'SearchResultsGrid deve supportare numColumns');
+assert(respSearchGridSource.includes('numColumns={numColumns}'), 'SearchResultsGrid deve passare numColumns a FlashList');
 
 // 5. Verifica Bottom Sheets & Modali (Max-width per schermi larghi)
-const filterSheetSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/FilterBottomSheet.tsx'), 'utf-8');
-assert(filterSheetSource.includes('maxWidth: 620'), 'FilterBottomSheet deve limitare maxWidth a 620 su tablet');
+const respFilterSheetSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/FilterBottomSheet.tsx'), 'utf-8');
+assert(respFilterSheetSource.includes('maxWidth: 620'), 'FilterBottomSheet deve limitare maxWidth a 620 su tablet');
 
-const serverSheetSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/ServerBottomSheet.tsx'), 'utf-8');
-assert(serverSheetSource.includes('maxWidth: 580'), 'ServerBottomSheet deve limitare maxWidth a 580 su tablet');
+const respServerSheetSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/ServerBottomSheet.tsx'), 'utf-8');
+assert(respServerSheetSource.includes('maxWidth: 580'), 'ServerBottomSheet deve limitare maxWidth a 580 su tablet');
 
-const batchSheetSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/BatchBottomSheet.tsx'), 'utf-8');
-assert(batchSheetSource.includes('maxWidth: 580'), 'BatchBottomSheet deve limitare maxWidth a 580 su tablet');
+const respBatchSheetSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/BatchBottomSheet.tsx'), 'utf-8');
+assert(respBatchSheetSource.includes('maxWidth: 580'), 'BatchBottomSheet deve limitare maxWidth a 580 su tablet');
 
 console.log('✓ Supporto Schermi Larghi, Tablet (sw600dp), Left Navigation Rail & Master-Detail verificati con successo.');
 

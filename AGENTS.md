@@ -151,6 +151,14 @@ Kuro Mobile è un'applicazione concepita **esclusivamente per smartphone Android
    - Nel player video orizzontale, `expo-navigation-bar` commuta automaticamente in auto-hide immersivo (`BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE`) per la massima visione a tutto schermo, ripristinando lo stato in-app alla chiusura.
    - Sincronizzazione dinamica dello stato su `AppState` (ri-applicazione automatica quando l'app torna in stato attivo dopo l'uso di notifiche o app-switcher).
    - Impostazione configurabile dall'utente in Impostazioni tra `SEMPRE VISIBILE` (default consigliato) e `NASCONDI (SWIPE)`.
+13. **Adattamento Schermi Larghi, Tablet (sw600dp), Left Navigation Rail & Layout Master-Detail**:
+   - **Qualificazione Tablet Affidabile (Android `sw600dp`)**: La discriminazione tra smartphone e tablet avviene tramite `Math.min(windowWidth, windowHeight) >= 600` nel modulo `useResponsiveLayout` (`src/hooks/useResponsiveLayout.ts`). Questo assicura che gli smartphone girati in orizzontale (es. 844x390dp) preservino la classica navigazione inferiore senza commutare erroneamente su layout tablet.
+   - **Left Navigation Rail (Expo Router `tabBarPosition: isTablet ? 'left' : 'bottom'`)**: Su tablet e foldable aperti, la barra di navigazione inferiore si sposta automaticamente a sinistra come Navigation Rail compatta icon-only (larghezza fissa 76dp, sfondo `#000000`, `borderRightWidth: 1`). Integra in alto il monogramma di brand `"K"` stilizzato in `tabBarBackground`, touch target $\ge 44$dp e calcolo coordinato di `contentWidth` per evitare overflow orizzontali negli slider o nelle card.
+   - **Griglie Responsive (`FlashList`)**: Il numero di colonne dei cataloghi (Preferiti, Ricerca Home, Palinsesto) viene calcolato dinamicamente tramite `useResponsiveLayout()` (da 2 colonne su smartphone fino a 6 colonne su tablet landscape), preservando l'esatto rapporto d'aspetto poster 1:1.45 e azzerando le card sproporzionate.
+   - **Scheda Dettaglio Anime Master-Detail (`app/anime/[id].tsx`)**: Su tablet si attiva il layout Master-Detail a due colonne affiancate:
+     - *Colonna Sinistra Master (~36%, max 380dp)*: Locandina espandibile a schermo intero al tap, pulsanti primari d'azione (`RIPRODUCI`, `RICOMINCIA`, `PREFERITI`, `CONDIVIDI`) e tabella metadati tecnici (`AnimeInfoTable`).
+     - *Colonna Destra Detail (~64%)*: Sinossi narrativa con toggle espandi/comprimi, selettore batch puntate e griglia episodi virtualizzata con `@shopify/flash-list` con 6-8 colonne di chip.
+   - **Modali & Bottom Sheets Centrati con Max-Width**: Tutti i menù e selettori (`FilterBottomSheet`, `ServerBottomSheet`, `BatchBottomSheet`, `PlayerInfoSheet`, `PlayerEpisodesCarouselSheet`, `SettingsScreen`) limitano la loro larghezza (`maxWidth: 580-640dp`, o 840dp per Settings) centrandosi orizzontalmente (`alignSelf: 'center'`) con angoli arrotondati, evitando distorsioni visive e preservando l'ergonomia d'uso touch su display ultra-larghi.
 
 ---
 
@@ -270,7 +278,7 @@ Kuro Mobile è un'applicazione concepita **esclusivamente per smartphone Android
 ## 🧪 7. Standard di Test & Verifica Qualità
 
 Prima di ogni commit o push è obbligatorio verificare la conformità tramite:
-1. `npm test`: Suite di test automatizzata a 16 stadi:
+1. `npm test`: Suite di test automatizzata a 20 stadi:
    - SemVer e Updater Service.
    - Regole di Stile Mobile & conformità OLED.
    - Storage MMKV (preferiti, cronologia visione).
@@ -287,4 +295,8 @@ Prima di ogni commit o push è obbligatorio verificare la conformità tramite:
    - Ridefinizione Schermata Home & Scraper (Hero Swiper, Raccomandati numerati, Snapping, Play/Info, Caroselli, Upcoming `.film-listnext` & Anti-Corruzione Titoli).
    - Palinsesto / Schedule (Parser cheerio/slim & htmlparser2, Scraper AnimeWorldScraper.getSchedule(), Query TanStack scheduleQueryOptions(), Storage MMKV cache.scheduleData, ScheduleScreenSkeleton, Virtualizzazione FlashList, Selettore giorni nel formato 'SAB 14' senza badge uscite, indicatore OGGI e Banner Prossima Uscita) & Fix Download Aggiornamenti Manuali (convalida UpdateManifest ed eliminazione eventi sintetici).
    - Ricerca Avanzata, Cronologia Ricerche Google-Style (icona orologio `time-outline`, tap-to-search, eliminazione singola voce `close-outline`, cancellazione totale protetta da `ConfirmModal`, configurazione retention in Settings con `HistorySlider` e passaggi dedicati `SEARCH_RETENTION_STEPS`), Filtro Multi-Genere (tutti i 46 generi con `genre_mode=and`), Filtro Audio (DOPPIATI/SOTTOTITOLATI con `dub: '1'` e `dub: '0'`), Formati numerici AnimeWorld (`type` per Serie, Film, OAV, ONA, Special), Ordinamento per data reale di uscita (`sort=5`) e Isolamento Scraper Risultati (esclusione categorica di `.simple-film-list`, `.ranking` e widget correlati da 6 elementi).
+   - Sincronizzazione Focus Carosello Raccomandati & Simmetria Filtri Touch-Native.
+   - Chiusura Menù Player Tramite Scorrimento (Swipe-Down Dismiss).
+   - Gestione Anime in Corso 'IN PARI' & Sincronizzazione Ibrida Smart (monitoraggio a basso consumo e promozione a 0:00 al rilascio di nuovi episodi).
+   - Supporto Schermi Larghi, Tablet (standard Android `sw600dp`), Left Navigation Rail (Expo Router `tabBarPosition: isTablet ? 'left' : 'bottom'`) con brand monogramma 'K', griglie FlashList responsive (2-6 colonne), Scheda Dettaglio Master-Detail (colonna Master 36% e Detail 64%) e modali centrati con max-width.
 2. `npx expo export --platform android`: Verifica dell'assenza di errori di bundle e corretta generazione del bytecode Hermes.
