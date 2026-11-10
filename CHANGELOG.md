@@ -19,12 +19,4 @@ e questo progetto aderisce al [Semantic Versioning](https://semver.org/lang/it/)
 - **Mappatura Formati e Categorie**: Mappatura corretta con gli ID numerici nativi del motore AnimeWorld (`type`: `0` Serie TV, `4` Film Anime, `1` OAV, `2` ONA, `3` Special).
 - **Ordinamento per Data Reale di Uscita**: Aggiunto `sort: '5'` per ordinare in base alla data di rilascio reale delle serie (`release_date:desc`), oltre a Ultime aggiunte (`1`), Più visti (`6`), Meglio valutati (`7`), A-Z (`2`) e Z-A (`3`).
 
-## [1.0.0] - 2026-11-08
-
-### Aggiunto
-- Release ufficiale Kuro Mobile: client Android touch-native per smartphone con Expo SDK 58, React Native 0.88 e React 19.
-- Video Player touch avanzato con streaming asincrono (`replaceAsync`), scrubbing live a frame reali, doppio tap sequenziale $\pm 10$s, controlli luminosità e volume verticali e AniSkip con countdown a 10s.
-- Palinsesto settimanale con orari delle puntate (`animeworld.ac/schedule`).
-- Hero Banner Spotlight con carosello raccomandati numerato (`#1` ... `#8`) e sincronizzazione bi-direzionale senza ping-pong.
-- Design system OLED nero assoluto (`#000000`) con contrasto dinamico YIQ e modale in-app unificato `ConfirmModal`.
-- Supporto Picture-in-Picture nativo e controlli di sistema in notifica Android (`MediaStyle`).
+## [1.0.0] - 2026-11-10

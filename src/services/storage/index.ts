@@ -1174,10 +1174,27 @@ export const AppStorage = {
     if (retentionDays === -1) return [];
     const data = AppStorage.getObject<unknown>(StorageKeys.SEARCH_HISTORY);
     const history = Array.isArray(data) ? (data as SearchHistoryItem[]) : [];
-    if (retentionDays === 0) return history;
+    if (history.length === 0) return [];
 
-    const cutoffTime = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
-    return history.filter((item) => (item.timestamp || 0) >= cutoffTime);
+    const cutoffTime = retentionDays > 0 ? Date.now() - retentionDays * 24 * 60 * 60 * 1000 : 0;
+    const validHistory =
+      retentionDays > 0 ? history.filter((item) => (item.timestamp || 0) >= cutoffTime) : history;
+
+    // Deduplicate and filter out incomplete prefix fragments so only the most complete queries are returned
+    const result: SearchHistoryItem[] = [];
+    for (let i = 0; i < validHistory.length; i++) {
+      const item = validHistory[i];
+      const itemLower = item.query.trim().toLowerCase();
+      const hasMoreComplete = validHistory.some((other, j) => {
+        if (i === j) return false;
+        const otherLower = other.query.trim().toLowerCase();
+        return otherLower.startsWith(itemLower) && otherLower.length > itemLower.length;
+      });
+      if (!hasMoreComplete) {
+        result.push(item);
+      }
+    }
+    return result;
   },
 
   addSearchHistory: (query: string): void => {
@@ -1185,10 +1202,20 @@ export const AppStorage = {
     const clean = query.trim();
     if (!clean || clean.length < 2) return;
 
+    const cleanLower = clean.toLowerCase();
     const current = AppStorage.getSearchHistory();
-    const filtered = current.filter(
-      (item) => item.query.trim().toLowerCase() !== clean.toLowerCase(),
-    );
+
+    // Filter out exact matches and any incomplete prefixes of the new query
+    // (e.g. if new query is "ONE PIECE", remove "ONE", "ONE P", etc.)
+    const filtered = current.filter((item) => {
+      const itemLower = item.query.trim().toLowerCase();
+      if (itemLower === cleanLower) return false;
+      if (cleanLower.startsWith(itemLower) && cleanLower.length > itemLower.length) {
+        return false;
+      }
+      return true;
+    });
+
     filtered.unshift({
       query: clean,
       timestamp: Date.now(),
@@ -1222,18 +1249,13 @@ export const AppStorage = {
       AppStorage.clearSearchHistory();
       return 0;
     }
-    if (retentionDays <= 0) return 0;
 
-    const cutoffTime = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
-    const history = AppStorage.getObject<SearchHistoryItem[]>(StorageKeys.SEARCH_HISTORY);
-    if (!Array.isArray(history)) return 0;
+    const current = AppStorage.getSearchHistory();
+    const stored = AppStorage.getObject<SearchHistoryItem[]>(StorageKeys.SEARCH_HISTORY);
+    const initialCount = Array.isArray(stored) ? stored.length : 0;
 
-    const validHistory = history.filter((item) => (item.timestamp || 0) >= cutoffTime);
-    const removedCount = history.length - validHistory.length;
-    if (removedCount > 0) {
-      AppStorage.setObject(StorageKeys.SEARCH_HISTORY, validHistory);
-    }
-    return removedCount;
+    AppStorage.setObject(StorageKeys.SEARCH_HISTORY, current);
+    return Math.max(0, initialCount - current.length);
   },
 
   // ----------------------------------------------------

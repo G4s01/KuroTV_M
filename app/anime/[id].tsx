@@ -257,7 +257,13 @@ export default function AnimeDetailScreen() {
       <View style={[styles.topNav, { top: Math.max(insets.top + 8, 12) }]}>
         <Pressable
           style={styles.navIconBtn}
-          onPress={() => router.back()}
+          onPress={() => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace('/(tabs)');
+            }
+          }}
           hitSlop={8}
           accessibilityLabel="TORNA INDIETRO"
         >

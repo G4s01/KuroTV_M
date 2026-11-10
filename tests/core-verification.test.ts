@@ -1998,6 +1998,24 @@ assert.strictEqual(AppStorage.getSearchHistory().length, 1, 'Dopo riattivazione 
 AppStorage.clearSearchHistory();
 assert.deepStrictEqual(AppStorage.getSearchHistory(), [], 'clearSearchHistory deve svuotare la cronologia');
 
+// Verifica filtraggio prefissi e ricerche incomplete (mantiene solo la ricerca più completa e finale)
+AppStorage.clearSearchHistory();
+AppStorage.addSearchHistory('One');
+AppStorage.addSearchHistory('One P');
+AppStorage.addSearchHistory('One Piece');
+let prefixHist = AppStorage.getSearchHistory();
+assert.strictEqual(prefixHist.length, 1, 'Deve rimanere solo la ricerca finale più completa');
+assert.strictEqual(prefixHist[0].query, 'One Piece', 'La ricerca salvata deve essere One Piece');
+
+AppStorage.addSearchHistory('Attack');
+AppStorage.addSearchHistory('Attack on');
+AppStorage.addSearchHistory('Attack on Titan');
+prefixHist = AppStorage.getSearchHistory();
+assert.strictEqual(prefixHist.length, 2, 'Devono essere presenti solo le due ricerche complete');
+assert.strictEqual(prefixHist[0].query, 'Attack on Titan', 'Attack on Titan deve essere in cima');
+assert.strictEqual(prefixHist[1].query, 'One Piece', 'One Piece deve rimanere al secondo posto');
+AppStorage.clearSearchHistory();
+
 // 2. Verifica buildFilterQuery & Mapping Parametri AnimeWorld
 const { buildFilterQuery } = await import('../src/services/scraper/parsers/search.parser');
 

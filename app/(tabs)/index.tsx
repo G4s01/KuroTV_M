@@ -60,10 +60,11 @@ export default function HomeScreen() {
 
   // Top recommended selection & focus state
   const [focusedIndex, setFocusedIndex] = React.useState(0);
+  const currentFocusedIndexRef = React.useRef(0);
   const [isHeroPlayLoading, setIsHeroPlayLoading] = React.useState(false);
   const recommendedScrollRef = React.useRef<any>(null);
   const heroScrollRef = React.useRef<any>(null);
-  const activeScrollSourceRef = React.useRef<'hero' | 'recommended' | 'tap' | null>(null);
+  const activeScrollSourceRef = React.useRef<'hero' | 'recommended' | 'tap' | 'idle'>('idle');
   const resetSourceTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Cleanup pending scroll sync timeouts on unmount
@@ -74,6 +75,15 @@ export default function HomeScreen() {
       }
     };
   }, []);
+
+  const releaseScrollLock = (delay = 450) => {
+    if (resetSourceTimeoutRef.current) {
+      clearTimeout(resetSourceTimeoutRef.current);
+    }
+    resetSourceTimeoutRef.current = setTimeout(() => {
+      activeScrollSourceRef.current = 'idle';
+    }, delay);
+  };
 
   // Search in Home state
   const [isSearchActive, setIsSearchActive] = React.useState(false);
@@ -99,18 +109,20 @@ export default function HomeScreen() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Handle hardware back button to dismiss search mode cleanly
-  React.useEffect(() => {
-    if (!isSearchActive) return;
-    const backSub = BackHandler.addEventListener('hardwareBackPress', () => {
-      Keyboard.dismiss();
-      setIsSearchActive(false);
-      setSearchQuery('');
-      setFilterState({});
-      return true;
-    });
-    return () => backSub.remove();
-  }, [isSearchActive]);
+  // Handle hardware back button to dismiss search mode cleanly ONLY when this screen is actively focused
+  useFocusEffect(
+    React.useCallback(() => {
+      if (!isSearchActive) return;
+      const backSub = BackHandler.addEventListener('hardwareBackPress', () => {
+        Keyboard.dismiss();
+        setIsSearchActive(false);
+        setSearchQuery('');
+        setFilterState({});
+        return true;
+      });
+      return () => backSub.remove();
+    }, [isSearchActive])
+  );
 
   const activeGenres = filterState.genres || (filterState.genre ? [filterState.genre] : []);
   const activeFilterCount =
@@ -149,13 +161,9 @@ export default function HomeScreen() {
     staleTime: 5 * 60 * 1000,
   });
 
-  // Pre-fetching of top 4 search result images & auto record to search history
+  // Pre-fetching of top 4 search result images
   React.useEffect(() => {
     if (searchResults?.items && searchResults.items.length > 0) {
-      if (debouncedQuery.length >= 2) {
-        AppStorage.addSearchHistory(debouncedQuery);
-        setSearchHistoryList(AppStorage.getSearchHistory());
-      }
       const urls = searchResults.items
         .slice(0, 4)
         .map((item) => item.image || item.thumbnail || '')
@@ -164,7 +172,20 @@ export default function HomeScreen() {
         Image.prefetch(urls).catch(() => {});
       }
     }
-  }, [searchResults, debouncedQuery]);
+  }, [searchResults]);
+
+  // Auto-record search query to history only after user completely finishes typing (idle settling)
+  React.useEffect(() => {
+    const trimmed = searchQuery.trim();
+    if (!isSearchActive || trimmed.length < 2) return;
+
+    const timer = setTimeout(() => {
+      AppStorage.addSearchHistory(trimmed);
+      setSearchHistoryList(AppStorage.getSearchHistory());
+    }, 2000);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery, isSearchActive]);
 
   const removeFilter = (key: keyof FilterState) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
@@ -291,6 +312,11 @@ export default function HomeScreen() {
 
   const navigateToAnime = (animeId: string, title?: string) => {
     Haptics.selectionAsync().catch(() => {});
+    Keyboard.dismiss();
+    if (isSearchActive && searchQuery.trim().length >= 2) {
+      AppStorage.addSearchHistory(searchQuery.trim());
+      setSearchHistoryList(AppStorage.getSearchHistory());
+    }
     router.push({
       pathname: '/anime/[id]',
       params: { id: animeId, title: title || '' },
@@ -341,6 +367,7 @@ export default function HomeScreen() {
     focusedIndex,
     Math.max(0, recommendedList.length - 1)
   );
+  currentFocusedIndexRef.current = safeFocusedIndex;
 
   const focusedItem: AnimeItem | undefined =
     recommendedList[safeFocusedIndex] ||
@@ -350,67 +377,91 @@ export default function HomeScreen() {
   // Selecting a recommended anime from the carousel (tap)
   const handleSelectRecommended = (index: number) => {
     Haptics.selectionAsync().catch(() => {});
-    activeScrollSourceRef.current = 'tap';
     if (resetSourceTimeoutRef.current) clearTimeout(resetSourceTimeoutRef.current);
-    resetSourceTimeoutRef.current = setTimeout(() => {
-      activeScrollSourceRef.current = null;
-    }, 450);
+    activeScrollSourceRef.current = 'tap';
 
-    setFocusedIndex(index);
-    heroScrollRef.current?.scrollTo({
-      x: index * windowWidth,
-      animated: true,
-    });
-    recommendedScrollRef.current?.scrollTo({
-      x: index * RECOMMENDED_ITEM_TOTAL,
-      animated: true,
-    });
-  };
+    const maxIndex = Math.max(0, recommendedList.length - 1);
+    const targetIndex = Math.max(0, Math.min(index, maxIndex));
 
-  // Settling handler when recommended carousel scroll finishes (drag release without momentum or momentum end)
-  const settleRecommendedScroll = (offsetX: number) => {
-    const targetIndex = Math.max(
-      0,
-      Math.min(
-        Math.round(offsetX / RECOMMENDED_ITEM_TOTAL),
-        Math.max(0, recommendedList.length - 1)
-      )
-    );
-
+    currentFocusedIndexRef.current = targetIndex;
     setFocusedIndex(targetIndex);
-    activeScrollSourceRef.current = 'recommended';
+
     heroScrollRef.current?.scrollTo({
       x: targetIndex * windowWidth,
       animated: true,
     });
-
-    if (resetSourceTimeoutRef.current) clearTimeout(resetSourceTimeoutRef.current);
-    resetSourceTimeoutRef.current = setTimeout(() => {
-      activeScrollSourceRef.current = null;
-    }, 450);
-  };
-
-  // Settling handler when hero banner scroll finishes (drag release without momentum or momentum end)
-  const settleHeroScroll = (offsetX: number) => {
-    const targetIndex = Math.max(
-      0,
-      Math.min(
-        Math.round(offsetX / windowWidth),
-        Math.max(0, recommendedList.length - 1)
-      )
-    );
-
-    setFocusedIndex(targetIndex);
-    activeScrollSourceRef.current = 'hero';
     recommendedScrollRef.current?.scrollTo({
       x: targetIndex * RECOMMENDED_ITEM_TOTAL,
       animated: true,
     });
 
-    if (resetSourceTimeoutRef.current) clearTimeout(resetSourceTimeoutRef.current);
-    resetSourceTimeoutRef.current = setTimeout(() => {
-      activeScrollSourceRef.current = null;
-    }, 450);
+    releaseScrollLock(450);
+  };
+
+  // Settling handler when recommended carousel scroll finishes (drag release without momentum or momentum end)
+  const settleRecommendedScroll = (offsetX: number) => {
+    // CRITICAL: Only settle if the scroll originated from an active user gesture on the recommended carousel.
+    // Prevents reverse ping-pong scrollTo loops when receiving programmatic scroll events.
+    if (activeScrollSourceRef.current !== 'recommended') {
+      return;
+    }
+
+    const maxIndex = Math.max(0, recommendedList.length - 1);
+    const targetIndex = Math.max(
+      0,
+      Math.min(
+        Math.round(offsetX / RECOMMENDED_ITEM_TOTAL),
+        maxIndex
+      )
+    );
+
+    // Keep the recommended card snapped exactly in place
+    recommendedScrollRef.current?.scrollTo({
+      x: targetIndex * RECOMMENDED_ITEM_TOTAL,
+      animated: true,
+    });
+
+    if (targetIndex !== currentFocusedIndexRef.current) {
+      currentFocusedIndexRef.current = targetIndex;
+      setFocusedIndex(targetIndex);
+
+      heroScrollRef.current?.scrollTo({
+        x: targetIndex * windowWidth,
+        animated: true,
+      });
+    }
+
+    releaseScrollLock(450);
+  };
+
+  // Settling handler when hero banner scroll finishes (drag release without momentum or momentum end)
+  const settleHeroScroll = (offsetX: number) => {
+    // CRITICAL: Only settle if the scroll originated from an active user gesture on the hero banner.
+    // Prevents reverse ping-pong scrollTo loops when receiving programmatic scroll events.
+    if (activeScrollSourceRef.current !== 'hero') {
+      return;
+    }
+
+    const maxIndex = Math.max(0, recommendedList.length - 1);
+    const targetIndex = Math.max(
+      0,
+      Math.min(
+        Math.round(offsetX / windowWidth),
+        maxIndex
+      )
+    );
+
+    if (targetIndex !== currentFocusedIndexRef.current) {
+      currentFocusedIndexRef.current = targetIndex;
+      setFocusedIndex(targetIndex);
+
+      recommendedScrollRef.current?.scrollTo({
+        x: targetIndex * RECOMMENDED_ITEM_TOTAL,
+        animated: true,
+      });
+    }
+
+    releaseScrollLock(450);
   };
 
   // Synchronizing focus while scrolling the horizontal recommended carousel
@@ -419,14 +470,16 @@ export default function HomeScreen() {
       return;
     }
     const offsetX = e.nativeEvent.contentOffset.x;
+    const maxIndex = Math.max(0, recommendedList.length - 1);
     const targetIndex = Math.max(
       0,
       Math.min(
         Math.round(offsetX / RECOMMENDED_ITEM_TOTAL),
-        Math.max(0, recommendedList.length - 1)
+        maxIndex
       )
     );
-    if (targetIndex !== focusedIndex) {
+    if (targetIndex !== currentFocusedIndexRef.current) {
+      currentFocusedIndexRef.current = targetIndex;
       setFocusedIndex(targetIndex);
     }
   };
@@ -437,14 +490,16 @@ export default function HomeScreen() {
       return;
     }
     const offsetX = e.nativeEvent.contentOffset.x;
+    const maxIndex = Math.max(0, recommendedList.length - 1);
     const targetIndex = Math.max(
       0,
       Math.min(
         Math.round(offsetX / windowWidth),
-        Math.max(0, recommendedList.length - 1)
+        maxIndex
       )
     );
-    if (targetIndex !== focusedIndex) {
+    if (targetIndex !== currentFocusedIndexRef.current) {
+      currentFocusedIndexRef.current = targetIndex;
       setFocusedIndex(targetIndex);
     }
   };
