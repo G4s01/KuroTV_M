@@ -227,10 +227,36 @@ Allineare l'interfaccia Home agli standard del sito AnimeWorld moderno con una p
 
 ---
 
+## 📅 Step 11: Palinsesto Settimanale (`animeworld.ac/schedule`), AniSkip Condizionale & Hardening Aggiornamenti Manuali
+
+### 🎯 Obiettivo
+Esporre la programmazione settimanale completa delle uscite con gli orari previsti da AnimeWorld nella tab Palinsesto (`app/(tabs)/explore.tsx`), rifinire l'interfaccia delle impostazioni AniSkip mostrando i controlli accessori unicamente quando pertinenti, e correggere il crash/errore transitorio dell'updater manuale legato alla cattura di eventi sintetici.
+
+### 🛠️ Piano di Refactor & Implementazione
+1. **Scraper & Parser Palinsesto (`schedule.parser.ts` & `animeworld-scraper.ts`)**:
+   - Estrazione con `cheerio/slim` ed engine `htmlparser2` di settimana, prossima uscita in evidenza (`.sch-hero`), timeline dei 7 giorni della settimana (`.sch-days > section.sch-day`), stati episodio (`is-done` -> `released`, `is-pause` -> `paused`) e serie in corso senza giorno fisso (`.sch-unk` -> `unscheduled`).
+   - Caching sincrono su MMKV (`cache.scheduleData`) e opzioni query `scheduleQueryOptions()` con stale time a 10 minuti.
+2. **Interfaccia Touch-Native Palinsesto (`app/(tabs)/explore.tsx`)**:
+   - Re-integrazione della rotta `explore` come tab principale **Palinsesto** con icona `calendar`.
+   - Banner Hero opzionale *Prossima Uscita* con pill fiammella e countdown/orario programmato.
+   - Selettore orizzontale a scorrimento per i giorni della settimana con badge conteggio e indicatore `OGGI`.
+   - Timeline virtualizzata con `@shopify/flash-list` e card orario dedicate.
+   - Tab speciale `SENZA DATA` per le serie in corso a programmazione libera.
+   - Skeleton loading dedicato `ScheduleScreenSkeleton` a zero Cumulative Layout Shift (CLS).
+3. **Visibilità Condizionale Controlli AniSkip (`settings.tsx`)**:
+   - Sezione slider durata popup visibile esclusivamente quando la modalità è impostata su `'MANUALE'`.
+   - Sezione chip `COSA SALTARE` nascosta quando la modalità è impostata su `'OFF'`.
+4. **Hardening Updater Manuale & Guard Sintetici (`settings.tsx` & `updater-service.ts`)**:
+   - Protezione di `handleStartDownloadUpdate` contro il passaggio di oggetti evento `GestureResponderEvent` emessi da bottoni touch `Pressable`.
+   - Convalida rigorosa `isManifest` che verifica la presenza delle proprietà essenziali di `UpdateManifest`.
+   - Ripristino automatico dello stato `available` al rientro in focus della schermata impostazioni se era presente un errore transitorio, e opzione di nuova verifica dopo il download.
+
+---
+
 ## 📋 Checklist di Verifica per Ogni Step
 
 Prima di considerare concluso uno step della roadmap, l'agente deve verificare:
 1. `npx tsc --noEmit`: 0 errori di tipo.
-2. `npm test`: Suite completa a 14 stadi superata con codice 0.
+2. `npm test`: Suite completa a 15 stadi superata con codice 0.
 3. `npx expo export --platform android`: Compilazione Hermes bytecode senza warning o errori di importazione.
 4. Aggiornamento contestuale di [`AGENTS.md`](../AGENTS.md) qualora vengano introdotte nuove regole o pattern.

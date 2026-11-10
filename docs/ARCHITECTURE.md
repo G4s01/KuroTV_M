@@ -45,7 +45,7 @@ KuroM/
 │   └── types/                   # Definizioni TypeScript condivise
 ├── workers/                     # Cloudflare Worker unificato per OTA
 ├── scripts/                     # Tooling DevOps, release pipeline & patch native (apply-patches, build-release)
-└── tests/                       # Suite di verifica qualità a 14 stadi
+└── tests/                       # Suite di verifica qualità a 15 stadi
 ```
 
 ---
@@ -57,6 +57,7 @@ Il data fetching remoto sfrutta `@tanstack/react-query` v5 per garantire caching
 
 - **Dettagli Anime**: `['anime', 'detail', animeId]` — stale time a 10 minuti.
 - **Home & Trending**: `['home', 'feed']` — stale time a 5 minuti con supporto a `RefreshControl`.
+- **Palinsesto Settimanale**: `['schedule']` — stale time a 10 minuti con persistenza sincrona su MMKV e supporto a `RefreshControl`.
 - **Ricerca & Filtri**: `['anime', 'search', query, filters]` — debounce integrato sul campo di input.
 
 ### 2. Storage Locale ad Alte Prestazioni (`react-native-mmkv`)
@@ -122,6 +123,30 @@ La schermata Home (`app/(tabs)/index.tsx`) è strutturata per replicare fedelmen
 - **Supporto Scraper per `.film-listnext` & Sanitizzazione Titoli**:
   - `parseSearchPage` in `src/services/scraper/parsers/search.parser.ts` include il selettore `.film-listnext .item` per estrarre la totalità delle uscite stagionali da `animeworld.ac/upcoming`.
   - Isola con precisione i titoli testuali (`nameEl`), prevenendo la contaminazione da badge accessori (es. `DUB`, `Special`, `ONA`) collocati dentro l'elemento locandina `<a class="poster">`.
+
+---
+
+## 📅 Palinsesto & Programmazione Settimanale (`app/(tabs)/explore.tsx`)
+
+La schermata Palinsesto visualizza la programmazione delle uscite anime settimanali con gli orari previsti da AnimeWorld (`animeworld.ac/schedule`):
+
+### 1. Scraper & Parsing Dati (`schedule.parser.ts`)
+- **Estrazione Strutturata con `cheerio/slim` & `htmlparser2`**:
+  - `week`: Intestazione della settimana di riferimento (es. `SETTIMANA 9 MARZO – 15 MARZO`).
+  - `hero`: Card della prossima uscita in arrivo (`.sch-hero`), con orario previsto/countdown, titolo, puntata e locandina.
+  - `days`: 7 sezioni giornaliere (`LUN` ... `DOM`), ciascuna con data formattata (es. `9 MARZO`), lista episodi ordinata cronologicamente (`time`, `title`, `episode`, `state`), conteggio totale uscite e marcatura `isToday`.
+  - `unscheduled`: Sezione `.sch-unk` con le serie in trasmissione prive di giorno fisso stabilito.
+  - **Stati di Uscita**: Rilevamento automatico di `.is-done` (`'released'`), `.is-pause` (`'paused'`) o programmato (`'scheduled'`).
+
+### 2. Architettura & Storage Sincrono
+- **Cache Istantanea MMKV**: Chiave `cache.scheduleData` per azzerare i tempi di caricamento al cambio tab o all'avvio dell'app.
+- **Query TanStack**: `scheduleQueryOptions()` con `initialData` da MMKV e stale time a 10 minuti.
+
+### 3. Interfaccia Touch-Native & Virtualizzazione
+- **Selettore Giorni Orizzontale**: Scorrimento touch dei giorni (`LUN` ... `DOM`) con badge del numero uscite e pill `OGGI` attivo con auto-selezione della data odierna. Include la tab per le serie `SENZA DATA`.
+- **Virtualizzazione con `@shopify/flash-list`**: Timeline fluida a 60/120 FPS senza crash o allocazioni superflue di memoria RAM.
+- **Hero Card Prossima Uscita**: In evidenza con badge fiammella `PROSSIMA USCITA`, orario programmato, titolo, numero di puntata e navigazione diretta alla scheda dettaglio.
+- **Skeleton Dedicato**: `ScheduleScreenSkeleton` replica al millimetro hero banner, day switcher e timeline a zero Cumulative Layout Shift (CLS).
 
 ---
 
@@ -246,3 +271,6 @@ L'applicazione include un sistema di notifica e aggiornamento in-app progettato 
 3. **Flusso Diretto o Differito**:
    - **Tasto "AGGIORNA ORA"**: Chiude il modale, naviga alla sezione Impostazioni e avvia immediatamente il download con progress bar.
    - **Tasto "PIÙ TARDI" / Dismiss**: Chiude il modale e attiva una **freccia in sù (`arrow-up`) animata** con rimbalzo continuo (`Animated.loop`) sopra l'icona Impostazioni del router Expo, lasciando un promemoria visivo discreto ma visibile.
+4. **Resilienza Aggiornamenti Manuali & Event Guard**:
+   - Convalida rigorosa dell'oggetto manifest in `handleStartDownloadUpdate` e `UpdaterService.downloadApk` per neutralizzare eventi touch (`GestureResponderEvent`) emessi dai bottoni `Pressable`, azzerando l'errore `URL DEL PACCHETTO APK NON DISPONIBILE O NON VALIDO`.
+   - Ripristino automatico dello stato `available` al rientro in focus della schermata Impostazioni in caso di errore transitorio, con pulsante per rieseguire la verifica anche a download completato.
