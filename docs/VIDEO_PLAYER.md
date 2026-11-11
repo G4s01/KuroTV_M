@@ -48,19 +48,24 @@ La barra di avanzamento ([`src/components/player/PlayerTimeline.tsx`](file:///ho
 
 ---
 
-## ⏭️ Integrazione AniSkip con Bordo Temporizzato ad Esaurimento (10s & Recap)
+## ⏭️ Integrazione AniSkip con Bordo Temporizzato, Durata Configurabile & Passaggio a `'PROSSIMO'`
 
-Il player si interfaccia in background con il servizio **AniSkip** ([`src/components/AniSkipButton.tsx`](file:///home/g4s/VSCode/KuroM/src/components/AniSkipButton.tsx)):
+Il player si interfaccia in background con il servizio **AniSkip** ([`src/services/aniskip/index.ts`](file:///home/g4s/VSCode/KuroTV_M/src/services/aniskip/index.ts), [`src/components/AniSkipButton.tsx`](file:///home/g4s/VSCode/KuroTV_M/src/components/AniSkipButton.tsx)):
 
 1. **Recupero Timestamp & Tipi Supportati**: Rilevamento automatico degli intervalli per sigla d'apertura (`op`, `mixed-op`), chiusura (`ed`, `mixed-ed`) e `recap`.
-2. **Etichetta Unificata 'SALTA'**: Tutti i tipi di skip utilizzano la stringa minimale `'SALTA'`.
-3. **Timer di Esposizione a 10 Secondi**:
-   - In modalità manuale, il pulsante viene mostrato per massimo **10 secondi** dall'inizio dell'intervallo (o per l'intera durata della sezione se inferiore a 10s), dopodiché si dissolve automaticamente (`onTimeout`).
-   - Se l'utente torna indietro nel video (rewind) all'interno dei primi 10s della sezione, il pulsante 'SALTA' riappare immediatamente con il tempo residuo.
-   - Bordo superiore e inferiore animato a consumo in tempo reale proporzionale ai 10s:
+2. **Etichette `'SALTA'` e `'PROSSIMO'`**:
+   - I salti interni (`op`, `mixed-op`, `recap`, ed ending con contenuto successivo o sull'ultimo episodio) mostrano `'SALTA'` (icona `play-forward`).
+   - Quando è richiesto il passaggio diretto alla puntata successiva viene mostrata la variante `'PROSSIMO'` (icona `play-skip-forward`), che salva lo stato di completamento della puntata corrente (`markCurrentCompleted: true`) prima di aprire l'episodio successivo.
+3. **Ending a Fine Episodio vs. Scene Post-Ending (`computeAniSkipOverlayState`, senza coesistenza)**:
+   - I pulsanti `'SALTA'` e `'PROSSIMO'` non vengono mai mostrati contemporaneamente.
+   - **Coincidenza con la fine (`≤ 5s`)**: Se l'intervallo di ending termina entro `5` secondi dalla durata effettiva dell'episodio ed esiste un episodio successivo, `'SALTA'` viene sostituito direttamente da **`'PROSSIMO'`** (prevenendo il salto inutile alla fine dello stream già concluso). Sull'ultimo episodio resta sempre `'SALTA'`.
+   - **Presenza di sezione post-ending (`> 5s` dalla fine)**: Durante la sigla di chiusura, in modalità `MANUALE` compare unicamente `'SALTA'` (che salta alla fine della sigla); solo **dopo** la fine della ending (raggiungendone il termine oppure subito dopo lo skip manuale/automatico) compare separatamente **`'PROSSIMO'`** per la durata configurata dall'utente.
+4. **Durata Configurabile (`5s` – `60s` / `∞`) & Resilienza al Rewind**:
+   - In modalità manuale (e per il pulsante `'PROSSIMO'` post-ending), entrambi i pulsanti utilizzano `buttonDuration` configurato in Impostazioni (`5s`, `10s`, `15s`, `20s`, `30s`, `45s`, `60s`, `∞`), dopodiché si dissolvono (`onTimeout`).
+   - Se l'utente torna indietro nel video (rewind) all'interno della finestra attiva, il pulsante riappare immediatamente con il tempo residuo proporzionale alla durata configurata:
      $$\text{ratio} = \frac{\text{maxDuration} - \text{elapsed}}{\text{maxDuration}}$$
-4. **Modalità Automatica**: In modalità auto (configurabile dall'utente in Impostazioni), l'intervallo viene saltato all'istante al raggiungimento del timestamp iniziale.
-5. **Isolamento Tocco & Contrasto YIQ**: `zIndex: 10` ed elevazione nativa, con colore del testo calcolato dinamicamente con `getContrastTextColor(theme.colors.primary)` per la massima leggibilità.
+5. **Modalità Automatica**: In modalità `AUTO` (configurabile dall'utente in Impostazioni), l'intervallo viene saltato all'istante al raggiungimento del timestamp iniziale (oppure naviga automaticamente all'episodio successivo se la ending coincide con la fine entro `5s` ed esiste un episodio seguente). Se la ending ha una scena post-ending, subito dopo il salto automatico viene comunque proposto `'PROSSIMO'` per la durata impostata.
+6. **Isolamento Tocco & Contrasto**: `zIndex: 10`, elevazione nativa e rendering esclusivo del solo pulsante attivo, con contrasto OLED elevato.
 
 ---
 

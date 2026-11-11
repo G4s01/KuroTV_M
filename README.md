@@ -52,7 +52,7 @@
 ### 🎬 Player Video Touch di Nuova Generazione
 - **⚡ Streaming Asincrono (`replaceAsync`)**: Risoluzione del flusso video off-thread (`expo-video`) senza blocchi sincroni sul Main Thread, garantendo caricamento immediato e zero freeze dell'interfaccia.
 - **🎞️ Live Real-Frame Scrubbing**: Trascina la timeline per visualizzare in tempo reale i veri fotogrammi video estratti dallo stream (`expo-video`), con cache in memoria e proximity matching a 60 FPS senza lag.
-- **⏭️ AniSkip Unificato con Bordo a Consumo**: Rilevamento automatico delle sigle (`OP`/`ED`/`Recap`) con etichetta unificata `'SALTA'`, finestra di esposizione da 10 secondi a consumo temporale e resilienza al riavvolgimento (rewind). Configurabile in Impostazioni per salto manuale o automatico.
+- **⏭️ AniSkip Intelligente (`'SALTA'` / `'PROSSIMO'`) con Durata Configurabile**: Rilevamento automatico delle sigle (`OP`/`ED`/`Recap`) con finestra temporale configurabile (`5s`–`60s` o `∞`) e resilienza al riavvolgimento (rewind). Se la ending coincide con la fine dell'episodio (entro `5s`) il pulsante si trasforma direttamente in `'PROSSIMO'` portando all'episodio successivo; se invece è presente una scena post-ending, mostra `'SALTA'` durante la sigla e poi separatamente `'PROSSIMO'` all'inizio della parte post-ending con la stessa durata impostata in Impostazioni (senza mai sovrapporre o affiancare i due tasti). Configurabile tra `OFF`, `MANUALE` e `AUTO`.
 - **⏩ Skip Sequenziale Intelligente**: Doppio tap $\pm 10$s con accumulo cumulativo (`+20s`, `+30s`, `+50s`, `-30s`) e pill di feedback compatto centrato accanto al tasto Play/Pausa.
 - **⏮️ Comandi Centrali Bilanciati**: Pulsante Play/Pausa circolare affiancato dai comandi per episodio precedente (`play-skip-back`) e successivo (`play-skip-forward`).
 - **📑 Carosello Episodi Virtualizzato**: Drawer modale touch-safe con `@shopify/flash-list` per navigare istantaneamente centinaia di episodi con auto-scroll alla puntata corrente e padding simmetrico.
@@ -138,11 +138,11 @@ cd KuroM
 npm install
 ```
 
-### 2. Test di Qualità (21 Stadi)
+### 2. Test di Qualità (24 Stadi)
 ```bash
 npm test
 ```
-*Valida SemVer, regole OLED, storage MMKV, batch puntate, intervalli AniSkip, skeleton animation, export delle rotte, touch sheets, updater, compatibilità navbar, gesture verticali, PiP no-pause, dimensioni sheets, AniSkipSlider, loader integrato, media notification, slider hero sincronizzato, parser upcoming, anti-corruzione titoli, palinsesto/schedule, affidabilità aggiornamenti manuali, cronologia ricerche Google-style, filtri multi-genere, audio, isolamento scraper, sincronizzazione focus raccomandati, simmetria filtri, swipe-down dismiss a doppia zona, stato IN PARI & sincronizzazione ibrida smart, supporto schermi larghi/tablet (sw600dp), left navigation rail, master-detail e sistema di download episodi con storage SAF & visione offline.*
+*Valida SemVer, regole OLED, storage MMKV, batch puntate, intervalli AniSkip (inclusa sostituzione `'PROSSIMO'` a fine episodio e `'PROSSIMO'` sequenziale post-ending), skeleton animation, export delle rotte, touch sheets, updater, compatibilità navbar, gesture verticali, PiP no-pause, dimensioni sheets, AniSkipSlider, loader integrato, media notification, slider hero sincronizzato, parser upcoming, anti-corruzione titoli, palinsesto/schedule, affidabilità aggiornamenti manuali, cronologia ricerche Google-style, filtri multi-genere, audio, isolamento scraper, sincronizzazione focus raccomandati, simmetria filtri, swipe-down dismiss a doppia zona, stato IN PARI & sincronizzazione ibrida smart, supporto schermi larghi/tablet (sw600dp), left navigation rail, master-detail, `Tabs.Protected` su Cronologia e sistema di download episodi con storage SAF & visione offline.*
 
 ### 3. Build & Verifica Bytecode Hermes
 ```bash

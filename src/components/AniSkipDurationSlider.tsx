@@ -8,42 +8,42 @@ export const ANISKIP_DURATION_STEPS: DurationStepItem[] = [
   {
     label: '5S',
     value: 5,
-    description: "MOSTRA IL PULSANTE 'SALTA' PER 5 SECONDI DALL'INIZIO DELL'INTERVALLO",
+    description: "MOSTRA I PULSANTI ANISKIP ('SALTA' / 'PROSSIMO') PER 5 SECONDI DALL'INIZIO DELL'INTERVALLO",
   },
   {
     label: '10S',
     value: 10,
-    description: "MOSTRA IL PULSANTE 'SALTA' PER 10 SECONDI DALL'INIZIO DELL'INTERVALLO (PREDEFINITO)",
+    description: "MOSTRA I PULSANTI ANISKIP ('SALTA' / 'PROSSIMO') PER 10 SECONDI DALL'INIZIO DELL'INTERVALLO (PREDEFINITO)",
   },
   {
     label: '15S',
     value: 15,
-    description: "MOSTRA IL PULSANTE 'SALTA' PER 15 SECONDI DALL'INIZIO DELL'INTERVALLO",
+    description: "MOSTRA I PULSANTI ANISKIP ('SALTA' / 'PROSSIMO') PER 15 SECONDI DALL'INIZIO DELL'INTERVALLO",
   },
   {
     label: '20S',
     value: 20,
-    description: "MOSTRA IL PULSANTE 'SALTA' PER 20 SECONDI DALL'INIZIO DELL'INTERVALLO",
+    description: "MOSTRA I PULSANTI ANISKIP ('SALTA' / 'PROSSIMO') PER 20 SECONDI DALL'INIZIO DELL'INTERVALLO",
   },
   {
     label: '30S',
     value: 30,
-    description: "MOSTRA IL PULSANTE 'SALTA' PER 30 SECONDI DALL'INIZIO DELL'INTERVALLO",
+    description: "MOSTRA I PULSANTI ANISKIP ('SALTA' / 'PROSSIMO') PER 30 SECONDI DALL'INIZIO DELL'INTERVALLO",
   },
   {
     label: '45S',
     value: 45,
-    description: "MOSTRA IL PULSANTE 'SALTA' PER 45 SECONDI DALL'INIZIO DELL'INTERVALLO",
+    description: "MOSTRA I PULSANTI ANISKIP ('SALTA' / 'PROSSIMO') PER 45 SECONDI DALL'INIZIO DELL'INTERVALLO",
   },
   {
     label: '60S',
     value: 60,
-    description: "MOSTRA IL PULSANTE 'SALTA' PER 60 SECONDI DALL'INIZIO DELL'INTERVALLO",
+    description: "MOSTRA I PULSANTI ANISKIP ('SALTA' / 'PROSSIMO') PER 60 SECONDI DALL'INIZIO DELL'INTERVALLO",
   },
   {
     label: '∞',
     value: 0,
-    description: "MOSTRA IL PULSANTE 'SALTA' PER L'INTERA TOTALITÀ DELL'INTERVALLO (INFINITO)",
+    description: "MOSTRA I PULSANTI ANISKIP ('SALTA' / 'PROSSIMO') PER L'INTERA TOTALITÀ DELL'INTERVALLO (INFINITO)",
   },
 ];
 
@@ -87,7 +87,7 @@ export const AniSkipDurationSlider = React.memo<AniSkipDurationSliderProps>(
         disabled={disabled}
         disabledDescription="ATTIVO SOLO QUANDO LA MODALITÀ ANISKIP È IMPOSTATA SU 'MANUALE'"
         findActiveIndex={findActiveIndex}
-        accessibilityLabelPrefix="DURATA PULSANTE SALTA"
+        accessibilityLabelPrefix="DURATA PULSANTI ANISKIP"
         compactLabels={true}
       />
     );

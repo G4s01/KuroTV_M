@@ -5,6 +5,15 @@ Tutte le modifiche degne di nota a questo progetto saranno documentate in questo
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/)
 e questo progetto aderisce al [Semantic Versioning](https://semver.org/lang/it/).
 
+## [Unreleased]
+
+### Migliorato
+- **AniSkip Intelligente per Ending & Scene Post-Ending (`'SALTA'` / `'PROSSIMO'`)**:
+  - Introdotto `computeAniSkipOverlayState`, `doesEndingCoincideWithEnd` e soglia `ENDING_COINCIDE_END_THRESHOLD_SECONDS` (5s) in `src/services/aniskip/index.ts`: quando la sigla di chiusura (`ed` / `mixed-ed`) termina entro `5s` dalla durata dell'episodio ed è disponibile l'episodio successivo, il pulsante `'SALTA'` diventa automaticamente **`'PROSSIMO'`** per evitare di ritrovarsi alla fine della puntata già conclusa (e in modalità `AUTO` naviga direttamente alla puntata seguente). Sull'ultimo episodio resta sempre `'SALTA'`.
+  - In presenza di scene post-ending (`effectiveDuration - endTime > 5s`) ed episodio successivo disponibile, durante la sigla rimane il solo pulsante `'SALTA'` (in `MANUALE`) oppure scatta lo skip automatico (in `AUTO`); all'inizio della sezione post-ending (anche subito dopo il salto automatico o manuale della sigla) compare separatamente **`'PROSSIMO'`** (`AniSkipButton` `variant="next"`, icona `play-skip-forward`) usando la stessa durata configurata dall'utente (`5s`–`60s` o `∞`), senza mai mostrare `'SALTA'` e `'PROSSIMO'` insieme.
+  - La navigazione avviata dal pulsante AniSkip `'PROSSIMO'` marca l'episodio corrente come completato in cronologia MMKV (`{ markCurrentCompleted: true }`).
+  - Aggiornata la dicitura della durata nelle Impostazioni (`DURATA PULSANTI ANISKIP`, `AniSkipSlider` e `AniSkipDurationSlider`) per riflettere entrambi i pulsanti `'SALTA'` e `'PROSSIMO'`, oltre al nuovo stadio `[24/24]` in `tests/core-verification.test.ts`.
+
 ## [1.0.4] - 2026-11-11
 
 ### Aggiunto
@@ -79,4 +88,4 @@ e questo progetto aderisce al [Semantic Versioning](https://semver.org/lang/it/)
 - **Mappatura Formati e Categorie**: Mappatura corretta con gli ID numerici nativi del motore AnimeWorld (`type`: `0` Serie TV, `4` Film Anime, `1` OAV, `2` ONA, `3` Special).
 - **Ordinamento per Data Reale di Uscita**: Aggiunto `sort: '5'` per ordinare in base alla data di rilascio reale delle serie (`release_date:desc`), oltre a Ultime aggiunte (`1`), Più visti (`6`), Meglio valutati (`7`), A-Z (`2`) e Z-A (`3`).
 
-## [1.0.0] - 2026-11-11
+## [1.0.0] - 2026-11-12

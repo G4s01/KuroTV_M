@@ -675,7 +675,7 @@ export default function SettingsScreen() {
           {aniSkipSettings.mode === 'manual' && (
             <>
               <Text style={[styles.aniskipSubTitle, { color: theme.colors.textSecondary, marginTop: 14, marginBottom: 8 }]}>
-                DURATA PULSANTE &apos;SALTA&apos;
+                DURATA PULSANTI ANISKIP
               </Text>
               <AniSkipDurationSlider
                 value={aniSkipSettings.buttonDuration ?? 10}

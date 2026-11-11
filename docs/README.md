@@ -30,7 +30,7 @@ Benvenuto nella documentazione tecnica ufficiale di **Kuro Mobile**, l'applicazi
 # Avvio ambiente di sviluppo con Metro bundler
 npm run start
 
-# Esecuzione completa dei test di verifica (21 stadi)
+# Esecuzione completa dei test di verifica (24 stadi)
 npm test
 
 # Controllo tipi TypeScript

@@ -8,6 +8,7 @@ import { oledTheme, useTheme } from '@/theme';
 
 export interface AniSkipButtonProps {
   skipType?: 'intro' | 'outro' | 'recap';
+  variant?: 'skip' | 'next';
   onSkip: () => void;
   player?: any;
   startTime?: number;
@@ -21,6 +22,7 @@ const BUTTON_DURATION = 10;
 
 export const AniSkipButton: React.FC<AniSkipButtonProps> = ({
   skipType,
+  variant = 'skip',
   onSkip,
   player,
   startTime,
@@ -35,7 +37,9 @@ export const AniSkipButton: React.FC<AniSkipButtonProps> = ({
   const isLandscape = windowWidth > windowHeight;
 
   const totalInterval =
-    endTime && startTime && endTime > startTime ? Math.max(1, endTime - startTime) : BUTTON_DURATION;
+    typeof endTime === 'number' && typeof startTime === 'number' && endTime > startTime
+      ? Math.max(1, endTime - startTime)
+      : BUTTON_DURATION;
 
   const targetDuration =
     typeof durationSeconds === 'number' && durationSeconds > 0
@@ -98,7 +102,12 @@ export const AniSkipButton: React.FC<AniSkipButtonProps> = ({
     onSkip();
   };
 
-  const label = 'SALTA';
+  const isNextVariant = variant === 'next';
+  const label = isNextVariant ? 'PROSSIMO' : 'SALTA';
+  const iconName = isNextVariant ? 'play-skip-forward' : 'play-forward';
+  const accessibilityLabel = isNextVariant
+    ? "PROSSIMO EPISODIO. TOCCA PER PASSARE ALL'EPISODIO SUCCESSIVO"
+    : `${label}. TOCCA PER SALTARE`;
 
   const progressWidth = progressAnim.interpolate({
     inputRange: [0, 1],
@@ -123,7 +132,7 @@ export const AniSkipButton: React.FC<AniSkipButtonProps> = ({
       onPress={handlePress}
       hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
       accessibilityRole="button"
-      accessibilityLabel={`${label}. TOCCA PER SALTARE`}
+      accessibilityLabel={accessibilityLabel}
     >
       {/* Depleting Top Border Track & Indicator */}
       <View style={styles.topBorderTrack}>
@@ -139,7 +148,7 @@ export const AniSkipButton: React.FC<AniSkipButtonProps> = ({
       </View>
 
       <View style={styles.content}>
-        <Ionicons name="play-forward" size={16} color={theme.colors.primary} />
+        <Ionicons name={iconName} size={16} color={theme.colors.primary} />
         <Text style={styles.text}>{label}</Text>
       </View>
 

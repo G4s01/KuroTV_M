@@ -61,7 +61,13 @@ import { UpdateStore, usePendingUpdate } from '../src/services/updater/index';
 import { parseDetailPage } from '../src/services/scraper/parsers/detail.parser';
 import { CURRENT_CHANGELOG, formatChangelog } from '../src/constants/changelog';
 import { computeResponsiveLayout } from '../src/hooks/useResponsiveLayout';
-import type { AniSkipResult } from '../src/types/index';
+import {
+  ENDING_COINCIDE_END_THRESHOLD_SECONDS,
+  isEndingSkipType,
+  doesEndingCoincideWithEnd,
+  computeAniSkipOverlayState,
+} from '../src/services/aniskip/index';
+import type { AniSkipResult, AniSkipSettings } from '../src/types/index';
 
 console.log('=== Inizio Test di Verifica KuroTV Mobile ===\n');
 
@@ -1346,10 +1352,13 @@ assert(infoSheetCode.includes('totalEpisodes'), 'PlayerInfoSheet deve gestire to
 const serverCode = fs.readFileSync(path.resolve(process.cwd(), 'src/components/ServerBottomSheet.tsx'), 'utf-8');
 assert(serverCode.includes('paddingHorizontal: 4'), 'ServerBottomSheet deve ridurre paddingHorizontal dei chip velocità a 4');
 
-// 4. AniSkipButton Generic Text & 10s display
+// 4. AniSkipButton Variants ('SALTA' / 'PROSSIMO') & Configurable Default Duration
 const aniSkipBtnCode = fs.readFileSync(path.resolve(process.cwd(), 'src/components/AniSkipButton.tsx'), 'utf-8');
-assert(aniSkipBtnCode.includes("const label = 'SALTA';"), 'AniSkipButton deve usare testo generico SALTA');
-assert(aniSkipBtnCode.includes('BUTTON_DURATION = 10'), 'AniSkipButton deve avere durata display massima di 10 secondi');
+assert(
+  aniSkipBtnCode.includes("const label = isNextVariant ? 'PROSSIMO' : 'SALTA';"),
+  'AniSkipButton deve supportare etichette SALTA e PROSSIMO tramite variant'
+);
+assert(aniSkipBtnCode.includes('BUTTON_DURATION = 10'), 'AniSkipButton deve avere durata display predefinita di 10 secondi');
 
 // 5. FilterBottomSheet Modal Touch-Safe (Zero @expo/ui crashes)
 const filterSheetCode = fs.readFileSync(path.resolve(process.cwd(), 'src/components/FilterBottomSheet.tsx'), 'utf-8');
@@ -1412,7 +1421,7 @@ assert.strictEqual(check10sWindow(15, shortRecap), false, 'Recap end must not be
 const playerScreenSource = fs.readFileSync(path.resolve(process.cwd(), 'app/player/[id].tsx'), 'utf-8');
 assert(playerScreenSource.includes('AppStorage.addSettingsListener'), 'Player deve ascoltare gli aggiornamenti dinamici di impostazioni AniSkip');
 assert(playerScreenSource.includes('autoSkippedIdsRef.current.clear()'), 'Player deve ripulire autoSkippedIdsRef al cambio episodio');
-assert(playerScreenSource.includes('isIn10sWindow'), 'Player deve utilizzare isIn10sWindow per il calcolo della finestra da 10s');
+assert(playerScreenSource.includes('computeAniSkipOverlayState'), 'Player deve utilizzare computeAniSkipOverlayState per il calcolo dei pulsanti e finestre AniSkip');
 
 // 12. Deep verification of Home search and favorites fixes
 assert(homeIndexCode.includes('hardwareBackPress'), 'app/(tabs)/index.tsx deve gestire hardwareBackPress per chiudere la ricerca');
@@ -1654,15 +1663,15 @@ assert.strictEqual(
 // 2. formatAniSkipManualDescription tests
 assert.strictEqual(
   formatAniSkipManualDescription({ buttonDuration: 10 }),
-  "MOSTRA IL PULSANTE 'SALTA' PER 10 SECONDI ALL'INIZIO DELL'INTERVALLO"
+  "MOSTRA I PULSANTI ANISKIP ('SALTA' / 'PROSSIMO') PER 10 SECONDI ALL'INIZIO DELL'INTERVALLO"
 );
 assert.strictEqual(
   formatAniSkipManualDescription({ buttonDuration: 20 }),
-  "MOSTRA IL PULSANTE 'SALTA' PER 20 SECONDI ALL'INIZIO DELL'INTERVALLO"
+  "MOSTRA I PULSANTI ANISKIP ('SALTA' / 'PROSSIMO') PER 20 SECONDI ALL'INIZIO DELL'INTERVALLO"
 );
 assert.strictEqual(
   formatAniSkipManualDescription({ buttonDuration: 0 }),
-  "MOSTRA IL PULSANTE 'SALTA' PER L'INTERA TOTALITÀ DELL'INTERVALLO (INFINITO)"
+  "MOSTRA I PULSANTI ANISKIP ('SALTA' / 'PROSSIMO') PER L'INTERA TOTALITÀ DELL'INTERVALLO (INFINITO)"
 );
 
 // 3. ANISKIP_DURATION_STEPS verification
@@ -2741,6 +2750,265 @@ try {
 }
 
 console.log('✓ Tabs.Protected su Cronologia & Reattività Storage OFF/ON verificati con successo.');
+
+// -----------------------------------------------------------------------------
+// [24/24] Verifica AniSkip Ending 'PROSSIMO' & Post-Ending Sequenziale (Senza Coesistenza)
+// -----------------------------------------------------------------------------
+console.log("\n[24/24] Verifica AniSkip Ending 'PROSSIMO' & Post-Ending Sequenziale (Senza Coesistenza)...");
+
+assert.strictEqual(ENDING_COINCIDE_END_THRESHOLD_SECONDS, 5);
+assert.strictEqual(isEndingSkipType('ed'), true);
+assert.strictEqual(isEndingSkipType('mixed-ed'), true);
+assert.strictEqual(isEndingSkipType('op'), false);
+assert.strictEqual(isEndingSkipType('recap'), false);
+
+const endingAtEnd: AniSkipResult = {
+  skipId: 'ed-end-1',
+  skipType: 'ed',
+  interval: { startTime: 1345, endTime: 1436 },
+  episodeLength: 1440,
+};
+
+const endingWithPost: AniSkipResult = {
+  skipId: 'ed-post-1',
+  skipType: 'mixed-ed',
+  interval: { startTime: 1300, endTime: 1390 },
+  episodeLength: 1440,
+};
+
+const opForComparison: AniSkipResult = {
+  skipId: 'op-cmp-1',
+  skipType: 'op',
+  interval: { startTime: 0, endTime: 90 },
+  episodeLength: 1440,
+};
+
+assert.strictEqual(doesEndingCoincideWithEnd(endingAtEnd, 1440), true, 'Ending a 4s dalla fine deve coincidere con la fine (soglia 5s)');
+assert.strictEqual(doesEndingCoincideWithEnd({ ...endingAtEnd, interval: { startTime: 1345, endTime: 1435 } }, 1440), true, 'Ending esattamente a 5s dalla fine deve coincidere con la fine');
+assert.strictEqual(doesEndingCoincideWithEnd({ ...endingAtEnd, interval: { startTime: 1345, endTime: 1434.5 } }, 1440), false, 'Ending oltre 5s dalla fine indica contenuto post-ending');
+assert.strictEqual(doesEndingCoincideWithEnd(endingAtEnd, 0), true, 'Fallback a skip.episodeLength se episodeDuration non ancora nota');
+assert.strictEqual(doesEndingCoincideWithEnd({ ...endingAtEnd, episodeLength: 0 }, 0), false, 'Senza durata valida non assume coincidenza');
+assert.strictEqual(doesEndingCoincideWithEnd(opForComparison, 90), false, 'isEndingSkipType esclude le opening');
+
+const manual15s: AniSkipSettings = {
+  mode: 'manual',
+  enableOpening: true,
+  enableEnding: true,
+  enableRecap: true,
+  buttonDuration: 15,
+};
+
+// Case A: Ending coincides with episode end -> 'SALTA' becomes 'PROSSIMO'
+const endManualWithNext = computeAniSkipOverlayState({
+  currentTime: 1346,
+  episodeDuration: 1440,
+  skips: [endingAtEnd],
+  settings: manual15s,
+  hasNextEpisode: true,
+});
+assert.strictEqual(endManualWithNext.primarySkip?.action, 'next', 'Ending alla fine con episodio successivo deve proporre PROSSIMO al posto di SALTA');
+assert.strictEqual(endManualWithNext.separateNext, null, 'Non deve duplicare PROSSIMO quando sostituisce già SALTA');
+assert.strictEqual(endManualWithNext.autoAction, null);
+
+// Duration window expires after buttonDuration (1345 + 15 = 1360) and rewinds cleanly
+const endManualExpired = computeAniSkipOverlayState({
+  currentTime: 1361,
+  episodeDuration: 1440,
+  skips: [endingAtEnd],
+  settings: manual15s,
+  hasNextEpisode: true,
+});
+assert.strictEqual(endManualExpired.primarySkip, null);
+assert.strictEqual(endManualExpired.separateNext, null);
+
+const endManualRewind = computeAniSkipOverlayState({
+  currentTime: 1348,
+  episodeDuration: 1440,
+  skips: [endingAtEnd],
+  settings: manual15s,
+  hasNextEpisode: true,
+});
+assert.strictEqual(endManualRewind.primarySkip?.action, 'next', 'Rewind nella finestra ending deve riattivare PROSSIMO');
+
+// Case B: Last episode (!hasNextEpisode) -> never 'PROSSIMO'
+const endManualNoNext = computeAniSkipOverlayState({
+  currentTime: 1346,
+  episodeDuration: 1440,
+  skips: [endingAtEnd],
+  settings: manual15s,
+  hasNextEpisode: false,
+});
+assert.strictEqual(endManualNoNext.primarySkip?.action, 'skip', 'Senza episodio successivo deve restare SALTA');
+assert.strictEqual(endManualNoNext.separateNext, null);
+
+// Case C: Auto mode when ending coincides with end
+const autoSettings: AniSkipSettings = {
+  ...manual15s,
+  mode: 'auto',
+};
+const endAutoWithNext = computeAniSkipOverlayState({
+  currentTime: 1345,
+  episodeDuration: 1440,
+  skips: [endingAtEnd],
+  settings: autoSettings,
+  hasNextEpisode: true,
+  autoSkippedIds: new Set(),
+});
+assert.strictEqual(endAutoWithNext.autoAction?.action, 'next', 'In AUTO, ending a fine episodio con next disponibile deve navigare al prossimo episodio');
+
+const endAutoAlreadySkipped = computeAniSkipOverlayState({
+  currentTime: 1346,
+  episodeDuration: 1440,
+  skips: [endingAtEnd],
+  settings: autoSettings,
+  hasNextEpisode: true,
+  autoSkippedIds: new Set(['ed-end-1']),
+});
+assert.strictEqual(endAutoAlreadySkipped.autoAction, null);
+
+const endAutoNoNext = computeAniSkipOverlayState({
+  currentTime: 1345,
+  episodeDuration: 1440,
+  skips: [endingAtEnd],
+  settings: autoSettings,
+  hasNextEpisode: false,
+  autoSkippedIds: new Set(),
+});
+assert.strictEqual(endAutoNoNext.autoAction?.action, 'skip', 'In AUTO sull ultimo episodio deve eseguire solo skip');
+
+// Case D: Ending WITH post-ending part (manual) -> ONLY 'SALTA' during ending, then ONLY 'PROSSIMO' in post-ending
+const postDuringEnding = computeAniSkipOverlayState({
+  currentTime: 1302,
+  episodeDuration: 1440,
+  skips: [endingWithPost],
+  settings: manual15s,
+  hasNextEpisode: true,
+});
+assert.strictEqual(postDuringEnding.primarySkip?.action, 'skip', 'Durante ending con scena post-ending deve apparire solo SALTA');
+assert.strictEqual(postDuringEnding.separateNext, null, 'SALTA e PROSSIMO non devono coesistere durante la ending');
+
+for (const sampleT of [0, 1300, 1302, 1314.9, 1315, 1389, 1390, 1390.5, 1404.9, 1405, 1438]) {
+  const probe = computeAniSkipOverlayState({
+    currentTime: sampleT,
+    episodeDuration: 1440,
+    skips: [opForComparison, endingWithPost],
+    settings: manual15s,
+    hasNextEpisode: true,
+  });
+  assert(!(probe.primarySkip && probe.separateNext), `Al secondo ${sampleT}s non devono mai coesistere due pulsanti`);
+}
+
+// Inside post-ending window [1390, 1405) for buttonDuration=15 -> separate 'PROSSIMO' appears alone
+const postAfterEndingStart = computeAniSkipOverlayState({
+  currentTime: 1390.5,
+  episodeDuration: 1440,
+  skips: [endingWithPost],
+  settings: manual15s,
+  hasNextEpisode: true,
+});
+assert.strictEqual(postAfterEndingStart.primarySkip, null);
+assert(postAfterEndingStart.separateNext !== null, 'All inizio della scena post-ending deve mostrare PROSSIMO per buttonDuration');
+assert.strictEqual(postAfterEndingStart.separateNext?.startTime, 1390);
+assert.strictEqual(postAfterEndingStart.separateNext?.endTime, 1440);
+
+const postAfterEndingExpired = computeAniSkipOverlayState({
+  currentTime: 1406,
+  episodeDuration: 1440,
+  skips: [endingWithPost],
+  settings: manual15s,
+  hasNextEpisode: true,
+});
+assert.strictEqual(postAfterEndingExpired.separateNext, null, 'Il pulsante PROSSIMO post-ending deve rispettare buttonDuration (15s)');
+
+const postAfterEndingRewind = computeAniSkipOverlayState({
+  currentTime: 1394,
+  episodeDuration: 1440,
+  skips: [endingWithPost],
+  settings: manual15s,
+  hasNextEpisode: true,
+});
+assert(postAfterEndingRewind.separateNext !== null, 'Rewind nella finestra post-ending deve riattivare PROSSIMO');
+
+// Case E: Auto mode with post-ending skips to 1390.5 and then exposes separate 'PROSSIMO'
+const postAutoTrigger = computeAniSkipOverlayState({
+  currentTime: 1300,
+  episodeDuration: 1440,
+  skips: [endingWithPost],
+  settings: autoSettings,
+  hasNextEpisode: true,
+  autoSkippedIds: new Set(),
+});
+assert.strictEqual(postAutoTrigger.autoAction?.action, 'skip');
+assert.strictEqual(postAutoTrigger.autoAction?.targetTime, 1390.5);
+
+const postAutoAfterJump = computeAniSkipOverlayState({
+  currentTime: 1390.5,
+  episodeDuration: 1440,
+  skips: [endingWithPost],
+  settings: autoSettings,
+  hasNextEpisode: true,
+  autoSkippedIds: new Set(['ed-post-1']),
+});
+assert(postAutoAfterJump.separateNext !== null, 'Anche dopo auto-skip di una ending con post-ending deve comparire PROSSIMO');
+
+// Case F: Infinite duration (buttonDuration = 0) & disabled/enableEnding=false
+const manualInfinite: AniSkipSettings = { ...manual15s, buttonDuration: 0 };
+const postInfiniteEnd = computeAniSkipOverlayState({
+  currentTime: 1438,
+  episodeDuration: 1440,
+  skips: [endingWithPost],
+  settings: manualInfinite,
+  hasNextEpisode: true,
+});
+assert(postInfiniteEnd.separateNext !== null, 'Con buttonDuration=0 (∞) PROSSIMO deve restare visibile fino a fine episodio');
+
+const disabledEndingResult = computeAniSkipOverlayState({
+  currentTime: 1346,
+  episodeDuration: 1440,
+  skips: [endingAtEnd, opForComparison],
+  settings: { ...manual15s, enableEnding: false },
+  hasNextEpisode: true,
+});
+assert.strictEqual(disabledEndingResult.primarySkip, null);
+assert.strictEqual(disabledEndingResult.separateNext, null);
+
+const openingAtStart = computeAniSkipOverlayState({
+  currentTime: 0,
+  episodeDuration: 1440,
+  skips: [opForComparison],
+  settings: manual15s,
+  hasNextEpisode: true,
+});
+assert.strictEqual(openingAtStart.primarySkip?.action, 'skip', 'Intro che inizia a 0s deve attivare SALTA correttamente');
+
+// Case G: UI & Player Integration Checks (Mutually Exclusive Rendering)
+assert(aniSkipBtnCode.includes("variant?: 'skip' | 'next'"), 'AniSkipButton deve esporre la prop variant');
+assert(aniSkipBtnCode.includes('play-skip-forward'), 'AniSkipButton variant=next deve usare icona play-skip-forward');
+assert(!aniSkipBtnCode.includes('inline?: boolean'), 'AniSkipButton non deve più usare rendering inline affiancato');
+assert(
+  aniSkipBtnCode.includes("typeof endTime === 'number' && typeof startTime === 'number' && endTime > startTime"),
+  'AniSkipButton deve gestire correttamente startTime === 0'
+);
+assert(
+  playerScreenSource.includes('{primarySkipState ? (') &&
+    playerScreenSource.includes(': separateNextState && (nextEpisode || nextEpisodeRef.current) ? ('),
+  'Player deve renderizzare in mutua esclusione un solo pulsante AniSkip alla volta (SALTA oppure PROSSIMO)'
+);
+assert(playerScreenSource.includes('markCurrentCompleted: true'), 'Navigazione da AniSkip PROSSIMO deve marcare completato l episodio corrente');
+assert(
+  settingsCodeFinal.includes('DURATA PULSANTI ANISKIP'),
+  'Settings deve aggiornare la label della durata ai pulsanti AniSkip (SALTA / PROSSIMO)'
+);
+const durationSliderCode = fs.readFileSync(
+  path.resolve(process.cwd(), 'src/components/AniSkipDurationSlider.tsx'),
+  'utf-8'
+);
+assert(
+  durationSliderCode.includes('DURATA PULSANTI ANISKIP'),
+  'AniSkipDurationSlider deve avere accessibilityLabelPrefix aggiornato'
+);
+
+console.log("✓ AniSkip Ending 'PROSSIMO' & Post-Ending Sequenziale verificati con successo.");
 
 // -----------------------------------------------------------------------------
 // Fine Test

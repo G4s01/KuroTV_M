@@ -52,7 +52,7 @@ KuroM/
 │   └── types/                   # Definizioni TypeScript condivise
 ├── workers/                     # Cloudflare Worker unificato per OTA
 ├── scripts/                     # Tooling DevOps, release pipeline & patch native (apply-patches, build-release)
-└── tests/                       # Suite di verifica qualità a 21 stadi
+└── tests/                       # Suite di verifica qualità a 24 stadi
 ```
 
 ---
@@ -278,7 +278,7 @@ Il sottosistema video ([`app/player/[id].tsx`](file:///home/g4s/VSCode/KuroM/app
 - **Feedback Visivo di Caricamento Integrato**: Durante il recupero del flusso o il buffering, l'animazione di caricamento (`ActivityIndicator` con contrasto YIQ) è integrata direttamente all'interno del pulsante circolare Play/Pausa (e al centro dello schermo a controlli nascosti), azzerando overlay scuri o box oscuranti che coprono la visione.
 - **Controlli Multimediali in Notifica & Patch Native (`scripts/apply-patches.mjs` + `buildFromSource`)**: Espone `showNowPlayingNotification = true` con titolo principale `EPISODIO <Num>` (immune ai tagli dei nomi lunghi), sottotitolo/artista `<TITOLO SERIE>` e locandina artwork scaricata e serializzata come JPEG byte array in `artworkData` per i Quick Settings di Android 13+ e bitmap `largeIcon`. Grazie a `"buildFromSource": ["expo-video"]` in `package.json` (`expo.autolinking.android`), Gradle compila `KuroForwardingPlayer` anziché collegare l'AAR precompilato, preservando `COMMAND_SEEK_TO_NEXT` / `COMMAND_SEEK_TO_NEXT_MEDIA_ITEM` e `COMMAND_SEEK_TO_PREVIOUS` / `COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM` (anche attraverso `onAvailableCommandsChanged`) per esporre l'intera barra simmetrica a 5 tasti (`seek -10s`, `precedente`, `play/pausa`, `successivo`, `seek +10s`) e gli eventi `KuroNotificationNextEpisode` / `KuroNotificationPrevEpisode`.
 - **Scheda Dettagli Player (`PlayerInfoSheet.tsx`)**: Badge puntata formattato rigorosamente come `'EPISODIO X/TOT'` (es. `'EPISODIO 1/170'`, `'EPISODIO 1/??'`), pulito da suffissi titolo puntata ridondanti.
-- **AniSkip con Slider a Scorrimento**: Rileva sigle d'apertura (`op`), chiusura (`ed`) e recap (`recap`) con pulsante unico 'SALTA', timer ad esaurimento limitato a 10s, e configurazione in Impostazioni tramite il componente a scorrimento `AniSkipSlider` (`OFF`, `MANUALE`, `AUTO`).
+- **AniSkip Intelligente (`'SALTA'` / `'PROSSIMO'`)**: Rileva sigle d'apertura (`op`, `mixed-op`), chiusura (`ed`, `mixed-ed`) e `recap` con finestra configurabile (`5s`–`60s` o `∞` via `AniSkipDurationSlider`) e modalità (`OFF`, `MANUALE`, `AUTO`) via `AniSkipSlider`. Quando una ending coincide con la fine episodio (`≤ 5s`) trasforma `'SALTA'` in `'PROSSIMO'`, mentre in presenza di scene post-ending mantiene `'SALTA'` sulla sigla e propone separatamente `'PROSSIMO'` all'avvio della sezione post-ending (senza coesistenza dei due pulsanti).
 
 ---
 

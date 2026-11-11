@@ -25,7 +25,12 @@ import {
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { AnimeWorldScraper, ProviderRegistry } from '@/services/scraper';
-import { AniSkipService } from '@/services/aniskip';
+import {
+  AniSkipService,
+  computeAniSkipOverlayState,
+  type AniSkipNextPrompt,
+  type AniSkipOverlayState,
+} from '@/services/aniskip';
 import { AppStorage } from '@/services/storage';
 import { DownloadService, type DownloadStatus } from '@/services/downloads';
 import { oledTheme, useTheme, getContrastTextColor } from '@/theme';
@@ -225,11 +230,42 @@ export default function VideoPlayerScreen() {
   // AniSkip intervals
   const [aniSkipResults, setAniSkipResults] = React.useState<AniSkipResult[]>([]);
   const aniSkipResultsRef = React.useRef<AniSkipResult[]>([]);
-  const [activeSkip, setActiveSkip] = React.useState<AniSkipResult | null>(null);
-  const activeSkipRef = React.useRef<AniSkipResult | null>(null);
+  const [primarySkipState, setPrimarySkipState] =
+    React.useState<AniSkipOverlayState['primarySkip']>(null);
+  const primarySkipRef = React.useRef<AniSkipOverlayState['primarySkip']>(null);
+  const [separateNextState, setSeparateNextState] =
+    React.useState<AniSkipNextPrompt | null>(null);
+  const separateNextRef = React.useRef<AniSkipNextPrompt | null>(null);
+  const autoNavigatedEpisodeRef = React.useRef<boolean>(false);
   const skipTriggeredTimeRef = React.useRef<number>(0);
   const autoSkippedIdsRef = React.useRef<Set<string>>(new Set());
   const aniSkipSettingsRef = React.useRef(AppStorage.getAniSkipSettings());
+  const handleNavigateToEpisodeRef = React.useRef<
+    | ((
+        targetEp: Episode | { id: string; number: number; dataId?: string; thumbnail?: string },
+        options?: { markCurrentCompleted?: boolean }
+      ) => void)
+    | null
+  >(null);
+
+  const syncAniSkipButtons = React.useCallback((nextState: AniSkipOverlayState) => {
+    const prevPrimary = primarySkipRef.current;
+    const nextPrimary = nextState.primarySkip;
+    if (
+      prevPrimary?.skip.skipId !== nextPrimary?.skip.skipId ||
+      prevPrimary?.action !== nextPrimary?.action
+    ) {
+      primarySkipRef.current = nextPrimary;
+      setPrimarySkipState(nextPrimary);
+    }
+
+    const prevNext = separateNextRef.current;
+    const nextSeparate = nextState.separateNext;
+    if (prevNext?.promptId !== nextSeparate?.promptId) {
+      separateNextRef.current = nextSeparate;
+      setSeparateNextState(nextSeparate);
+    }
+  }, []);
 
   // Subscribe to live AniSkip settings changes
   React.useEffect(() => {
@@ -274,20 +310,8 @@ export default function VideoPlayerScreen() {
       saveProgress(time, player.duration || durationRef.current);
     }
 
-    // Isolated AniSkip check: handles manual 10s button & auto skipping based on user settings
+    // Isolated AniSkip check: handles manual buttons ('SALTA'/'PROSSIMO') & auto skipping based on user settings
     if (aniSkipResultsRef.current.length > 0) {
-      const settings = aniSkipSettingsRef.current;
-      const matchingSkip =
-        settings.mode !== 'disabled'
-          ? aniSkipResultsRef.current.find((res) => {
-              if (time < res.interval.startTime || time > res.interval.endTime) return false;
-              if ((res.skipType === 'op' || res.skipType === 'mixed-op') && !settings.enableOpening) return false;
-              if ((res.skipType === 'ed' || res.skipType === 'mixed-ed') && !settings.enableEnding) return false;
-              if (res.skipType === 'recap' && !settings.enableRecap) return false;
-              return true;
-            }) || null
-          : null;
-
       // Allow auto-skipped interval to be re-skipped if user seeks back before the interval start
       for (const res of aniSkipResultsRef.current) {
         if (time < res.interval.startTime - 2) {
@@ -295,54 +319,51 @@ export default function VideoPlayerScreen() {
         }
       }
 
-      if (matchingSkip) {
-        if (settings.mode === 'auto') {
-          if (!autoSkippedIdsRef.current.has(matchingSkip.skipId)) {
-            autoSkippedIdsRef.current.add(matchingSkip.skipId);
+      const settings = aniSkipSettingsRef.current;
+      const overlayState = computeAniSkipOverlayState({
+        currentTime: time,
+        episodeDuration: durationRef.current,
+        skips: aniSkipResultsRef.current,
+        settings,
+        hasNextEpisode: Boolean(nextEpisodeRef.current),
+        autoSkippedIds: autoSkippedIdsRef.current,
+      });
+
+      if (overlayState.autoAction) {
+        autoSkippedIdsRef.current.add(overlayState.autoAction.skip.skipId);
+        if (overlayState.autoAction.action === 'next' && nextEpisodeRef.current) {
+          if (!autoNavigatedEpisodeRef.current) {
+            autoNavigatedEpisodeRef.current = true;
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-            const target = matchingSkip.interval.endTime + 0.5;
-            player.currentTime = target;
-            currentTimeRef.current = target;
-            saveProgress(target, durationRef.current);
-            activeSkipRef.current = null;
-            setActiveSkip(null);
+            syncAniSkipButtons({ primarySkip: null, separateNext: null, autoAction: null });
+            handleNavigateToEpisodeRef.current?.(nextEpisodeRef.current, {
+              markCurrentCompleted: true,
+            });
           }
-        } else {
-          // Manual mode: show button according to configured duration (0 = full interval)
-          const configuredDuration =
-            typeof settings.buttonDuration === 'number' && settings.buttonDuration > 0
-              ? settings.buttonDuration
-              : settings.buttonDuration === 0
-              ? Infinity
-              : 10;
-
-          const maxDisplayEnd = isFinite(configuredDuration)
-            ? Math.min(
-                matchingSkip.interval.endTime,
-                matchingSkip.interval.startTime + configuredDuration
-              )
-            : matchingSkip.interval.endTime;
-          const isIn10sWindow = time >= matchingSkip.interval.startTime && time < maxDisplayEnd;
-
-          if (isIn10sWindow) {
-            if (activeSkipRef.current?.skipId !== matchingSkip.skipId) {
-              activeSkipRef.current = matchingSkip;
-              setActiveSkip(matchingSkip);
-            }
-          } else {
-            if (activeSkipRef.current !== null) {
-              activeSkipRef.current = null;
-              setActiveSkip(null);
-            }
-          }
+          return;
         }
-      } else if (activeSkipRef.current !== null) {
-        activeSkipRef.current = null;
-        setActiveSkip(null);
+
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        const target = overlayState.autoAction.targetTime;
+        player.currentTime = target;
+        currentTimeRef.current = target;
+        saveProgress(target, durationRef.current);
+
+        // Immediately evaluate post-skip state so a separate 'PROSSIMO' button appears without lag when post-ending starts
+        const postSkipState = computeAniSkipOverlayState({
+          currentTime: target,
+          episodeDuration: durationRef.current,
+          skips: aniSkipResultsRef.current,
+          settings,
+          hasNextEpisode: Boolean(nextEpisodeRef.current),
+          autoSkippedIds: autoSkippedIdsRef.current,
+        });
+        syncAniSkipButtons(postSkipState);
+      } else {
+        syncAniSkipButtons(overlayState);
       }
-    } else if (activeSkipRef.current !== null) {
-      activeSkipRef.current = null;
-      setActiveSkip(null);
+    } else if (primarySkipRef.current !== null || separateNextRef.current !== null) {
+      syncAniSkipButtons({ primarySkip: null, separateNext: null, autoAction: null });
     }
   });
 
@@ -605,8 +626,11 @@ export default function VideoPlayerScreen() {
     setSourceError(null);
     setAniSkipResults([]);
     aniSkipResultsRef.current = [];
-    setActiveSkip(null);
-    activeSkipRef.current = null;
+    setPrimarySkipState(null);
+    primarySkipRef.current = null;
+    setSeparateNextState(null);
+    separateNextRef.current = null;
+    autoNavigatedEpisodeRef.current = false;
     autoSkippedIdsRef.current.clear();
     skipTriggeredTimeRef.current = 0;
   }, [episodeId, episodeNumber]);
@@ -769,10 +793,21 @@ export default function VideoPlayerScreen() {
   }, [nextEpisode]);
 
   const handleNavigateToEpisode = React.useCallback(
-    (targetEp: Episode | { id: string; number: number; dataId?: string; thumbnail?: string }) => {
+    (
+      targetEp: Episode | { id: string; number: number; dataId?: string; thumbnail?: string },
+      options?: { markCurrentCompleted?: boolean }
+    ) => {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-      saveProgress(currentTimeRef.current, durationRef.current);
+      const savePos =
+        options?.markCurrentCompleted && durationRef.current > 0
+          ? durationRef.current
+          : currentTimeRef.current;
+      saveProgress(savePos, durationRef.current);
       hasResumedRef.current = false;
+      primarySkipRef.current = null;
+      setPrimarySkipState(null);
+      separateNextRef.current = null;
+      setSeparateNextState(null);
       const nextThumb = targetEp.thumbnail || thumbnailRef.current;
       setThumbnail(nextThumb);
       const savedProg = AppStorage.getWatchProgress(animeId, targetEp.number);
@@ -793,6 +828,7 @@ export default function VideoPlayerScreen() {
     },
     [animeId, animeTitle, serverId, episodesList.length, router, saveProgress]
   );
+  handleNavigateToEpisodeRef.current = handleNavigateToEpisode;
 
   // Notification Shade Next & Prev Episode Action listeners
   React.useEffect(() => {
@@ -909,16 +945,51 @@ export default function VideoPlayerScreen() {
   };
 
   const handleAniSkip = () => {
-    const skip = activeSkip || activeSkipRef.current;
-    if (!skip) return;
+    const primary = primarySkipState || primarySkipRef.current;
+    if (!primary) return;
+
+    if (primary.action === 'next') {
+      const targetNext = nextEpisode || nextEpisodeRef.current;
+      if (targetNext) {
+        handleNavigateToEpisode(targetNext, { markCurrentCompleted: true });
+      }
+      return;
+    }
+
+    const skip = primary.skip;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     const target = skip.interval.endTime + 0.5;
     player.currentTime = target;
     currentTimeRef.current = target;
     saveProgress(target, durationRef.current);
-    activeSkipRef.current = null;
-    setActiveSkip(null);
+
+    const postSkipState = computeAniSkipOverlayState({
+      currentTime: target,
+      episodeDuration: durationRef.current,
+      skips: aniSkipResultsRef.current,
+      settings: aniSkipSettingsRef.current,
+      hasNextEpisode: Boolean(nextEpisode || nextEpisodeRef.current),
+      autoSkippedIds: autoSkippedIdsRef.current,
+    });
+    syncAniSkipButtons(postSkipState);
   };
+
+  const handlePrimarySkipTimeout = React.useCallback(() => {
+    primarySkipRef.current = null;
+    setPrimarySkipState(null);
+  }, []);
+
+  const handleSeparateNextSkip = React.useCallback(() => {
+    const targetNext = nextEpisodeRef.current;
+    if (targetNext) {
+      handleNavigateToEpisodeRef.current?.(targetNext, { markCurrentCompleted: true });
+    }
+  }, []);
+
+  const handleSeparateNextTimeout = React.useCallback(() => {
+    separateNextRef.current = null;
+    setSeparateNextState(null);
+  }, []);
 
   // Timeline scrub seek
   const handleTimelineSeek = (targetTime: number) => {
@@ -1315,13 +1386,20 @@ export default function VideoPlayerScreen() {
           </View>
         )}
 
-        {/* AniSkip Button (rendered on top of video & OSD, independent of controls touch) */}
-        {activeSkip && (
+        {/* AniSkip Button (mutually exclusive: never shows 'SALTA' and 'PROSSIMO' together) */}
+        {primarySkipState ? (
           <AniSkipButton
+            key={
+              primarySkipState.action === 'next'
+                ? `${primarySkipState.skip.skipId}-next`
+                : primarySkipState.skip.skipId
+            }
+            variant={primarySkipState.action === 'next' ? 'next' : 'skip'}
             skipType={
-              activeSkip.skipType === 'ed' || activeSkip.skipType === 'mixed-ed'
+              primarySkipState.skip.skipType === 'ed' ||
+              primarySkipState.skip.skipType === 'mixed-ed'
                 ? 'outro'
-                : activeSkip.skipType === 'recap'
+                : primarySkipState.skip.skipType === 'recap'
                 ? 'recap'
                 : 'intro'
             }
@@ -1331,16 +1409,30 @@ export default function VideoPlayerScreen() {
                 : 10
             }
             onSkip={handleAniSkip}
-            onTimeout={() => {
-              activeSkipRef.current = null;
-              setActiveSkip(null);
-            }}
+            onTimeout={handlePrimarySkipTimeout}
             player={player}
-            startTime={activeSkip.interval.startTime}
-            endTime={activeSkip.interval.endTime}
+            startTime={primarySkipState.skip.interval.startTime}
+            endTime={primarySkipState.skip.interval.endTime}
             currentTime={currentTimeRef.current}
           />
-        )}
+        ) : separateNextState && (nextEpisode || nextEpisodeRef.current) ? (
+          <AniSkipButton
+            key={separateNextState.promptId}
+            variant="next"
+            skipType="outro"
+            durationSeconds={
+              typeof aniSkipSettingsRef.current?.buttonDuration === 'number'
+                ? aniSkipSettingsRef.current.buttonDuration
+                : 10
+            }
+            onSkip={handleSeparateNextSkip}
+            onTimeout={handleSeparateNextTimeout}
+            player={player}
+            startTime={separateNextState.startTime}
+            endTime={separateNextState.endTime}
+            currentTime={currentTimeRef.current}
+          />
+        ) : null}
       </View>
 
       {/* Playback Options & Speed Sheet (server selection enabled if multiple providers exist) */}

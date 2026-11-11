@@ -40,10 +40,10 @@ export function formatAniSkipAutoDescription(settings?: Partial<AniSkipSettings>
 export function formatAniSkipManualDescription(settings?: Partial<AniSkipSettings>): string {
   const dur = settings?.buttonDuration;
   if (dur === 0) {
-    return "MOSTRA IL PULSANTE 'SALTA' PER L'INTERA TOTALITÀ DELL'INTERVALLO (INFINITO)";
+    return "MOSTRA I PULSANTI ANISKIP ('SALTA' / 'PROSSIMO') PER L'INTERA TOTALITÀ DELL'INTERVALLO (INFINITO)";
   }
   const seconds = typeof dur === 'number' && dur > 0 ? dur : 10;
-  return `MOSTRA IL PULSANTE 'SALTA' PER ${seconds} SECONDI ALL'INIZIO DELL'INTERVALLO`;
+  return `MOSTRA I PULSANTI ANISKIP ('SALTA' / 'PROSSIMO') PER ${seconds} SECONDI ALL'INIZIO DELL'INTERVALLO`;
 }
 
 export const ANISKIP_STEPS: AniSkipStepItem[] = [
@@ -55,7 +55,7 @@ export const ANISKIP_STEPS: AniSkipStepItem[] = [
   {
     label: 'MANUALE',
     value: 'manual',
-    description: "MOSTRA IL PULSANTE 'SALTA' PER 10 SECONDI ALL'INIZIO DELL'INTERVALLO",
+    description: "MOSTRA I PULSANTI ANISKIP ('SALTA' / 'PROSSIMO') PER 10 SECONDI ALL'INIZIO DELL'INTERVALLO",
   },
   {
     label: 'AUTO',
