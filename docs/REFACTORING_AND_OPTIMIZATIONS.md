@@ -205,7 +205,7 @@ Eliminare i blocchi sincroni sul Main Thread durante la risoluzione del flusso v
 3. **Pulsanti di Avvio Rapido Simbolici in `AnimeHeaderBackdrop`**:
    - Rimuovere i generi testuali sotto il titolo; inserire una riga con il pulsante **Play** (`play`) per continuare la visione e il pulsante di **Riavvio da capo** (`reload`) per partire dall'episodio 1, entrambi a soli simboli e touch target $\ge 44$dp. Rimuovere il tasto play ridondante a fondo schermata.
 4. **Modalità Batch Touch-Native (`BatchBottomSheet`)**:
-   - Sostituire il `ModalBottomSheet` Compose con un componente modale React Native touch-native (`Modal animationType="slide"`), eliminando le sezioni correlate e garantendo la selezione istantanea ad ogni tocco senza crash in Expo Go o su device.
+   - Sostituire il `ModalBottomSheet` Compose con un componente modale React Native touch-native (`Modal`, successivamente consolidato con `animationType="fade"` e `useBottomSheetDragDismiss` per evitare doppi slide-out Android allo swipe-down), eliminando le sezioni correlate e garantendo la selezione istantanea ad ogni tocco senza crash in Expo Go o su device.
    - Configurare `maintainVisibleContentPosition={{ disabled: true }}` su `FlashList` degli episodi per prevenire crash su Android con Nuova Architettura Fabric.
 
 ---

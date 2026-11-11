@@ -251,6 +251,122 @@ export interface SaveProgressPayload {
   isOngoing?: boolean;
 }
 
+export interface WatchHistoryDeleteTarget {
+  animeId: string;
+  episodeId?: string;
+  episodeNumber?: number;
+}
+
+function matchesHistoryTarget(
+  item: { animeId: string; episodeId?: string; episodeNumber?: number },
+  target: WatchHistoryDeleteTarget
+): boolean {
+  if (!target.animeId || item.animeId !== target.animeId) return false;
+  if (target.episodeId && item.episodeId === target.episodeId) return true;
+  if (target.episodeNumber !== undefined && item.episodeNumber === target.episodeNumber) return true;
+  if (!target.episodeId && target.episodeNumber === undefined) return true;
+  return false;
+}
+
+function removeWatchHistoryTargets(targets: WatchHistoryDeleteTarget[]): {
+  removedCount: number;
+  modified: boolean;
+} {
+  const validTargets = targets.filter((t) => Boolean(t?.animeId));
+  if (validTargets.length === 0) return { removedCount: 0, modified: false };
+
+  let modified = false;
+  let removedCount = 0;
+
+  // 1. Remove matching entries from watch history in a single pass
+  const rawHistory = AppStorage.getObject<WatchHistoryItem[]>(StorageKeys.WATCH_HISTORY);
+  if (Array.isArray(rawHistory)) {
+    const filtered = rawHistory.filter(
+      (item) => !validTargets.some((target) => matchesHistoryTarget(item, target))
+    );
+    removedCount = rawHistory.length - filtered.length;
+    if (removedCount > 0) {
+      modified = true;
+      AppStorage.setObject(StorageKeys.WATCH_HISTORY, filtered);
+    }
+  }
+
+  // 2. Remove episode progress key(s)
+  const wildcardAnimeIds = new Set<string>();
+  for (const target of validTargets) {
+    if (target.episodeNumber !== undefined) {
+      const progressKey = `${StorageKeys.WATCH_PROGRESS_PREFIX}${target.animeId}.${target.episodeNumber}`;
+      if (storage.contains(progressKey)) {
+        storage.remove(progressKey);
+        modified = true;
+      }
+    } else if (!target.episodeId) {
+      wildcardAnimeIds.add(target.animeId);
+    }
+  }
+
+  if (wildcardAnimeIds.size > 0) {
+    const allKeys = storage.getAllKeys();
+    for (const k of allKeys) {
+      if (!k.startsWith(StorageKeys.WATCH_PROGRESS_PREFIX)) continue;
+      for (const animeId of wildcardAnimeIds) {
+        if (k.startsWith(`${StorageKeys.WATCH_PROGRESS_PREFIX}${animeId}.`)) {
+          storage.remove(k);
+          modified = true;
+          break;
+        }
+      }
+    }
+  }
+
+  // 3. Update or remove affected continue watching entries
+  const continueList = AppStorage.getContinueWatching();
+  if (continueList.length > 0) {
+    let continueModified = false;
+    let remainingHistoryCache: WatchHistoryItem[] | null = null;
+    const updatedContinue: ContinueWatchingItem[] = [];
+
+    for (const entry of continueList) {
+      const isAffected = validTargets.some((target) => matchesHistoryTarget(entry, target));
+      if (!isAffected) {
+        updatedContinue.push(entry);
+        continue;
+      }
+
+      continueModified = true;
+      if (remainingHistoryCache === null) {
+        remainingHistoryCache = AppStorage.getWatchHistory();
+      }
+      const latest = remainingHistoryCache.find((h) => h.animeId === entry.animeId);
+      if (latest) {
+        updatedContinue.push({
+          ...entry,
+          episodeId: latest.episodeId,
+          episodeNumber: latest.episodeNumber,
+          position: latest.position,
+          duration: latest.duration,
+          percentage: latest.progressPercent,
+          updatedAt: latest.updatedAt,
+          dataId: latest.dataId,
+          serverId: latest.serverId,
+          isCaughtUp: false,
+        });
+      }
+    }
+
+    if (continueModified) {
+      AppStorage.setObject(StorageKeys.CONTINUE_WATCHING, updatedContinue);
+      modified = true;
+    }
+  }
+
+  if (modified) {
+    notifySettingsListeners(AppStorage.getSettings());
+  }
+
+  return { removedCount, modified };
+}
+
 export type SettingsListener = (settings: AppSettings) => void;
 const settingsListeners = new Set<SettingsListener>();
 
@@ -692,6 +808,19 @@ export const AppStorage = {
     AppStorage.setObject(StorageKeys.FAVORITES, favorites);
   },
 
+  removeFavorites: (animeIds: string[]): number => {
+    if (!Array.isArray(animeIds) || animeIds.length === 0) return 0;
+    const idSet = new Set(animeIds.filter(Boolean));
+    if (idSet.size === 0) return 0;
+    const favorites = AppStorage.getFavorites();
+    const remaining = favorites.filter((fav) => !idSet.has(fav.id));
+    const removed = favorites.length - remaining.length;
+    if (removed > 0) {
+      AppStorage.setObject(StorageKeys.FAVORITES, remaining);
+    }
+    return removed;
+  },
+
   // ----------------------------------------------------
   // Watch Progress & History & Continue Watching
   // ----------------------------------------------------
@@ -1118,81 +1247,12 @@ export const AppStorage = {
 
   removeWatchHistoryItem: (animeId: string, episodeId?: string, episodeNumber?: number): boolean => {
     if (!animeId) return false;
-    let modified = false;
+    return removeWatchHistoryTargets([{ animeId, episodeId, episodeNumber }]).modified;
+  },
 
-    // 1. Remove from watch history
-    const rawHistory = AppStorage.getObject<WatchHistoryItem[]>(StorageKeys.WATCH_HISTORY);
-    if (Array.isArray(rawHistory)) {
-      const filtered = rawHistory.filter((item) => {
-        if (item.animeId !== animeId) return true;
-        if (episodeId && item.episodeId === episodeId) return false;
-        if (episodeNumber !== undefined && item.episodeNumber === episodeNumber) return false;
-        if (!episodeId && episodeNumber === undefined) return false;
-        return true;
-      });
-      if (filtered.length !== rawHistory.length) {
-        modified = true;
-        AppStorage.setObject(StorageKeys.WATCH_HISTORY, filtered);
-      }
-    }
-
-    // 2. Remove episode progress key(s)
-    if (episodeNumber !== undefined) {
-      const progressKey = `${StorageKeys.WATCH_PROGRESS_PREFIX}${animeId}.${episodeNumber}`;
-      if (storage.contains(progressKey)) {
-        storage.remove(progressKey);
-        modified = true;
-      }
-    } else {
-      const allKeys = storage.getAllKeys();
-      const prefix = `${StorageKeys.WATCH_PROGRESS_PREFIX}${animeId}.`;
-      for (const k of allKeys) {
-        if (k.startsWith(prefix)) {
-          storage.remove(k);
-          modified = true;
-        }
-      }
-    }
-
-    // 3. Update or remove from continue watching
-    const continueList = AppStorage.getContinueWatching();
-    const existingContinue = continueList.find((c) => c.animeId === animeId);
-    if (existingContinue) {
-      const isTargetEpisode =
-        (episodeId && existingContinue.episodeId === episodeId) ||
-        (episodeNumber !== undefined && existingContinue.episodeNumber === episodeNumber) ||
-        (!episodeId && episodeNumber === undefined);
-
-      if (isTargetEpisode) {
-        const remainingHistory = AppStorage.getWatchHistory().filter((h) => h.animeId === animeId);
-        if (remainingHistory.length > 0) {
-          const latest = remainingHistory[0];
-          const updatedContinue = continueList.map((c) => {
-            if (c.animeId !== animeId) return c;
-            return {
-              ...c,
-              episodeId: latest.episodeId,
-              episodeNumber: latest.episodeNumber,
-              position: latest.position,
-              duration: latest.duration,
-              percentage: latest.progressPercent,
-              updatedAt: latest.updatedAt,
-              dataId: latest.dataId,
-              serverId: latest.serverId,
-            };
-          });
-          AppStorage.setObject(StorageKeys.CONTINUE_WATCHING, updatedContinue);
-        } else {
-          AppStorage.removeContinueWatching(animeId);
-        }
-        modified = true;
-      }
-    }
-
-    if (modified) {
-      notifySettingsListeners(AppStorage.getSettings());
-    }
-    return modified;
+  removeWatchHistoryItems: (targets: WatchHistoryDeleteTarget[]): number => {
+    if (!Array.isArray(targets) || targets.length === 0) return 0;
+    return removeWatchHistoryTargets(targets).removedCount;
   },
 
 

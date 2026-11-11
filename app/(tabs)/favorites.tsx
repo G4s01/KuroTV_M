@@ -5,6 +5,7 @@ import {
   View,
   Pressable,
   RefreshControl,
+  BackHandler,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -14,8 +15,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { AppStorage } from '@/services/storage';
 import { oledTheme, useTheme, getContrastTextColor } from '@/theme';
 import { AnimeCard } from '@/components/AnimeCard';
-import { useResponsiveLayout } from '@/hooks';
+import { ConfirmModal } from '@/components/ConfirmModal';
+import { SelectionAppBar } from '@/components/SelectionAppBar';
+import { useResponsiveLayout, useMultiSelection } from '@/hooks';
 import type { AnimeItem } from '@/types';
+
+const getFavoriteKey = (item: AnimeItem) => item.id;
 
 export default function FavoritesScreen() {
   const router = useRouter();
@@ -25,6 +30,20 @@ export default function FavoritesScreen() {
 
   const [favorites, setFavorites] = React.useState<AnimeItem[]>([]);
   const [isRefreshing, setIsRefreshing] = React.useState(false);
+  const [isConfirmRemoveVisible, setIsConfirmRemoveVisible] = React.useState(false);
+
+  const {
+    selectedKeys,
+    selectedCount,
+    isSelectionMode,
+    isAllSelected,
+    isItemSelected,
+    startSelection,
+    toggleSelection,
+    toggleSelectAll,
+    clearSelection,
+    getSelectedItems,
+  } = useMultiSelection(favorites, getFavoriteKey);
 
   const loadFavorites = React.useCallback(() => {
     const items = AppStorage.getFavorites();
@@ -37,6 +56,17 @@ export default function FavoritesScreen() {
     }, [loadFavorites])
   );
 
+  useFocusEffect(
+    React.useCallback(() => {
+      if (!isSelectionMode) return;
+      const backSub = BackHandler.addEventListener('hardwareBackPress', () => {
+        clearSelection();
+        return true;
+      });
+      return () => backSub.remove();
+    }, [isSelectionMode, clearSelection])
+  );
+
   const onRefresh = React.useCallback(() => {
     setIsRefreshing(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
@@ -44,27 +74,65 @@ export default function FavoritesScreen() {
     setTimeout(() => setIsRefreshing(false), 300);
   }, [loadFavorites]);
 
-  const navigateToAnime = (animeId: string, title?: string) => {
-    Haptics.selectionAsync().catch(() => {});
-    router.push({
-      pathname: '/anime/[id]',
-      params: { id: animeId, title: title || '' },
-    });
-  };
+  const navigateToAnime = React.useCallback(
+    (animeId: string, title?: string) => {
+      Haptics.selectionAsync().catch(() => {});
+      router.push({
+        pathname: '/anime/[id]',
+        params: { id: animeId, title: title || '' },
+      });
+    },
+    [router]
+  );
+
+  const handleRemoveSingleFavorite = React.useCallback((item: AnimeItem) => {
+    AppStorage.removeFavorite(item.id);
+    setFavorites((prev) => prev.filter((fav) => fav.id !== item.id));
+  }, []);
+
+  const handleRequestRemoveSelected = React.useCallback(() => {
+    if (selectedCount === 0) return;
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+    setIsConfirmRemoveVisible(true);
+  }, [selectedCount]);
+
+  const handleConfirmRemoveSelected = React.useCallback(() => {
+    const idsToRemove = Array.from(selectedKeys);
+    if (idsToRemove.length > 0) {
+      AppStorage.removeFavorites(idsToRemove);
+    }
+    clearSelection();
+    setIsConfirmRemoveVisible(false);
+    loadFavorites();
+  }, [selectedKeys, clearSelection, loadFavorites]);
+
+  const selectedItems = React.useMemo(() => getSelectedItems(), [getSelectedItems]);
+  const confirmMessage = React.useMemo(() => {
+    if (selectedItems.length === 1) {
+      return `VUOI RIMUOVERE "${selectedItems[0].title.toUpperCase()}" DAI PREFERITI?`;
+    }
+    return `VUOI RIMUOVERE ${selectedCount} TITOLI SELEZIONATI DAI PREFERITI?`;
+  }, [selectedItems, selectedCount]);
+
+  const selectionExtraData = React.useMemo(
+    () => ({ selectedKeys, isSelectionMode }),
+    [selectedKeys, isSelectionMode]
+  );
 
   return (
     <View style={[styles.root, { paddingTop: insets.top, backgroundColor: theme.colors.background }]}>
-      {/* App Bar */}
-      <View style={[styles.appBar, { borderBottomColor: theme.colors.border }]}>
-        <View style={styles.titleRow}>
-          <Text style={[styles.title, { color: theme.colors.text }]}>I MIEI PREFERITI</Text>
-          {favorites.length > 0 && (
-            <View style={[styles.countBadge, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-              <Text style={[styles.countBadgeText, { color: theme.colors.primary }]}>{favorites.length}</Text>
-            </View>
-          )}
-        </View>
-      </View>
+      <SelectionAppBar
+        title="I MIEI PREFERITI"
+        totalCount={favorites.length}
+        showCountBadge={favorites.length > 0}
+        selectedCount={selectedCount}
+        isAllSelected={isAllSelected}
+        onCancelSelection={clearSelection}
+        onToggleSelectAll={toggleSelectAll}
+        onTrashPress={handleRequestRemoveSelected}
+        showNormalTrash={false}
+        selectionTrashLabel="RIMUOVI PREFERITI SELEZIONATI"
+      />
 
       {favorites.length === 0 ? (
         <View style={styles.emptyContainer}>
@@ -89,15 +157,27 @@ export default function FavoritesScreen() {
             key={`favorites-grid-${numColumns}`}
             data={favorites}
             numColumns={numColumns}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item }) => (
-              <AnimeCard
-                anime={item}
-                width={cardWidth}
-                height={cardHeight}
-                onPress={() => navigateToAnime(item.id, item.title)}
-              />
-            )}
+            extraData={selectionExtraData}
+            keyExtractor={getFavoriteKey}
+            renderItem={({ item }) => {
+              const selected = isItemSelected(item);
+              return (
+                <AnimeCard
+                  anime={item}
+                  width={cardWidth}
+                  height={cardHeight}
+                  selectionMode={isSelectionMode}
+                  isSelected={selected}
+                  onPress={() =>
+                    isSelectionMode
+                      ? toggleSelection(item)
+                      : navigateToAnime(item.id, item.title)
+                  }
+                  onLongPress={() => startSelection(item)}
+                  onRemoveFavorite={() => handleRemoveSingleFavorite(item)}
+                />
+              );
+            }}
             contentContainerStyle={styles.listContent}
             refreshControl={
               <RefreshControl
@@ -110,6 +190,16 @@ export default function FavoritesScreen() {
           />
         </View>
       )}
+
+      <ConfirmModal
+        visible={isConfirmRemoveVisible && selectedCount > 0}
+        title="RIMUOVI DAI PREFERITI"
+        message={confirmMessage}
+        icon="trash-outline"
+        confirmText="RIMUOVI"
+        onConfirm={handleConfirmRemoveSelected}
+        onCancel={() => setIsConfirmRemoveVisible(false)}
+      />
     </View>
   );
 }
@@ -118,43 +208,6 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: '#000000',
-  },
-  appBar: {
-    minHeight: 48,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: '#141414',
-  },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  title: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '800',
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
-    letterSpacing: -0.5,
-  },
-  countBadge: {
-    backgroundColor: '#1E1E1E',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: oledTheme.radius.full,
-    borderWidth: 1,
-    borderColor: '#333333',
-  },
-  countBadgeText: {
-    color: oledTheme.colors.primary,
-    fontSize: 12,
-    fontWeight: '800',
-    fontFamily: 'monospace',
   },
   emptyContainer: {
     flex: 1,

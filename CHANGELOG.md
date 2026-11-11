@@ -5,6 +5,19 @@ Tutte le modifiche degne di nota a questo progetto saranno documentate in questo
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/)
 e questo progetto aderisce al [Semantic Versioning](https://semver.org/lang/it/).
 
+## [1.0.4] - 2026-11-11
+
+### Aggiunto
+- **Annullamento Intero Raggruppamento Download in `SCARICATI`**:
+  - Aggiunto `DownloadService.cancelAnimeDownloads(animeId)` (`src/services/downloads/download-service.ts`) per annullare in blocco tutti gli episodi attivi o in coda di una serie (interrompendo eventuale trasferimento attivo, rimuovendo i file parziali non completati, lasciando intatti gli episodi già salvati e riavviando la coda FIFO).
+  - Esposti in `ActiveDownloadGroupCard` il pulsante dedicato **`ANNULLA TUTTI (N EP.)`** (quando una serie ha più episodi in coda/attivi) e il pulsante rapido `44×44dp` (`seriesCancelGroupBtn`) sull'header delle serie multiple, entrambi protetti da `ConfirmModal` in `app/downloads/index.tsx` (`handleCancelGroup`).
+  - Sincronizzata la chiusura automatica di `DownloadedEpisodesSheet` quando `selectedGroup` diventa vuoto e aggiunta copertura di test in `tests/core-verification.test.ts`.
+
+### Risolto
+- **Fix Glitch Rimbalzo Swipe-Down sui Bottom Sheet Touch-Native**:
+  - Risolto in `useBottomSheetDragDismiss` il ritorno improvviso verso l'alto e il doppio slide-out su Android dopo la chiusura tramite scorrimento verso il basso: rimosso il reset immediato `translateY.setValue(0)` post-`onClose()`, adottato un target di uscita dinamico fuori schermo (`Math.max(Dimensions.get('window').height, 800)`), introdotto `isDismissingRef` per impedire doppie chiusure o ri-cattura touch in uscita e limitato il reset sincrono di `translateY` alla sola riapertura (`isVisible: true`).
+  - Convertiti tutti i `<Modal>` dei bottom sheet (`ServerBottomSheet`, `PlayerInfoSheet`, `PlayerEpisodesCarouselSheet`, `BatchBottomSheet`, `DownloadOptionsSheet`, oltre a `DownloadedEpisodesSheet`) ad `animationType="fade"` e integrato `useBottomSheetDragDismiss` anche su `FilterBottomSheet` (`FILTRI DI RICERCA`).
+
 ## [1.0.3] - 2026-11-10
 
 ### Aggiunto

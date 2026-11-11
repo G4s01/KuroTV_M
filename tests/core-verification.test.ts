@@ -2565,6 +2565,113 @@ assert(homeAppBarSource.includes('activeDownloadsCount'), 'HomeAppBar deve suppo
 console.log('✓ Sistema di Download Episodi, Storage SAF & Visione Offline verificati con successo.');
 
 // -----------------------------------------------------------------------------
+// [22/22] Verifica Selezione Multipla Preferiti/Cronologia & Cuore Rimozione Rapida
+// -----------------------------------------------------------------------------
+console.log('\n[22/22] Verifica Selezione Multipla Preferiti/Cronologia & Cuore Rimozione Rapida...');
+
+// 1. Verifica AppStorage.removeFavorites (rimozione multipla atomica)
+for (const existingFav of AppStorage.getFavorites()) {
+  AppStorage.removeFavorite(existingFav.id);
+}
+AppStorage.toggleFavorite({ id: 'fav-multi-1', title: 'Fav Multi 1', thumbnail: '', genres: [], link: '' });
+AppStorage.toggleFavorite({ id: 'fav-multi-2', title: 'Fav Multi 2', thumbnail: '', genres: [], link: '' });
+AppStorage.toggleFavorite({ id: 'fav-multi-3', title: 'Fav Multi 3', thumbnail: '', genres: [], link: '' });
+assert.strictEqual(AppStorage.getFavorites().length, 3, 'Devono esserci 3 preferiti iniziali');
+
+const removedFavCount = AppStorage.removeFavorites(['fav-multi-1', 'fav-multi-3']);
+assert.strictEqual(removedFavCount, 2, 'removeFavorites deve restituire 2 elementi rimossi');
+assert.deepStrictEqual(
+  AppStorage.getFavorites().map((f) => f.id),
+  ['fav-multi-2'],
+  'Solo fav-multi-2 deve restare nei preferiti'
+);
+assert.strictEqual(AppStorage.removeFavorites([]), 0, 'removeFavorites([]) deve restituire 0');
+AppStorage.removeFavorite('fav-multi-2');
+assert.strictEqual(AppStorage.getFavorites().length, 0, 'Tutti i preferiti di test devono essere puliti');
+
+// 2. Verifica AppStorage.removeWatchHistoryItems (rimozione multipla e aggiornamento continueWatching)
+AppStorage.clearWatchHistory();
+AppStorage.saveWatchProgress({
+  animeId: 'hist-multi-a',
+  animeTitle: 'Anime Multi A',
+  episodeId: 'ep-a-1',
+  episodeNumber: 1,
+  currentTime: 250,
+  duration: 1200,
+});
+AppStorage.saveWatchProgress({
+  animeId: 'hist-multi-a',
+  animeTitle: 'Anime Multi A',
+  episodeId: 'ep-a-2',
+  episodeNumber: 2,
+  currentTime: 500,
+  duration: 1200,
+});
+AppStorage.saveWatchProgress({
+  animeId: 'hist-multi-b',
+  animeTitle: 'Anime Multi B',
+  episodeId: 'ep-b-1',
+  episodeNumber: 1,
+  currentTime: 300,
+  duration: 1200,
+});
+
+assert.strictEqual(AppStorage.getWatchHistory().length, 3, 'La cronologia deve avere 3 voci');
+const removedHistCount = AppStorage.removeWatchHistoryItems([
+  { animeId: 'hist-multi-a', episodeId: 'ep-a-2', episodeNumber: 2 },
+  { animeId: 'hist-multi-b', episodeId: 'ep-b-1', episodeNumber: 1 },
+]);
+assert.strictEqual(removedHistCount, 2, 'removeWatchHistoryItems deve rimuovere 2 voci');
+
+const remainingHistAfterMulti = AppStorage.getWatchHistory();
+assert.strictEqual(remainingHistAfterMulti.length, 1, 'Deve restare 1 voce in cronologia');
+assert.strictEqual(remainingHistAfterMulti[0].animeId, 'hist-multi-a');
+assert.strictEqual(remainingHistAfterMulti[0].episodeNumber, 1);
+
+const continueAfterMulti = AppStorage.getContinueWatching();
+assert.strictEqual(continueAfterMulti.length, 1, 'hist-multi-b deve essere rimosso da continueWatching e hist-multi-a deve aggiornarsi');
+assert.strictEqual(continueAfterMulti[0].animeId, 'hist-multi-a');
+assert.strictEqual(continueAfterMulti[0].episodeNumber, 1, 'continueWatching deve tornare all episodio 1 rimanente');
+assert.strictEqual(AppStorage.getWatchProgress('hist-multi-a', 2), undefined, 'Progress key ep 2 rimosso deve essere eliminato');
+assert(AppStorage.getWatchProgress('hist-multi-a', 1) !== undefined, 'Progress key ep 1 non rimosso deve persistere');
+AppStorage.clearWatchHistory();
+
+// 3. Verifica esportazioni hook & componenti di selezione
+const { useMultiSelection } = await import('../src/hooks/index');
+assert.strictEqual(typeof useMultiSelection, 'function', 'useMultiSelection deve essere esportato da src/hooks');
+const { SelectionAppBar } = await import('../src/components/index');
+assert(Boolean(SelectionAppBar), 'SelectionAppBar deve essere esportata da src/components');
+
+// 4. Verifica AnimeCard, FavoritesScreen e HistoryScreen
+const animeCardSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/AnimeCard.tsx'), 'utf-8');
+assert(animeCardSource.includes('onLongPress'), 'AnimeCard deve supportare onLongPress');
+assert(animeCardSource.includes('onRemoveFavorite'), 'AnimeCard deve supportare onRemoveFavorite con cuore diretto');
+assert(animeCardSource.includes('selectionMode'), 'AnimeCard deve supportare selectionMode');
+assert(animeCardSource.includes('isSelected'), 'AnimeCard deve supportare isSelected');
+assert(animeCardSource.includes('favoriteBtn'), 'AnimeCard deve renderizzare il pulsante cuore in alto a destra');
+
+const favSelectionSource = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/favorites.tsx'), 'utf-8');
+assert(favSelectionSource.includes('SelectionAppBar'), 'FavoritesScreen deve usare SelectionAppBar');
+assert(favSelectionSource.includes('ConfirmModal'), 'FavoritesScreen deve confermare la rimozione multipla tramite ConfirmModal');
+assert(favSelectionSource.includes('useMultiSelection'), 'FavoritesScreen deve usare useMultiSelection');
+assert(favSelectionSource.includes('AppStorage.removeFavorites'), 'FavoritesScreen deve rimuovere i preferiti selezionati tramite AppStorage.removeFavorites');
+assert(favSelectionSource.includes('AppStorage.removeFavorite'), 'FavoritesScreen deve rimuovere il singolo preferito tramite AppStorage.removeFavorite');
+assert(favSelectionSource.includes('hardwareBackPress'), 'FavoritesScreen deve gestire il tasto Indietro Android per uscire dalla selezione');
+assert(favSelectionSource.includes('extraData={selectionExtraData}'), 'FavoritesScreen deve passare extraData a FlashList');
+assert(!favSelectionSource.includes('Alert.alert'), 'FavoritesScreen non deve usare Alert.alert');
+
+const histSelectionSource = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/history.tsx'), 'utf-8');
+assert(histSelectionSource.includes('SelectionAppBar'), 'HistoryScreen deve usare SelectionAppBar');
+assert(histSelectionSource.includes('useMultiSelection'), 'HistoryScreen deve usare useMultiSelection');
+assert(histSelectionSource.includes('AppStorage.removeWatchHistoryItems'), 'HistoryScreen deve rimuovere gli elementi selezionati tramite AppStorage.removeWatchHistoryItems');
+assert(histSelectionSource.includes("deleteTarget === 'selected'"), 'HistoryScreen deve gestire la conferma modale per selezione multipla');
+assert(histSelectionSource.includes('hardwareBackPress'), 'HistoryScreen deve gestire il tasto Indietro Android per uscire dalla selezione');
+assert(histSelectionSource.includes('extraData={selectionExtraData}'), 'HistoryScreen deve passare extraData a FlashList');
+assert(!histSelectionSource.includes('Alert.alert'), 'HistoryScreen non deve usare Alert.alert');
+
+console.log('✓ Selezione Multipla Preferiti/Cronologia & Cuore Rimozione Rapida verificati con successo.');
+
+// -----------------------------------------------------------------------------
 // Fine Test
 // -----------------------------------------------------------------------------
 console.log('\n==============================================');

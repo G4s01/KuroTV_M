@@ -10,6 +10,7 @@ export * from './useBottomSheetDragDismiss';
 export * from './AniSkipSlider';
 export * from './AniSkipDurationSlider';
 export * from './ConfirmModal';
+export * from './SelectionAppBar';
 export * from './UpdateModal';
 export * from './settings';
 export * from './home';

@@ -7,7 +7,7 @@ import {
   RefreshControl,
   Animated,
   PanResponder,
-  Modal,
+  BackHandler,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -18,13 +18,20 @@ import { Ionicons } from '@expo/vector-icons';
 import { AppStorage } from '@/services/storage';
 import { oledTheme, useTheme, getContrastTextColor } from '@/theme';
 import { ConfirmModal } from '@/components/ConfirmModal';
-import { useResponsiveLayout } from '@/hooks';
+import { SelectionAppBar } from '@/components/SelectionAppBar';
+import { useResponsiveLayout, useMultiSelection } from '@/hooks';
 import type { WatchHistoryItem } from '@/types';
+
+const getHistoryItemKey = (item: WatchHistoryItem) =>
+  `${item.animeId}::${item.episodeId}::${item.episodeNumber}`;
 
 interface HistoryItemRowProps {
   item: WatchHistoryItem;
   theme: any;
+  selectionMode?: boolean;
+  isSelected?: boolean;
   onPress: () => void;
+  onLongPress?: () => void;
   onRequestDelete: (item: WatchHistoryItem) => void;
   formatDate: (timestamp?: number) => string;
 }
@@ -32,21 +39,41 @@ interface HistoryItemRowProps {
 const HistoryItemRow = React.memo<HistoryItemRowProps>(function HistoryItemRow({
   item,
   theme,
+  selectionMode = false,
+  isSelected = false,
   onPress,
+  onLongPress,
   onRequestDelete,
   formatDate,
 }) {
   const translateX = React.useRef(new Animated.Value(0)).current;
   const isSwipedRef = React.useRef(false);
 
+  React.useEffect(() => {
+    translateX.setValue(0);
+    isSwipedRef.current = false;
+  }, [item.animeId, item.episodeId, item.episodeNumber, translateX]);
+
+  React.useEffect(() => {
+    if (selectionMode && isSwipedRef.current) {
+      Animated.spring(translateX, {
+        toValue: 0,
+        useNativeDriver: true,
+      }).start();
+      isSwipedRef.current = false;
+    }
+  }, [selectionMode, translateX]);
+
   const panResponder = React.useMemo(
     () =>
       PanResponder.create({
         onStartShouldSetPanResponder: () => false,
         onMoveShouldSetPanResponder: (_, gesture) => {
+          if (selectionMode) return false;
           return Math.abs(gesture.dx) > 15 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.5;
         },
         onPanResponderMove: (_, gesture) => {
+          if (selectionMode) return;
           if (gesture.dx < 0) {
             translateX.setValue(Math.max(-120, gesture.dx));
           } else if (isSwipedRef.current) {
@@ -54,6 +81,7 @@ const HistoryItemRow = React.memo<HistoryItemRowProps>(function HistoryItemRow({
           }
         },
         onPanResponderRelease: (_, gesture) => {
+          if (selectionMode) return;
           if (gesture.dx < -160) {
             // Strong swipe: trigger in-app delete confirmation directly
             Animated.spring(translateX, {
@@ -79,7 +107,7 @@ const HistoryItemRow = React.memo<HistoryItemRowProps>(function HistoryItemRow({
           }
         },
       }),
-    [item, onRequestDelete, translateX]
+    [item, onRequestDelete, selectionMode, translateX]
   );
 
   const progress = Math.min(100, item.progressPercent || 0);
@@ -88,27 +116,29 @@ const HistoryItemRow = React.memo<HistoryItemRowProps>(function HistoryItemRow({
   return (
     <View style={styles.swipeContainer}>
       {/* Background delete action revealed by slide */}
-      <Pressable
-        style={[styles.swipeDeleteAction, { backgroundColor: theme.colors.error || '#EF4444' }]}
-        onPress={() => {
-          Animated.spring(translateX, { toValue: 0, useNativeDriver: true }).start();
-          isSwipedRef.current = false;
-          onRequestDelete(item);
-        }}
-        accessibilityRole="button"
-        accessibilityLabel={`ELIMINA ${item.title.toUpperCase()}`}
-      >
-        <Ionicons name="trash" size={20} color="#FFFFFF" />
-        <Text style={styles.swipeDeleteText}>ELIMINA</Text>
-      </Pressable>
+      {!selectionMode && (
+        <Pressable
+          style={[styles.swipeDeleteAction, { backgroundColor: theme.colors.error || '#EF4444' }]}
+          onPress={() => {
+            Animated.spring(translateX, { toValue: 0, useNativeDriver: true }).start();
+            isSwipedRef.current = false;
+            onRequestDelete(item);
+          }}
+          accessibilityRole="button"
+          accessibilityLabel={`ELIMINA ${item.title.toUpperCase()}`}
+        >
+          <Ionicons name="trash" size={20} color="#FFFFFF" />
+          <Text style={styles.swipeDeleteText}>ELIMINA</Text>
+        </Pressable>
+      )}
 
       {/* Foreground sliding card */}
       <Animated.View
         style={[
           styles.historyItem,
           {
-            backgroundColor: theme.colors.surface,
-            borderColor: theme.colors.border,
+            backgroundColor: isSelected ? `${theme.colors.primary}16` : theme.colors.surface,
+            borderColor: isSelected ? theme.colors.primary : theme.colors.border,
             transform: [{ translateX }],
           },
         ]}
@@ -117,13 +147,17 @@ const HistoryItemRow = React.memo<HistoryItemRowProps>(function HistoryItemRow({
         <Pressable
           style={styles.cardContentPressable}
           onPress={() => {
-            if (isSwipedRef.current) {
+            if (!selectionMode && isSwipedRef.current) {
               Animated.spring(translateX, { toValue: 0, useNativeDriver: true }).start();
               isSwipedRef.current = false;
             } else {
               onPress();
             }
           }}
+          onLongPress={onLongPress}
+          delayLongPress={300}
+          accessibilityRole="button"
+          accessibilityState={selectionMode ? { selected: isSelected } : undefined}
         >
           <View
             style={[
@@ -169,44 +203,81 @@ const HistoryItemRow = React.memo<HistoryItemRowProps>(function HistoryItemRow({
           </View>
         </Pressable>
 
-        {/* Action icons row: Minus button and Play button */}
+        {/* Action icons row or multi-selection checkbox */}
         <View style={styles.itemActions}>
-          {/* Tasto meno con touch target >= 44dp */}
-          <Pressable
-            style={styles.minusBtn}
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-              onRequestDelete(item);
-            }}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            accessibilityRole="button"
-            accessibilityLabel={`RIMUOVI EPISODIO ${item.episodeNumber} DI ${item.title.toUpperCase()}`}
-          >
-            <View
-              style={[
-                styles.minusIconCircle,
-                { backgroundColor: theme.colors.card, borderColor: theme.colors.border },
-              ]}
+          {selectionMode ? (
+            <Pressable
+              style={styles.selectionCheckTouch}
+              onPress={onPress}
+              onLongPress={onLongPress}
+              delayLongPress={300}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: isSelected }}
+              accessibilityLabel={
+                isSelected
+                  ? `DESELEZIONA ${item.title.toUpperCase()} EPISODIO ${item.episodeNumber}`
+                  : `SELEZIONA ${item.title.toUpperCase()} EPISODIO ${item.episodeNumber}`
+              }
             >
-              <Ionicons name="remove" size={16} color={theme.colors.error || '#EF4444'} />
-            </View>
-          </Pressable>
+              <View
+                style={[
+                  styles.selectionCircle,
+                  isSelected
+                    ? { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary }
+                    : { borderColor: theme.colors.textMuted },
+                ]}
+              >
+                {isSelected && (
+                  <Ionicons
+                    name="checkmark"
+                    size={15}
+                    color={getContrastTextColor(theme.colors.primary)}
+                  />
+                )}
+              </View>
+            </Pressable>
+          ) : (
+            <>
+              {/* Tasto meno con touch target >= 44dp */}
+              <Pressable
+                style={styles.minusBtn}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                  onRequestDelete(item);
+                }}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                accessibilityRole="button"
+                accessibilityLabel={`RIMUOVI EPISODIO ${item.episodeNumber} DI ${item.title.toUpperCase()}`}
+              >
+                <View
+                  style={[
+                    styles.minusIconCircle,
+                    { backgroundColor: theme.colors.card, borderColor: theme.colors.border },
+                  ]}
+                >
+                  <Ionicons name="remove" size={16} color={theme.colors.error || '#EF4444'} />
+                </View>
+              </Pressable>
 
-          {/* Tasto Play per riprendere */}
-          <Pressable
-            style={[styles.playBtn, { backgroundColor: theme.colors.primary }]}
-            onPress={onPress}
-            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-            accessibilityRole="button"
-            accessibilityLabel="RIPRODUCI EPISODIO"
-          >
-            <Ionicons name="play" size={15} color={getContrastTextColor(theme.colors.primary)} />
-          </Pressable>
+              {/* Tasto Play per riprendere */}
+              <Pressable
+                style={[styles.playBtn, { backgroundColor: theme.colors.primary }]}
+                onPress={onPress}
+                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                accessibilityRole="button"
+                accessibilityLabel="RIPRODUCI EPISODIO"
+              >
+                <Ionicons name="play" size={15} color={getContrastTextColor(theme.colors.primary)} />
+              </Pressable>
+            </>
+          )}
         </View>
       </Animated.View>
     </View>
   );
 });
+
+type HistoryDeleteTarget = WatchHistoryItem | 'all' | 'selected' | null;
 
 export default function HistoryScreen() {
   const router = useRouter();
@@ -219,8 +290,21 @@ export default function HistoryScreen() {
     return AppStorage.isHistoryEnabled();
   });
 
-  // Target for in-app deletion confirmation (WatchHistoryItem or 'all' or null)
-  const [deleteTarget, setDeleteTarget] = React.useState<WatchHistoryItem | 'all' | null>(null);
+  // Target for in-app deletion confirmation
+  const [deleteTarget, setDeleteTarget] = React.useState<HistoryDeleteTarget>(null);
+
+  const {
+    selectedKeys,
+    selectedCount,
+    isSelectionMode,
+    isAllSelected,
+    isItemSelected,
+    startSelection,
+    toggleSelection,
+    toggleSelectAll,
+    clearSelection,
+    getSelectedItems,
+  } = useMultiSelection(history, getHistoryItemKey);
 
   const loadHistory = React.useCallback(() => {
     const enabled = AppStorage.isHistoryEnabled();
@@ -239,6 +323,17 @@ export default function HistoryScreen() {
     }, [loadHistory])
   );
 
+  useFocusEffect(
+    React.useCallback(() => {
+      if (!isSelectionMode) return;
+      const backSub = BackHandler.addEventListener('hardwareBackPress', () => {
+        clearSelection();
+        return true;
+      });
+      return () => backSub.remove();
+    }, [isSelectionMode, clearSelection])
+  );
+
   React.useEffect(() => {
     const unsub = AppStorage.addSettingsListener(() => {
       loadHistory();
@@ -253,23 +348,42 @@ export default function HistoryScreen() {
     setTimeout(() => setIsRefreshing(false), 300);
   }, [loadHistory]);
 
-  const handleRequestClearAll = () => {
+  const handleRequestClearAll = React.useCallback(() => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
     setDeleteTarget('all');
-  };
+  }, []);
 
-  const handleRequestDeleteItem = (item: WatchHistoryItem) => {
+  const handleRequestDeleteSelected = React.useCallback(() => {
+    if (selectedCount === 0) return;
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+    setDeleteTarget('selected');
+  }, [selectedCount]);
+
+  const handleRequestDeleteItem = React.useCallback((item: WatchHistoryItem) => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
     setDeleteTarget(item);
-  };
+  }, []);
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = React.useCallback(() => {
     if (!deleteTarget) return;
 
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
 
     if (deleteTarget === 'all') {
       AppStorage.clearWatchHistory();
+      clearSelection();
+    } else if (deleteTarget === 'selected') {
+      const selectedItems = getSelectedItems();
+      if (selectedItems.length > 0) {
+        AppStorage.removeWatchHistoryItems(
+          selectedItems.map((item) => ({
+            animeId: item.animeId,
+            episodeId: item.episodeId,
+            episodeNumber: item.episodeNumber,
+          }))
+        );
+      }
+      clearSelection();
     } else {
       AppStorage.removeWatchHistoryItem(
         deleteTarget.animeId,
@@ -280,25 +394,28 @@ export default function HistoryScreen() {
 
     setDeleteTarget(null);
     loadHistory();
-  };
+  }, [deleteTarget, clearSelection, getSelectedItems, loadHistory]);
 
-  const resumePlayback = (item: WatchHistoryItem) => {
-    Haptics.selectionAsync().catch(() => {});
-    router.push({
-      pathname: '/player/[id]',
-      params: {
-        id: item.episodeId,
-        animeId: item.animeId,
-        episodeNumber: String(item.episodeNumber),
-        animeTitle: item.title,
-        thumbnail: item.thumbnail || '',
-        episodeDataId: item.dataId || '',
-        serverId: item.serverId || '',
-      },
-    });
-  };
+  const resumePlayback = React.useCallback(
+    (item: WatchHistoryItem) => {
+      Haptics.selectionAsync().catch(() => {});
+      router.push({
+        pathname: '/player/[id]',
+        params: {
+          id: item.episodeId,
+          animeId: item.animeId,
+          episodeNumber: String(item.episodeNumber),
+          animeTitle: item.title,
+          thumbnail: item.thumbnail || '',
+          episodeDataId: item.dataId || '',
+          serverId: item.serverId || '',
+        },
+      });
+    },
+    [router]
+  );
 
-  const formatDate = (timestamp?: number) => {
+  const formatDate = React.useCallback((timestamp?: number) => {
     if (!timestamp) return '';
     const date = new Date(timestamp);
     return date.toLocaleDateString('it-IT', {
@@ -307,40 +424,53 @@ export default function HistoryScreen() {
       hour: '2-digit',
       minute: '2-digit',
     });
-  };
+  }, []);
+
+  const selectedItems = React.useMemo(() => getSelectedItems(), [getSelectedItems]);
+  const selectionExtraData = React.useMemo(
+    () => ({ selectedKeys, isSelectionMode }),
+    [selectedKeys, isSelectionMode]
+  );
+
+  const modalTitle =
+    deleteTarget === 'all'
+      ? 'SVUOTA CRONOLOGIA'
+      : deleteTarget === 'selected'
+        ? 'RIMUOVI SELEZIONATI'
+        : 'RIMUOVI ELEMENTO';
+
+  const modalMessage = React.useMemo(() => {
+    if (deleteTarget === 'all') {
+      return "VUOI DAVVERO CANCELLARE TUTTA LA CRONOLOGIA DI VISIONE? L'OPERAZIONE NON È REVERSIBILE.";
+    }
+    if (deleteTarget === 'selected') {
+      if (selectedItems.length === 1) {
+        const single = selectedItems[0];
+        return `VUOI RIMUOVERE L'EPISODIO ${single.episodeNumber} DI "${single.title.toUpperCase()}" DALLA CRONOLOGIA?`;
+      }
+      return `VUOI RIMUOVERE ${selectedCount} ELEMENTI SELEZIONATI DALLA CRONOLOGIA?`;
+    }
+    if (deleteTarget) {
+      return `VUOI RIMUOVERE L'EPISODIO ${deleteTarget.episodeNumber} DI "${deleteTarget.title.toUpperCase()}" DALLA CRONOLOGIA?`;
+    }
+    return '';
+  }, [deleteTarget, selectedItems, selectedCount]);
 
   return (
     <View style={[styles.root, { paddingTop: insets.top, backgroundColor: theme.colors.background }]}>
-      {/* App Bar */}
-      <View style={[styles.appBar, { borderBottomColor: theme.colors.border }]}>
-        <View style={styles.titleRow}>
-          <Text style={[styles.title, { color: theme.colors.text }]}>CRONOLOGIA</Text>
-          {isHistoryEnabled && history.length > 0 && (
-            <View
-              style={[
-                styles.countBadge,
-                { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
-              ]}
-            >
-              <Text style={[styles.countBadgeText, { color: theme.colors.primary }]}>
-                {history.length}
-              </Text>
-            </View>
-          )}
-        </View>
-
-        {isHistoryEnabled && history.length > 0 && (
-          <Pressable
-            style={[styles.clearBtn, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
-            onPress={handleRequestClearAll}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel="SVUOTA CRONOLOGIA"
-          >
-            <Ionicons name="trash-outline" size={20} color={theme.colors.error || oledTheme.colors.error} />
-          </Pressable>
-        )}
-      </View>
+      <SelectionAppBar
+        title="CRONOLOGIA"
+        totalCount={history.length}
+        showCountBadge={isHistoryEnabled && history.length > 0}
+        selectedCount={selectedCount}
+        isAllSelected={isAllSelected}
+        onCancelSelection={clearSelection}
+        onToggleSelectAll={toggleSelectAll}
+        onTrashPress={isSelectionMode ? handleRequestDeleteSelected : handleRequestClearAll}
+        showNormalTrash={isHistoryEnabled && history.length > 0}
+        normalTrashLabel="SVUOTA CRONOLOGIA"
+        selectionTrashLabel="RIMUOVI ELEMENTI SELEZIONATI"
+      />
 
       {!isHistoryEnabled ? (
         <View style={styles.emptyContainer}>
@@ -381,12 +511,16 @@ export default function HistoryScreen() {
         <View style={styles.listWrapper}>
           <FlashList
             data={history}
-            keyExtractor={(item) => `${item.animeId}-${item.episodeId}-${item.episodeNumber}`}
+            extraData={selectionExtraData}
+            keyExtractor={getHistoryItemKey}
             renderItem={({ item }) => (
               <HistoryItemRow
                 item={item}
                 theme={theme}
-                onPress={() => resumePlayback(item)}
+                selectionMode={isSelectionMode}
+                isSelected={isItemSelected(item)}
+                onPress={() => (isSelectionMode ? toggleSelection(item) : resumePlayback(item))}
+                onLongPress={() => startSelection(item)}
                 onRequestDelete={handleRequestDeleteItem}
                 formatDate={formatDate}
               />
@@ -409,15 +543,9 @@ export default function HistoryScreen() {
 
       {/* Modal di Conferma a Schermo Integrata nella UI (Zero Alert di sistema) */}
       <ConfirmModal
-        visible={deleteTarget !== null}
-        title={deleteTarget === 'all' ? 'SVUOTA CRONOLOGIA' : 'RIMUOVI ELEMENTO'}
-        message={
-          deleteTarget === 'all'
-            ? "VUOI DAVVERO CANCELLARE TUTTA LA CRONOLOGIA DI VISIONE? L'OPERAZIONE NON È REVERSIBILE."
-            : deleteTarget
-              ? `VUOI RIMUOVERE L'EPISODIO ${deleteTarget.episodeNumber} DI "${deleteTarget.title.toUpperCase()}" DALLA CRONOLOGIA?`
-              : ''
-        }
+        visible={deleteTarget !== null && (deleteTarget !== 'selected' || selectedCount > 0)}
+        title={modalTitle}
+        message={modalMessage}
         icon="trash-outline"
         confirmText={deleteTarget === 'all' ? 'CANCELLA TUTTO' : 'RIMUOVI'}
         onConfirm={handleConfirmDelete}
@@ -431,53 +559,6 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: '#000000',
-  },
-  appBar: {
-    minHeight: 48,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: '#141414',
-  },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  title: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '800',
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
-    letterSpacing: -0.5,
-  },
-  countBadge: {
-    backgroundColor: '#1E1E1E',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: oledTheme.radius.full,
-    borderWidth: 1,
-    borderColor: '#333333',
-  },
-  countBadgeText: {
-    color: oledTheme.colors.primary,
-    fontSize: 12,
-    fontWeight: '800',
-    fontFamily: 'monospace',
-  },
-  clearBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#1C1C1C',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#333333',
   },
   emptyContainer: {
     flex: 1,
@@ -660,76 +741,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.8)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-  },
-  modalCard: {
-    width: '100%',
-    maxWidth: 360,
-    borderRadius: oledTheme.radius.lg,
-    borderWidth: 1,
-    padding: 20,
-    alignItems: 'center',
-    gap: 12,
-  },
-  modalIconBadge: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    borderWidth: 1.5,
+  selectionCheckTouch: {
+    minWidth: oledTheme.spacing.minTouchTarget,
+    minHeight: oledTheme.spacing.minTouchTarget,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  modalTitle: {
-    fontSize: 15,
-    fontWeight: '800',
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
-    textAlign: 'center',
-    letterSpacing: 0.5,
-  },
-  modalMessage: {
-    fontSize: 12,
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
-    textAlign: 'center',
-    lineHeight: 18,
-  },
-  modalActions: {
-    flexDirection: 'row',
-    gap: 10,
-    width: '100%',
-    marginTop: 8,
-  },
-  modalCancelBtn: {
-    flex: 1,
-    minHeight: 44,
-    borderRadius: oledTheme.radius.md,
-    borderWidth: 1,
+  selectionCircle: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  modalCancelBtnText: {
-    fontSize: 12,
-    fontWeight: '700',
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
-  },
-  modalConfirmBtn: {
-    flex: 1,
-    minHeight: 44,
-    borderRadius: oledTheme.radius.md,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalConfirmBtnText: {
-    fontSize: 12,
-    fontWeight: '700',
-    fontFamily: 'monospace',
-    textTransform: 'uppercase',
   },
 });

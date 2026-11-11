@@ -66,7 +66,7 @@ Il player si interfaccia in background con il servizio **AniSkip** ([`src/compon
 
 ## 📑 Drawer & Modali Touch-Native (Zero Crash Fabric/Compose & No Cutoff)
 
-Tutti i menù secondari sfruttano modali touch-native basati su React Native `Modal` (`transparent={true}`, `statusBarTranslucent={true}` e animazione a scorrimento `slide`), eliminando le fragilità e i crash nativi di Jetpack Compose (`@expo/ui`) su layout fullscreen landscape e rotazioni:
+Tutti i menù secondari sfruttano modali touch-native basati su React Native `Modal` (`transparent={true}`, `statusBarTranslucent={true}` e `animationType="fade"`) combinati con `useBottomSheetDragDismiss` per la chiusura fluida tramite swipe-down (senza doppio slide-out o rimbalzo Android al rilascio), eliminando le fragilità e i crash nativi di Jetpack Compose (`@expo/ui`) su layout fullscreen landscape e rotazioni:
 
 - **Centratura Ottica & Dimensioni Responsive (Nessun Taglio ai Lati)**:
   - Applicato padding orizzontale simmetrico `horizontalPadding = Math.max(16, safeHorizontalInset)` su entrambi i lati.
