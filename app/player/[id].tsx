@@ -535,9 +535,8 @@ export default function VideoPlayerScreen() {
 
       if (directUrl) {
         setVideoUrl(directUrl);
-        const formattedTitle = animeTitle
-          ? `${animeTitle} - EPISODIO ${episodeNumber}`
-          : `EPISODIO ${episodeNumber}`;
+        const episodeTitle = `EPISODIO ${episodeNumber}`;
+        const seriesSubtitle = params.animeTitle || animeDetail?.title;
         const artworkUri = thumbnailRef.current || thumbnail || animeDetail?.image || animeDetail?.thumbnail || undefined;
         const isLocalSource = directUrl.startsWith('file://') || directUrl.startsWith('content://');
         const videoSource = {
@@ -546,8 +545,8 @@ export default function VideoPlayerScreen() {
             ? { headers: directHeaders }
             : {}),
           metadata: {
-            title: formattedTitle,
-            artist: animeTitle ? String(animeTitle).toUpperCase() : 'KURO MOBILE',
+            title: episodeTitle,
+            artist: seriesSubtitle ? String(seriesSubtitle).toUpperCase() : 'KURO MOBILE',
             artwork: artworkUri,
           },
         };

@@ -24,7 +24,9 @@ class VideoMediaSessionCallback(
             .add(Player.COMMAND_SEEK_FORWARD)
             .add(Player.COMMAND_SEEK_BACK)
             .add(Player.COMMAND_SEEK_TO_NEXT)
+            .add(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
             .add(Player.COMMAND_SEEK_TO_PREVIOUS)
+            .add(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
             .build()
         )
         .setAvailableSessionCommands(
@@ -46,12 +48,14 @@ class VideoMediaSessionCallback(
     controller: MediaSession.ControllerInfo,
     playerCommand: Int
   ): Int {
-    if (playerCommand == Player.COMMAND_SEEK_TO_NEXT) {
-      playbackService.emitNextEpisode()
-      return MediaSession.ConnectionResult.RESULT_SUCCESS
-    } else if (playerCommand == Player.COMMAND_SEEK_TO_PREVIOUS) {
-      playbackService.emitPrevEpisode()
-      return MediaSession.ConnectionResult.RESULT_SUCCESS
+    if (
+      playerCommand == Player.COMMAND_SEEK_TO_NEXT ||
+      playerCommand == Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM ||
+      playerCommand == Player.COMMAND_SEEK_TO_PREVIOUS ||
+      playerCommand == Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM
+    ) {
+      // Allow MediaSession to invoke KuroForwardingPlayer.seekToNext/seekToPrevious once.
+      return SessionResult.RESULT_SUCCESS
     }
     return super.onPlayerCommandRequest(session, controller, playerCommand)
   }

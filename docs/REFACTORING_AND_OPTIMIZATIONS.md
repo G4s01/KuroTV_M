@@ -167,7 +167,7 @@ Fornire all'utente pieno controllo sulla conservazione della cronologia di visio
 ### 🛠️ Piano di Refactor & Implementazione
 1. **Componente Slider Retention (`HistorySlider.tsx`)**:
    - Selettore a 5 posizioni discrete: `'OFF'` (`-1`), `30gg`, `60gg`, `90gg` e `'ON'` (`0`, conservazione illimitata).
-   - Reattività istantanea: al passaggio a `'OFF'`, la tab **Cronologia** viene immediatamente nascosta dalla bottom bar (`href: null` in `app/(tabs)/_layout.tsx`).
+   - Reattività istantanea: al passaggio a `'OFF'`, la tab **Cronologia** viene immediatamente nascosta dalla barra di navigazione e protetta da accessi diretti tramite `<Tabs.Protected guard={isHistoryEnabled}>` in `app/(tabs)/_layout.tsx`.
 2. **Eliminazione Touch e Swipe-to-Delete**:
    - Pulsante dedicato con icona `remove-circle-outline` su ciascuna card con area di tocco minima $\ge 44$dp.
    - Gesture swipe orizzontale per cancellazione rapida con feedback aptico.

@@ -1313,8 +1313,9 @@ assert(sliderSource.includes('onPanResponderTerminationRequest'), 'HistorySlider
 // 5. Player Notification Controls & Video Metadata (PiP Mode)
 const playerFullSource = fs.readFileSync(path.resolve(process.cwd(), 'app/player/[id].tsx'), 'utf-8');
 assert(playerFullSource.includes('showNowPlayingNotification'), 'app/player/[id].tsx deve abilitare showNowPlayingNotification per i controlli in area notifica');
-assert(playerFullSource.includes('metadata: {'), 'app/player/[id].tsx deve inviare metadata (titolo, episodio, thumbnail) per la notifica multimediale');
-assert(playerFullSource.includes('formattedTitle'), 'app/player/[id].tsx deve inviare il titolo con numero di episodio');
+assert(playerFullSource.includes('metadata: {'), 'app/player/[id].tsx deve inviare metadata (episodio, titolo serie, thumbnail) per la notifica multimediale');
+assert(playerFullSource.includes('const episodeTitle = `EPISODIO ${episodeNumber}`'), 'app/player/[id].tsx deve impostare EPISODIO <Num> come titolo compatto della notifica');
+assert(playerFullSource.includes('title: episodeTitle'), 'app/player/[id].tsx deve assegnare episodeTitle al campo metadata.title');
 assert(playerFullSource.includes('loadingOverlay'), 'app/player/[id].tsx deve mostrare feedback visivo di caricamento con loadingOverlay');
 assert(playerFullSource.includes('KuroNotificationNextEpisode'), 'app/player/[id].tsx deve ascoltare l\'evento di episodio successivo da notifica');
 assert(playerFullSource.includes('isInPiPRef.current'), 'app/player/[id].tsx deve tracciare isInPiPRef per preservare riproduzione e notifiche');
@@ -1607,13 +1608,23 @@ assert(playerSourceAfter.includes('isBufferingOrLoading'), 'app/player/[id].tsx 
 assert(playerSourceAfter.includes('KuroNotificationPrevEpisode'), 'app/player/[id].tsx deve ascoltare KuroNotificationPrevEpisode');
 assert(playerSourceAfter.includes('KuroNotificationNextEpisode'), 'app/player/[id].tsx deve ascoltare KuroNotificationNextEpisode');
 
-// 4. Native ExpoVideoPlaybackService patch verification
+// 4. Native ExpoVideoPlaybackService patch & buildFromSource autolinking verification
 const playbackServiceCode = fs.readFileSync(path.resolve(process.cwd(), 'scripts/patches/expo-video/ExpoVideoPlaybackService.kt'), 'utf-8');
+const mediaCallbackCode = fs.readFileSync(path.resolve(process.cwd(), 'scripts/patches/expo-video/VideoMediaSessionCallback.kt'), 'utf-8');
+const pkgJson = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), 'package.json'), 'utf-8'));
+assert(
+  Array.isArray(pkgJson?.expo?.autolinking?.android?.buildFromSource) &&
+    pkgJson.expo.autolinking.android.buildFromSource.includes('expo-video'),
+  'package.json deve configurare expo.autolinking.android.buildFromSource con expo-video per compilare le patch Kotlin anziché usare l\'AAR precompilato'
+);
 assert(playbackServiceCode.includes('KuroForwardingPlayer'), 'ExpoVideoPlaybackService deve includere KuroForwardingPlayer');
 assert(playbackServiceCode.includes('COMMAND_SEEK_TO_NEXT'), 'ExpoVideoPlaybackService deve abilitare COMMAND_SEEK_TO_NEXT');
+assert(playbackServiceCode.includes('COMMAND_SEEK_TO_NEXT_MEDIA_ITEM'), 'ExpoVideoPlaybackService deve abilitare COMMAND_SEEK_TO_NEXT_MEDIA_ITEM');
+assert(playbackServiceCode.includes('onAvailableCommandsChanged'), 'KuroForwardingPlayer deve propagare i comandi di navigazione anche su onAvailableCommandsChanged');
 assert(playbackServiceCode.includes('emitNextEpisode'), 'ExpoVideoPlaybackService deve supportare emitNextEpisode');
 assert(playbackServiceCode.includes('emitPrevEpisode'), 'ExpoVideoPlaybackService deve supportare emitPrevEpisode');
 assert(playbackServiceCode.includes('setArtworkData'), 'ExpoVideoPlaybackService deve trasmettere artworkData a MediaSession');
+assert(mediaCallbackCode.includes('COMMAND_SEEK_TO_NEXT_MEDIA_ITEM'), 'VideoMediaSessionCallback deve autorizzare COMMAND_SEEK_TO_NEXT_MEDIA_ITEM');
 
 console.log('✓ AniSkipSlider, Player Integrated Loader & Media Notification verificati con successo.');
 
@@ -2670,6 +2681,66 @@ assert(histSelectionSource.includes('extraData={selectionExtraData}'), 'HistoryS
 assert(!histSelectionSource.includes('Alert.alert'), 'HistoryScreen non deve usare Alert.alert');
 
 console.log('✓ Selezione Multipla Preferiti/Cronologia & Cuore Rimozione Rapida verificati con successo.');
+
+// -----------------------------------------------------------------------------
+// [23/23] Verifica Tabs.Protected su Cronologia & Reattività Storage OFF/ON
+// -----------------------------------------------------------------------------
+console.log('\n[23/23] Verifica Tabs.Protected su Cronologia & Reattività Storage OFF/ON...');
+
+const protectedTabLayoutSource = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/_layout.tsx'), 'utf-8');
+assert(
+  /<Tabs\.Protected\s+guard=\{isHistoryEnabled\}>[\s\S]*?<Tabs\.Screen[\s\S]*?name="history"[\s\S]*?<\/Tabs\.Protected>/.test(
+    protectedTabLayoutSource
+  ),
+  'TabLayout deve racchiudere la schermata history dentro <Tabs.Protected guard={isHistoryEnabled}>'
+);
+assert(
+  !protectedTabLayoutSource.includes("href: isHistoryEnabled ? '/(tabs)/history' : null"),
+  'TabLayout non deve più usare il workaround href: null per nascondere history'
+);
+assert(
+  protectedTabLayoutSource.includes('AppStorage.addSettingsListener') &&
+    protectedTabLayoutSource.includes('setIsHistoryEnabled(AppStorage.isHistoryEnabled())'),
+  'TabLayout deve restare sincronizzato in tempo reale con AppStorage.addSettingsListener'
+);
+
+const prevRetention = AppStorage.getHistoryRetentionDays();
+let settingsNotifications = 0;
+const observedEnabledStates: boolean[] = [];
+const unsubHistoryGuardTest = AppStorage.addSettingsListener(() => {
+  settingsNotifications += 1;
+  observedEnabledStates.push(AppStorage.isHistoryEnabled());
+});
+
+try {
+  AppStorage.setHistoryRetentionDays(-1);
+  assert.strictEqual(
+    AppStorage.isHistoryEnabled(),
+    false,
+    'Impostare historyRetentionDays = -1 deve disabilitare isHistoryEnabled()'
+  );
+  AppStorage.setHistoryRetentionDays(90);
+  assert.strictEqual(
+    AppStorage.isHistoryEnabled(),
+    true,
+    'Ripristinare historyRetentionDays = 90 deve riabilitare isHistoryEnabled()'
+  );
+  assert.strictEqual(
+    settingsNotifications,
+    2,
+    'addSettingsListener deve notificare sincronicamente entrambe le transizioni OFF/ON'
+  );
+  assert.deepStrictEqual(
+    observedEnabledStates,
+    [false, true],
+    'Lo stato osservato dai listener durante OFF -> ON deve essere [false, true]'
+  );
+} finally {
+  unsubHistoryGuardTest();
+  AppStorage.setHistoryRetentionDays(prevRetention);
+}
+
+console.log('✓ Tabs.Protected su Cronologia & Reattività Storage OFF/ON verificati con successo.');
 
 // -----------------------------------------------------------------------------
 // Fine Test

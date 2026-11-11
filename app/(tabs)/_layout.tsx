@@ -211,22 +211,23 @@ export default function TabLayout() {
           ),
         }}
       />
-      <Tabs.Screen
-        name="history"
-        options={{
-          href: isHistoryEnabled ? '/(tabs)/history' : null,
-          title: 'CRONOLOGIA',
-          tabBarShowLabel: false,
-          tabBarLabel: () => null,
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons
-              name={focused ? 'time' : 'time-outline'}
-              size={24}
-              color={color as string}
-            />
-          ),
-        }}
-      />
+      <Tabs.Protected guard={isHistoryEnabled}>
+        <Tabs.Screen
+          name="history"
+          options={{
+            title: 'CRONOLOGIA',
+            tabBarShowLabel: false,
+            tabBarLabel: () => null,
+            tabBarIcon: ({ color, focused }) => (
+              <Ionicons
+                name={focused ? 'time' : 'time-outline'}
+                size={24}
+                color={color as string}
+              />
+            ),
+          }}
+        />
+      </Tabs.Protected>
       <Tabs.Screen
         name="settings"
         options={{

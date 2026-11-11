@@ -35,6 +35,7 @@ import expo.modules.video.player.VideoPlayer
 import kotlinx.coroutines.launch
 import java.io.ByteArrayOutputStream
 import java.lang.ref.WeakReference
+import java.util.IdentityHashMap
 
 class PlaybackServiceBinder(val service: ExpoVideoPlaybackService) : Binder()
 
@@ -44,19 +45,54 @@ class KuroForwardingPlayer(
   private val service: ExpoVideoPlaybackService
 ) : ForwardingPlayer(underlyingPlayer) {
   var customArtworkBytes: ByteArray? = null
+  private val listenerWrappers = IdentityHashMap<Player.Listener, Player.Listener>()
+
+  private fun withNavigationCommands(commands: Player.Commands): Player.Commands {
+    return commands.buildUpon()
+      .add(Player.COMMAND_SEEK_TO_NEXT)
+      .add(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
+      .add(Player.COMMAND_SEEK_TO_PREVIOUS)
+      .add(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
+      .build()
+  }
 
   override fun isCommandAvailable(command: Int): Boolean {
-    if (command == Player.COMMAND_SEEK_TO_NEXT || command == Player.COMMAND_SEEK_TO_PREVIOUS) {
+    if (
+      command == Player.COMMAND_SEEK_TO_NEXT ||
+      command == Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM ||
+      command == Player.COMMAND_SEEK_TO_PREVIOUS ||
+      command == Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM
+    ) {
       return true
     }
     return super.isCommandAvailable(command)
   }
 
   override fun getAvailableCommands(): Player.Commands {
-    return super.getAvailableCommands().buildUpon()
-      .add(Player.COMMAND_SEEK_TO_NEXT)
-      .add(Player.COMMAND_SEEK_TO_PREVIOUS)
-      .build()
+    return withNavigationCommands(super.getAvailableCommands())
+  }
+
+  override fun addListener(listener: Player.Listener) {
+    val existing = synchronized(listenerWrappers) { listenerWrappers[listener] }
+    if (existing != null) {
+      return
+    }
+    val wrapped = object : Player.Listener by listener {
+      override fun onAvailableCommandsChanged(availableCommands: Player.Commands) {
+        listener.onAvailableCommandsChanged(withNavigationCommands(availableCommands))
+      }
+    }
+    synchronized(listenerWrappers) {
+      listenerWrappers[listener] = wrapped
+    }
+    super.addListener(wrapped)
+  }
+
+  override fun removeListener(listener: Player.Listener) {
+    val wrapped = synchronized(listenerWrappers) {
+      listenerWrappers.remove(listener)
+    }
+    super.removeListener(wrapped ?: listener)
   }
 
   override fun seekToNext() {
@@ -133,7 +169,7 @@ class ExpoVideoPlaybackService : MediaSessionService() {
 
   fun emitNextEpisode() {
     appContext.mainQueue.launch {
-      appContext.reactContext
+      (appContext.reactContext as? com.facebook.react.bridge.ReactContext)
         ?.getJSModule(com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
         ?.emit("KuroNotificationNextEpisode", null)
     }
@@ -141,7 +177,7 @@ class ExpoVideoPlaybackService : MediaSessionService() {
 
   fun emitPrevEpisode() {
     appContext.mainQueue.launch {
-      appContext.reactContext
+      (appContext.reactContext as? com.facebook.react.bridge.ReactContext)
         ?.getJSModule(com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
         ?.emit("KuroNotificationPrevEpisode", null)
     }
@@ -307,7 +343,7 @@ class ExpoVideoPlaybackService : MediaSessionService() {
   }
 
   private fun loadArtworkBitmap(uri: Uri, callback: (Bitmap?) -> Unit) {
-    appContext.backgroundQueue.launch {
+    appContext.backgroundCoroutineScope.launch {
       try {
         val bitmap = when (uri.scheme) {
           "http", "https" -> {
@@ -371,6 +407,7 @@ class ExpoVideoPlaybackService : MediaSessionService() {
 
     val artworkUri = mediaItem?.mediaMetadata?.artworkUri ?: player.mediaMetadata.artworkUri
     val forwardingPlayer = if (player is KuroForwardingPlayer) player else null
+    val notificationId = forwardingPlayer?.underlyingPlayer?.hashCode() ?: player.hashCode()
 
     val notificationCompat = NotificationCompat.Builder(this, CHANNEL_ID)
       .setSmallIcon(androidx.media3.session.R.drawable.media3_icon_circular_play)
@@ -402,12 +439,11 @@ class ExpoVideoPlaybackService : MediaSessionService() {
             .setLargeIcon(bitmap)
             .setStyle(MediaStyleNotificationHelper.MediaStyle(session))
             .build()
-          notificationManager.notify(session.player.hashCode(), updatedNotification)
+          notificationManager.notify(notificationId, updatedNotification)
         }
       }
     }
 
-    val notificationId = session.player.hashCode()
     val notification = notificationCompat.build()
 
     if (startInForegroundRequired) {

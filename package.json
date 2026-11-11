@@ -58,6 +58,13 @@
     "minimatch": "^11.0.5"
   },
   "expo": {
+    "autolinking": {
+      "android": {
+        "buildFromSource": [
+          "expo-video"
+        ]
+      }
+    },
     "doctor": {
       "reactNativeDirectoryCheck": {
         "exclude": [

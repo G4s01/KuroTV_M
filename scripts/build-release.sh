@@ -546,6 +546,12 @@ EOF
   if [ "${SKIP_BUILD}" -eq 1 ]; then
     log "Ricerca APK esistente in output dir..."
   else
+    # Apply native patches before Gradle compiles modules from source
+    if [ -f "${SCRIPTS_DIR}/apply-patches.mjs" ]; then
+      log "Applicazione patch native..."
+      node "${SCRIPTS_DIR}/apply-patches.mjs"
+    fi
+
     # Clean stale APK
     rm -f "${APK_OUTPUT_DIR}"/*.apk
     rm -f "${APK_OUTPUT_DIR}/output-metadata.json"

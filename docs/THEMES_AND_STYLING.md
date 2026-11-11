@@ -61,7 +61,7 @@ Kuro Mobile adotta un'estetica hacker-friendly ad alto contrasto con font monosp
 La schermata impostazioni è strutturata per la massima essenzialità visiva:
 - **Tema**: Griglia di pulsanti quadrati a sole icone SVG, priva di etichette testuali o descrizioni prolisse. Il tocco sul tema attivo inverte istantaneamente la modalità tra Scuro e Chiaro, con badge indicatore e contrasto YIQ automatico.
 - **Sorgente**: Selezione immediata del dominio AnimeWorld tramite chip rapidi `.AC`, `.SO`, `.TV` o inserimento di un URL manuale completo.
-- **Cronologia & Slider Retention**: Componente interattivo a 5 step (`OFF`, `30gg`, `60gg`, `90gg`, `ON`) per la conservazione dello storico con occultamento dinamico della tab in `OFF` (`href: null`), abbinato al pulsante di svuotamento rapido della cronologia protetto da modale in-app a tema.
+- **Cronologia & Slider Retention**: Componente interattivo a 5 step (`OFF`, `30gg`, `60gg`, `90gg`, `ON`) per la conservazione dello storico con occultamento dinamico della tab e protezione rotta in `OFF` (`<Tabs.Protected guard={isHistoryEnabled}>`), abbinato al pulsante di svuotamento rapido della cronologia protetto da modale in-app a tema.
 - **Informazioni & Changelog Scrollabile**: Dettagli su Nome, Stack, Package, Versione, Build e Architettura, accompagnati da un box del changelog scrollabile (`nestedScrollEnabled`, `maxHeight: 220`) per consultare le novità della versione corrente o in arrivo senza troncamenti.
 - **Updater OTA Unificato**: Pulsante integrato in fondo alla sezione per verificare e scaricare gli aggiornamenti direttamente in-app, senza esporre URL di rete o utilizzare finestre di dialogo bloccanti.
 
