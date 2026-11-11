@@ -8,12 +8,14 @@ import {
   Modal,
   TouchableWithoutFeedback,
   useWindowDimensions,
+  Animated,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { oledTheme, useTheme, getContrastTextColor } from '@/theme';
 import { useResponsiveLayout } from '@/hooks';
+import { useBottomSheetDragDismiss } from './useBottomSheetDragDismiss';
 
 export interface FilterState {
   genres?: string[]; // IDs dei generi multipli, es. ['1', '9']
@@ -124,6 +126,11 @@ export const FilterBottomSheet: React.FC<FilterBottomSheetProps> = ({
 
   const safeHorizontalInset = Math.max(insets.left, insets.right);
   const horizontalPadding = Math.max(16, safeHorizontalInset);
+
+  const { translateY, dragStripHandlers, headerPanHandlers } = useBottomSheetDragDismiss({
+    isVisible,
+    onClose,
+  });
 
   const [selectedGenres, setSelectedGenres] = React.useState<string[]>(() => {
     if (filters.genres && filters.genres.length > 0) return filters.genres;
@@ -262,7 +269,7 @@ export const FilterBottomSheet: React.FC<FilterBottomSheetProps> = ({
     <Modal
       visible={isVisible}
       transparent={true}
-      animationType="slide"
+      animationType="fade"
       onRequestClose={onClose}
       statusBarTranslucent={true}
     >
@@ -271,12 +278,13 @@ export const FilterBottomSheet: React.FC<FilterBottomSheetProps> = ({
           <View style={styles.backdrop} />
         </TouchableWithoutFeedback>
 
-        <View
+        <Animated.View
           style={[
             styles.container,
             {
               backgroundColor: theme.colors.card,
               borderColor: theme.colors.border,
+              transform: [{ translateY }],
               paddingLeft: horizontalPadding,
               paddingRight: horizontalPadding,
               paddingBottom: Math.max(24, insets.bottom + 12),
@@ -292,13 +300,13 @@ export const FilterBottomSheet: React.FC<FilterBottomSheetProps> = ({
             },
           ]}
         >
-          {/* Drag Handle Indicator */}
-          <View style={styles.dragIndicatorWrapper}>
+          {/* Striscia Drag Handle a tutta larghezza — zona di presa primaria per swipe-down */}
+          <View {...dragStripHandlers} style={styles.dragStripArea}>
             <View style={styles.dragIndicator} />
           </View>
 
           {/* Header Row */}
-          <View style={styles.header}>
+          <View {...headerPanHandlers} style={styles.header}>
             <View style={styles.headerTitleGroup}>
               <Ionicons name="filter-outline" size={18} color={theme.colors.primary} />
               <Text style={[styles.title, { color: theme.colors.text }]}>FILTRI DI RICERCA</Text>
@@ -508,7 +516,7 @@ export const FilterBottomSheet: React.FC<FilterBottomSheetProps> = ({
               <Text style={[styles.applyBtnText, { color: primaryContrast }]}>APPLICA FILTRI</Text>
             </Pressable>
           </View>
-        </View>
+        </Animated.View>
       </View>
     </Modal>
   );
@@ -534,10 +542,12 @@ const styles = StyleSheet.create({
     maxWidth: 680,
     alignSelf: 'center',
   },
-  dragIndicatorWrapper: {
+  dragStripArea: {
+    width: '100%',
+    minHeight: 44,
     alignItems: 'center',
-    paddingVertical: 4,
-    marginBottom: 6,
+    justifyContent: 'center',
+    paddingVertical: 10,
   },
   dragIndicator: {
     width: 38,

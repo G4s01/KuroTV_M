@@ -53,7 +53,9 @@ export default function DownloadsScreen() {
     visible: boolean;
     title: string;
     message: string;
+    icon?: keyof typeof Ionicons.glyphMap;
     confirmText: string;
+    cancelText?: string;
     onConfirm: () => void;
   }>({
     visible: false,
@@ -62,6 +64,12 @@ export default function DownloadsScreen() {
     confirmText: 'CONFERMA',
     onConfirm: () => {},
   });
+
+  useEffect(() => {
+    if (isSheetVisible && !selectedGroup) {
+      setIsSheetVisible(false);
+    }
+  }, [isSheetVisible, selectedGroup]);
 
   // Refresh storage info
   const refreshStorage = useCallback(() => {
@@ -195,9 +203,29 @@ export default function DownloadsScreen() {
       visible: true,
       title: 'ANNULLA DOWNLOAD',
       message: 'ANNULLARE IL DOWNLOAD DI QUESTO EPISODIO?',
-      confirmText: 'ANNULLA',
+      icon: 'close-circle-outline',
+      confirmText: 'ANNULLA EPISODIO',
+      cancelText: 'INDIETRO',
       onConfirm: () => {
         DownloadService.cancelDownload(id);
+      },
+    });
+  }, []);
+
+  const handleCancelGroup = useCallback((group: ActiveAnimeDownloadGroup) => {
+    const count = group.items.length;
+    setConfirmConfig({
+      visible: true,
+      title: 'ANNULLA DOWNLOAD',
+      message:
+        count === 1
+          ? `ANNULLARE IL DOWNLOAD IN CORSO DI ${group.animeTitle.toUpperCase()}?`
+          : `ANNULLARE TUTTI I ${count} EPISODI IN DOWNLOAD DI ${group.animeTitle.toUpperCase()}?`,
+      icon: 'close-circle-outline',
+      confirmText: count === 1 ? 'ANNULLA' : 'ANNULLA TUTTI',
+      cancelText: 'INDIETRO',
+      onConfirm: () => {
+        DownloadService.cancelAnimeDownloads(group.animeId);
       },
     });
   }, []);
@@ -492,6 +520,7 @@ export default function DownloadsScreen() {
                   onPause={handlePause}
                   onResume={handleResume}
                   onCancel={handleCancel}
+                  onCancelGroup={handleCancelGroup}
                 />
               );
             })}
@@ -513,7 +542,9 @@ export default function DownloadsScreen() {
         visible={confirmConfig.visible}
         title={confirmConfig.title}
         message={confirmConfig.message}
+        icon={confirmConfig.icon}
         confirmText={confirmConfig.confirmText}
+        cancelText={confirmConfig.cancelText}
         onConfirm={() => {
           confirmConfig.onConfirm();
           setConfirmConfig((prev) => ({ ...prev, visible: false }));

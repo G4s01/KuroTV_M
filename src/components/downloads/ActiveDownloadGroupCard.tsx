@@ -26,6 +26,7 @@ export interface ActiveDownloadGroupCardProps {
   onPause: (id: string) => void;
   onResume: (id: string) => void;
   onCancel: (id: string) => void;
+  onCancelGroup: (group: ActiveAnimeDownloadGroup) => void;
 }
 
 function getCompactStatusInfo(
@@ -71,6 +72,7 @@ export const ActiveDownloadGroupCard = React.memo<ActiveDownloadGroupCardProps>(
     onPause,
     onResume,
     onCancel,
+    onCancelGroup,
   }) {
     const { theme } = useTheme();
     const [isQueueExpanded, setIsQueueExpanded] = React.useState(false);
@@ -106,7 +108,7 @@ export const ActiveDownloadGroupCard = React.memo<ActiveDownloadGroupCardProps>(
       <View style={styles.activeGroupContainer}>
         {/* Header espandibile serie quando ci sono più anime in coda/download */}
         {hasMultipleSeries && (
-          <Pressable
+          <View
             style={[
               styles.seriesAccordionHeader,
               {
@@ -116,59 +118,80 @@ export const ActiveDownloadGroupCard = React.memo<ActiveDownloadGroupCardProps>(
                   : theme.colors.border,
               },
             ]}
-            onPress={() => {
-              Haptics.selectionAsync().catch(() => {});
-              onToggleSeriesExpand(group.animeId);
-            }}
-            accessibilityRole="button"
-            accessibilityState={{ expanded: isSeriesExpanded }}
-            accessibilityLabel={`${isSeriesExpanded ? 'COMPRIMI' : 'ESPANDI'} DOWNLOAD DI ${group.animeTitle}`}
           >
-            <Image
-              source={
-                group.animeThumbnail ? { uri: group.animeThumbnail } : undefined
-              }
-              style={styles.seriesAccordionPoster}
-              contentFit="cover"
-              recyclingKey={`${group.animeId}-active-hdr`}
-            />
-
-            <View style={styles.seriesAccordionMeta}>
-              <Text
-                style={[styles.seriesAccordionTitle, { color: theme.colors.text }]}
-                numberOfLines={1}
-                ellipsizeMode="tail"
-              >
-                {group.animeTitle}
-              </Text>
-              <Text
-                style={[
-                  styles.seriesAccordionSub,
-                  {
-                    color: group.hasDownloading
-                      ? theme.colors.primary
-                      : theme.colors.textSecondary,
-                  },
-                ]}
-                numberOfLines={1}
-                ellipsizeMode="tail"
-              >
-                {seriesSummary}
-              </Text>
-            </View>
-
-            <View style={styles.seriesChevronBox}>
-              <Ionicons
-                name={isSeriesExpanded ? 'chevron-up' : 'chevron-down'}
-                size={18}
-                color={
-                  group.hasDownloading
-                    ? theme.colors.primary
-                    : theme.colors.textMuted
+            <Pressable
+              style={styles.seriesAccordionToggleArea}
+              onPress={() => {
+                Haptics.selectionAsync().catch(() => {});
+                onToggleSeriesExpand(group.animeId);
+              }}
+              accessibilityRole="button"
+              accessibilityState={{ expanded: isSeriesExpanded }}
+              accessibilityLabel={`${isSeriesExpanded ? 'COMPRIMI' : 'ESPANDI'} DOWNLOAD DI ${group.animeTitle}`}
+            >
+              <Image
+                source={
+                  group.animeThumbnail ? { uri: group.animeThumbnail } : undefined
                 }
+                style={styles.seriesAccordionPoster}
+                contentFit="cover"
+                recyclingKey={`${group.animeId}-active-hdr`}
               />
-            </View>
-          </Pressable>
+
+              <View style={styles.seriesAccordionMeta}>
+                <Text
+                  style={[styles.seriesAccordionTitle, { color: theme.colors.text }]}
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
+                >
+                  {group.animeTitle}
+                </Text>
+                <Text
+                  style={[
+                    styles.seriesAccordionSub,
+                    {
+                      color: group.hasDownloading
+                        ? theme.colors.primary
+                        : theme.colors.textSecondary,
+                    },
+                  ]}
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
+                >
+                  {seriesSummary}
+                </Text>
+              </View>
+
+              <View style={styles.seriesChevronBox}>
+                <Ionicons
+                  name={isSeriesExpanded ? 'chevron-up' : 'chevron-down'}
+                  size={18}
+                  color={
+                    group.hasDownloading
+                      ? theme.colors.primary
+                      : theme.colors.textMuted
+                  }
+                />
+              </View>
+            </Pressable>
+
+            <Pressable
+              style={styles.seriesCancelGroupBtn}
+              onPress={() => {
+                Haptics.selectionAsync().catch(() => {});
+                onCancelGroup(group);
+              }}
+              hitSlop={6}
+              accessibilityRole="button"
+              accessibilityLabel={`ANNULLA TUTTI I ${group.items.length} EPISODI IN DOWNLOAD DI ${group.animeTitle}`}
+            >
+              <Ionicons
+                name="close-circle-outline"
+                size={20}
+                color={theme.colors.error}
+              />
+            </Pressable>
+          </View>
         )}
 
         {/* Corpo visibile quando la serie è espansa o è l'unica in download */}
@@ -227,6 +250,38 @@ export const ActiveDownloadGroupCard = React.memo<ActiveDownloadGroupCardProps>(
                     size={16}
                     color={theme.colors.textMuted}
                   />
+                </Pressable>
+
+                <Pressable
+                  style={[
+                    styles.cancelGroupBtn,
+                    {
+                      backgroundColor: theme.colors.card,
+                      borderColor: theme.colors.border,
+                    },
+                  ]}
+                  onPress={() => {
+                    Haptics.selectionAsync().catch(() => {});
+                    onCancelGroup(group);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`ANNULLA TUTTI I ${group.items.length} EPISODI IN DOWNLOAD DI ${group.animeTitle}`}
+                >
+                  <Ionicons
+                    name="close-circle-outline"
+                    size={16}
+                    color={theme.colors.error}
+                  />
+                  <Text
+                    style={[
+                      styles.cancelGroupBtnText,
+                      { color: theme.colors.error },
+                    ]}
+                    numberOfLines={1}
+                    ellipsizeMode="tail"
+                  >
+                    ANNULLA TUTTI ({group.items.length} EP.)
+                  </Text>
                 </Pressable>
 
                 {isQueueExpanded && (

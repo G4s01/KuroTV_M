@@ -292,7 +292,7 @@ export const DownloadOptionsSheet: React.FC<DownloadOptionsSheetProps> = ({
     <Modal
       visible={isVisible}
       transparent={true}
-      animationType="slide"
+      animationType="fade"
       onRequestClose={() => {
         if (step !== 'menu') {
           Keyboard.dismiss();

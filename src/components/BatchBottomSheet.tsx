@@ -76,7 +76,7 @@ export const BatchBottomSheet: React.FC<BatchBottomSheetProps> = ({
     <Modal
       visible={isVisible}
       transparent={true}
-      animationType="slide"
+      animationType="fade"
       onRequestClose={onClose}
       statusBarTranslucent={true}
     >

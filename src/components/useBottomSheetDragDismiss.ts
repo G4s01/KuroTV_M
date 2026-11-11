@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   Animated,
+  Dimensions,
   PanResponder,
   type PanResponderGestureState,
 } from 'react-native';
@@ -34,17 +35,38 @@ export function useBottomSheetDragDismiss({
   velocityThreshold = 0.4,
 }: UseBottomSheetDragDismissOptions) {
   const translateY = React.useRef(new Animated.Value(0)).current;
+  const onCloseRef = React.useRef(onClose);
+  const isVisibleRef = React.useRef(isVisible);
+  const wasVisibleRef = React.useRef(false);
+  const isDismissingRef = React.useRef(false);
 
-  // Reset vertical offset whenever sheet visibility changes
-  React.useEffect(() => {
+  onCloseRef.current = onClose;
+  isVisibleRef.current = isVisible;
+
+  const useSyncLayoutEffect =
+    typeof window !== 'undefined' ? React.useLayoutEffect : React.useEffect;
+
+  // Reset vertical offset synchronously only when the sheet transitions to visible.
+  // Keeping translateY off-screen after a swipe-down dismiss avoids the snap-back
+  // glitch before Modal completes its native close transition.
+  useSyncLayoutEffect(() => {
     if (isVisible) {
-      translateY.setValue(0);
+      if (!wasVisibleRef.current) {
+        wasVisibleRef.current = true;
+        isDismissingRef.current = false;
+        translateY.stopAnimation?.();
+        translateY.setValue(0);
+      }
+    } else {
+      wasVisibleRef.current = false;
+      isDismissingRef.current = false;
     }
   }, [isVisible, translateY]);
 
   // Shared move/release/terminate handlers
   const handleMove = React.useCallback(
     (_: any, gesture: PanResponderGestureState) => {
+      if (isDismissingRef.current) return;
       if (gesture.dy > 0) {
         translateY.setValue(gesture.dy);
       } else {
@@ -57,18 +79,24 @@ export function useBottomSheetDragDismiss({
 
   const handleRelease = React.useCallback(
     (_: any, gesture: PanResponderGestureState) => {
+      if (isDismissingRef.current) return;
+
       if (
         gesture.dy > dismissThreshold ||
         (gesture.dy > 25 && gesture.vy > velocityThreshold)
       ) {
+        isDismissingRef.current = true;
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+        const windowHeight = Dimensions.get('window').height || 800;
+        const dismissTarget = Math.max(windowHeight, 800);
         Animated.timing(translateY, {
-          toValue: 600,
+          toValue: dismissTarget,
           duration: 180,
           useNativeDriver: true,
         }).start(() => {
-          onClose();
-          translateY.setValue(0);
+          if (isDismissingRef.current && isVisibleRef.current) {
+            onCloseRef.current();
+          }
         });
       } else {
         Animated.spring(translateY, {
@@ -78,10 +106,11 @@ export function useBottomSheetDragDismiss({
         }).start();
       }
     },
-    [onClose, dismissThreshold, velocityThreshold, translateY]
+    [dismissThreshold, velocityThreshold, translateY]
   );
 
   const handleTerminate = React.useCallback(() => {
+    if (isDismissingRef.current) return;
     Animated.spring(translateY, {
       toValue: 0,
       useNativeDriver: true,
@@ -89,6 +118,7 @@ export function useBottomSheetDragDismiss({
   }, [translateY]);
 
   const handleGrant = React.useCallback(() => {
+    if (isDismissingRef.current) return;
     translateY.stopAnimation?.();
   }, [translateY]);
 
@@ -98,8 +128,8 @@ export function useBottomSheetDragDismiss({
    */
   const dragStripResponder = React.useMemo(() => {
     return PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
+      onStartShouldSetPanResponder: () => !isDismissingRef.current,
+      onMoveShouldSetPanResponder: () => !isDismissingRef.current,
       onPanResponderGrant: handleGrant,
       onPanResponderMove: handleMove,
       onPanResponderRelease: handleRelease,
@@ -116,11 +146,19 @@ export function useBottomSheetDragDismiss({
     return PanResponder.create({
       onStartShouldSetPanResponder: () => false,
       onMoveShouldSetPanResponder: (_, gesture: PanResponderGestureState) => {
-        return gesture.dy > 4 && Math.abs(gesture.dy) > Math.abs(gesture.dx) * 1.2;
+        return (
+          !isDismissingRef.current &&
+          gesture.dy > 4 &&
+          Math.abs(gesture.dy) > Math.abs(gesture.dx) * 1.2
+        );
       },
       // Fase di cattura: intercetta PRIMA dei figli se la gesture è verticale netta
       onMoveShouldSetPanResponderCapture: (_, gesture: PanResponderGestureState) => {
-        return gesture.dy > 8 && Math.abs(gesture.dy) > Math.abs(gesture.dx) * 1.5;
+        return (
+          !isDismissingRef.current &&
+          gesture.dy > 8 &&
+          Math.abs(gesture.dy) > Math.abs(gesture.dx) * 1.5
+        );
       },
       onPanResponderGrant: handleGrant,
       onPanResponderMove: handleMove,

@@ -2176,6 +2176,11 @@ assert(hookSource.includes('PanResponder.create'), 'useBottomSheetDragDismiss de
 assert(hookSource.includes('useNativeDriver: true'), 'useBottomSheetDragDismiss deve animare su driver nativo a 60/120 FPS');
 assert(hookSource.includes('translateY'), 'useBottomSheetDragDismiss deve esporre translateY');
 assert(hookSource.includes('panHandlers'), 'useBottomSheetDragDismiss deve esporre i panHandlers');
+assert(hookSource.includes('isDismissingRef'), 'useBottomSheetDragDismiss deve proteggere lo stato di chiusura con isDismissingRef');
+assert(
+  !hookSource.includes('onClose();\n          translateY.setValue(0)'),
+  'useBottomSheetDragDismiss non deve resettare translateY a 0 dopo onClose per evitare il rimbalzo prima della chiusura del Modal'
+);
 
 // 2. Verifica Integrazione in ServerBottomSheet.tsx (Opzioni di Riproduzione)
 const serverSheetSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/ServerBottomSheet.tsx'), 'utf-8');
@@ -2183,6 +2188,7 @@ assert(serverSheetSource.includes('useBottomSheetDragDismiss'), 'ServerBottomShe
 assert(serverSheetSource.includes('Animated.View'), 'ServerBottomSheet container deve essere un Animated.View');
 assert(serverSheetSource.includes('transform: [{ translateY }]'), 'ServerBottomSheet deve applicare translateY');
 assert(serverSheetSource.includes('dragStripArea'), 'ServerBottomSheet deve applicare panHandlers all area intestazione dragStripArea');
+assert(serverSheetSource.includes('animationType="fade"'), 'ServerBottomSheet deve usare animationType="fade" per evitare doppio slide-out nativo Android');
 
 // 3. Verifica Integrazione in PlayerInfoSheet.tsx (Scheda Informazioni)
 const playerInfoSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/player/PlayerInfoSheet.tsx'), 'utf-8');
@@ -2190,6 +2196,7 @@ assert(playerInfoSource.includes('useBottomSheetDragDismiss'), 'PlayerInfoSheet 
 assert(playerInfoSource.includes('Animated.View'), 'PlayerInfoSheet container deve essere un Animated.View');
 assert(playerInfoSource.includes('transform: [{ translateY }]'), 'PlayerInfoSheet deve applicare translateY');
 assert(playerInfoSource.includes('dragStripArea'), 'PlayerInfoSheet deve applicare panHandlers all area intestazione dragStripArea');
+assert(playerInfoSource.includes('animationType="fade"'), 'PlayerInfoSheet deve usare animationType="fade" per evitare doppio slide-out nativo Android');
 
 // 4. Verifica Integrazione in PlayerEpisodesCarouselSheet.tsx (Carosello Episodi)
 const carouselSheetSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/player/PlayerEpisodesCarouselSheet.tsx'), 'utf-8');
@@ -2197,6 +2204,16 @@ assert(carouselSheetSource.includes('useBottomSheetDragDismiss'), 'PlayerEpisode
 assert(carouselSheetSource.includes('Animated.View'), 'PlayerEpisodesCarouselSheet container deve essere un Animated.View');
 assert(carouselSheetSource.includes('transform: [{ translateY }]'), 'PlayerEpisodesCarouselSheet deve applicare translateY');
 assert(carouselSheetSource.includes('dragStripArea'), 'PlayerEpisodesCarouselSheet deve applicare panHandlers all area intestazione dragStripArea');
+assert(carouselSheetSource.includes('animationType="fade"'), 'PlayerEpisodesCarouselSheet deve usare animationType="fade" per evitare doppio slide-out nativo Android');
+
+// 5. Verifica animationType="fade" anche su BatchBottomSheet, DownloadOptionsSheet e FilterBottomSheet
+const batchModalSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/BatchBottomSheet.tsx'), 'utf-8');
+assert(batchModalSource.includes('animationType="fade"'), 'BatchBottomSheet deve usare animationType="fade" per evitare doppio slide-out');
+const downloadOptionsModalSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/anime/DownloadOptionsSheet.tsx'), 'utf-8');
+assert(downloadOptionsModalSource.includes('animationType="fade"'), 'DownloadOptionsSheet deve usare animationType="fade" per evitare doppio slide-out');
+const filterDragSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/FilterBottomSheet.tsx'), 'utf-8');
+assert(filterDragSource.includes('useBottomSheetDragDismiss'), 'FilterBottomSheet deve integrare useBottomSheetDragDismiss');
+assert(filterDragSource.includes('animationType="fade"'), 'FilterBottomSheet deve usare animationType="fade"');
 
 console.log('✓ Chiusura Menù Player Tramite Scorrimento (Swipe-Down Dismiss) verificata con successo.');
 
@@ -2359,6 +2376,7 @@ assert(typeof DownloadService.startBatchDownload === 'function', 'DownloadServic
 assert(typeof DownloadService.pauseDownload === 'function', 'DownloadService.pauseDownload deve essere una funzione');
 assert(typeof DownloadService.resumeDownload === 'function', 'DownloadService.resumeDownload deve essere una funzione');
 assert(typeof DownloadService.cancelDownload === 'function', 'DownloadService.cancelDownload deve essere una funzione');
+assert(typeof DownloadService.cancelAnimeDownloads === 'function', 'DownloadService.cancelAnimeDownloads deve essere una funzione');
 assert(typeof DownloadService.deleteDownload === 'function', 'DownloadService.deleteDownload deve essere una funzione');
 assert(typeof DownloadService.deleteAnimeDownloads === 'function', 'DownloadService.deleteAnimeDownloads deve essere una funzione');
 assert(typeof DownloadService.clearAllDownloads === 'function', 'DownloadService.clearAllDownloads deve essere una funzione');
@@ -2424,8 +2442,29 @@ assert.strictEqual(
   'Dopo cancelDownload lo stato episodio deve tornare a none'
 );
 
+// Verifica annullamento intero raggruppamento download di una serie (cancelAnimeDownloads)
+const batchCancelAnime = { id: 'boruto-batch-cancel', title: 'Boruto Test', thumbnail: 'https://example.com/boruto.jpg' };
+const otherSeriesAnime = { id: 'other-series-keep', title: 'Other Series', thumbnail: 'https://example.com/other.jpg' };
+const batchCancelEps = [
+  { id: 'b-ep-1', number: 1, title: 'Episodio 1', dataId: 'b1', remoteUrl: 'https://example.com/b1.mp4' },
+  { id: 'b-ep-2', number: 2, title: 'Episodio 2', dataId: 'b2', remoteUrl: 'https://example.com/b2.mp4' },
+  { id: 'b-ep-3', number: 3, title: 'Episodio 3', dataId: 'b3', remoteUrl: 'https://example.com/b3.mp4' },
+];
+const otherSeriesEp = { id: 'o-ep-1', number: 1, title: 'Episodio 1', dataId: 'o1', remoteUrl: 'https://example.com/o1.mp4' };
+
+await DownloadService.startBatchDownload(batchCancelAnime, batchCancelEps as any);
+await DownloadService.startDownload(otherSeriesAnime, otherSeriesEp as any);
+const cancelledGroupCount = await DownloadService.cancelAnimeDownloads('boruto-batch-cancel');
+assert.strictEqual(cancelledGroupCount, 3, 'cancelAnimeDownloads deve annullare tutti e 3 gli episodi in download/coda della serie');
+assert.strictEqual(DownloadService.getEpisodeDownloadStatus('boruto-batch-cancel', 1), 'none');
+assert.strictEqual(DownloadService.getEpisodeDownloadStatus('boruto-batch-cancel', 2), 'none');
+assert.strictEqual(DownloadService.getEpisodeDownloadStatus('boruto-batch-cancel', 3), 'none');
+assert(DownloadService.getDownloadItem('other-series-keep-ep-1') !== undefined, 'cancelAnimeDownloads non deve annullare episodi di altre serie');
+await DownloadService.cancelDownload('other-series-keep-ep-1');
+
 const downloadServiceSource = fs.readFileSync(path.resolve(process.cwd(), 'src/services/downloads/download-service.ts'), 'utf-8');
 assert(downloadServiceSource.includes('cancelledItems') && downloadServiceSource.includes('pausedItems'), 'DownloadService deve tracciare interruzioni intenzionali con WeakSet dedicati');
+assert(downloadServiceSource.includes("item.animeId === animeId && item.status !== 'completed'"), 'cancelAnimeDownloads non deve eliminare episodi già completati della serie');
 
 // Verifica assenza Require Cycle su storage (app-storage.ts <- continue-watching-sync.ts <- index.ts)
 const storageIndexSource = fs.readFileSync(path.resolve(process.cwd(), 'src/services/storage/index.ts'), 'utf-8');
@@ -2502,9 +2541,11 @@ assert(
 );
 assert(downloadsScreenSource.includes('ActiveDownloadGroupCard'), 'Rotta SCARICATI deve usare ActiveDownloadGroupCard per raggruppare ed espandere serie/episodi in coda');
 assert(downloadsScreenSource.includes('aDownloading !== bDownloading'), 'Rotta SCARICATI deve mantenere sempre in cima l episodio in downloading prima dell ordine crescente');
+assert(downloadsScreenSource.includes('handleCancelGroup') && downloadsScreenSource.includes('cancelAnimeDownloads'), 'Rotta SCARICATI deve permettere annullamento dell intero gruppo in download tramite ConfirmModal');
 
 const activeGroupSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/downloads/ActiveDownloadGroupCard.tsx'), 'utf-8');
 assert(activeGroupSource.includes('isQueueExpanded') && activeGroupSource.includes('EPISODI IN CODA'), 'ActiveDownloadGroupCard deve racchiudere gli episodi in coda multipli in un elemento espandibile');
+assert(activeGroupSource.includes('onCancelGroup') && activeGroupSource.includes('ANNULLA TUTTI'), 'ActiveDownloadGroupCard deve esporre il comando ANNULLA TUTTI per annullare l intero raggruppamento di episodi');
 
 const playerOfflineSource = fs.readFileSync(path.resolve(process.cwd(), 'app/player/[id].tsx'), 'utf-8');
 assert(playerOfflineSource.includes('resolvePlayableLocalUri'), 'VideoPlayer deve verificare effettiva esistenza/integrità del file locale tramite resolvePlayableLocalUri');

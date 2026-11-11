@@ -63,7 +63,7 @@ export const ServerBottomSheet: React.FC<ServerBottomSheetProps> = ({
     <Modal
       visible={isVisible}
       transparent={true}
-      animationType="slide"
+      animationType="fade"
       onRequestClose={onClose}
       statusBarTranslucent={true}
     >

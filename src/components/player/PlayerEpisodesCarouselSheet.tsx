@@ -250,7 +250,7 @@ export const PlayerEpisodesCarouselSheet: React.FC<PlayerEpisodesCarouselSheetPr
     <Modal
       visible={isVisible}
       transparent={true}
-      animationType="slide"
+      animationType="fade"
       onRequestClose={onClose}
       statusBarTranslucent={true}
     >

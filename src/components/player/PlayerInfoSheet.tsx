@@ -81,7 +81,7 @@ export const PlayerInfoSheet: React.FC<PlayerInfoSheetProps> = React.memo(({
     <Modal
       visible={isVisible}
       transparent={true}
-      animationType="slide"
+      animationType="fade"
       onRequestClose={onClose}
       statusBarTranslucent={true}
     >

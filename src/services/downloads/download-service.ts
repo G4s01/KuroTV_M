@@ -542,6 +542,56 @@ class DownloadManager {
     this.processQueue().catch(() => {});
   }
 
+  /**
+   * Cancels all active, queued, paused, or errored downloads for a given anime
+   * without touching any already-completed episodes on disk.
+   */
+  public async cancelAnimeDownloads(animeId: string): Promise<number> {
+    const itemsToCancel = Array.from(this.items.values()).filter(
+      (item) => item.animeId === animeId && item.status !== 'completed'
+    );
+    if (itemsToCancel.length === 0) return 0;
+
+    let resumableToStop: FileSystem.DownloadResumable | null = null;
+    for (const item of itemsToCancel) {
+      this.cancelledItems.add(item);
+      this.pausedItems.delete(item);
+      if (this.activeDownloadId === item.id) {
+        resumableToStop = this.activeResumable;
+        this.activeDownloadId = null;
+        this.activeResumable = null;
+        this.activeExecutionToken = null;
+      }
+      this.items.delete(item.id);
+    }
+
+    this.saveCatalog();
+
+    if (resumableToStop) {
+      try {
+        await resumableToStop.pauseAsync();
+      } catch {
+        // Ignore expected pause/abort noise when native request is already settling
+      }
+    }
+
+    for (const item of itemsToCancel) {
+      try {
+        const info = await FileSystem.getInfoAsync(item.fileUri);
+        if (info.exists) {
+          await FileSystem.deleteAsync(item.fileUri, { idempotent: true });
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    this.processQueue().catch(() => {});
+
+    return itemsToCancel.length;
+  }
+
   public async deleteDownload(id: string): Promise<void> {
     const item = this.items.get(id);
     if (!item) return;
