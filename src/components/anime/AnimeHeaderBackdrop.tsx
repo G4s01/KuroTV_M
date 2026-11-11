@@ -36,7 +36,21 @@ export const AnimeHeaderBackdrop = React.memo<AnimeHeaderBackdropProps>(
   }) {
     const [isPosterLoaded, setIsPosterLoaded] = React.useState(false);
     const [isCoverExpanded, setIsCoverExpanded] = React.useState(false);
+    const loadedAnimeIdRef = React.useRef<string>(anime.id);
     const { height: windowHeight } = useWindowDimensions();
+
+    React.useEffect(() => {
+      if (loadedAnimeIdRef.current !== anime.id) {
+        loadedAnimeIdRef.current = anime.id;
+        setIsPosterLoaded(false);
+      }
+    }, [anime.id]);
+
+    const posterUri = anime.image || anime.thumbnail;
+    const posterSource = React.useMemo(
+      () => (posterUri ? { uri: posterUri } : undefined),
+      [posterUri]
+    );
 
     const primaryContrast = getContrastTextColor(theme.colors.primary);
 
@@ -72,10 +86,12 @@ export const AnimeHeaderBackdrop = React.memo<AnimeHeaderBackdropProps>(
                 />
               )}
               <Image
-                source={{ uri: anime.image || anime.thumbnail }}
+                source={posterSource}
                 style={styles.poster}
                 contentFit="cover"
-                transition={300}
+                cachePolicy="memory-disk"
+                recyclingKey={anime.id}
+                transition={200}
                 onLoad={() => setIsPosterLoaded(true)}
                 onError={() => setIsPosterLoaded(true)}
               />
@@ -239,9 +255,11 @@ export const AnimeHeaderBackdrop = React.memo<AnimeHeaderBackdropProps>(
               {/* Copertina in alta definizione contenuta nella Card */}
               <View style={styles.expandedImageWrapper}>
                 <Image
-                  source={{ uri: anime.image || anime.thumbnail }}
+                  source={posterSource}
                   style={styles.expandedImage}
                   contentFit="contain"
+                  cachePolicy="memory-disk"
+                  recyclingKey={`${anime.id}-expanded`}
                   transition={200}
                 />
               </View>

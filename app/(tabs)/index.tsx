@@ -52,6 +52,7 @@ import {
 } from '@/components/home';
 import { HomeScreenSkeleton, ExploreScreenSkeleton } from '@/components/skeleton';
 import { useResponsiveLayout } from '@/hooks';
+import { DownloadService } from '@/services/downloads';
 import type { AnimeItem, ContinueWatchingItem, SearchFilter } from '@/types';
 
 const HERO_HEIGHT = 320;
@@ -116,6 +117,18 @@ export default function HomeScreen() {
       setSearchHistoryList(AppStorage.getSearchHistory());
     }
   }, [isSearchActive]);
+
+  // Active downloads count badge in Home header
+  const [activeDownloadsCount, setActiveDownloadsCount] = React.useState<number>(() => {
+    return DownloadService.getActiveDownloadsCount();
+  });
+
+  React.useEffect(() => {
+    const unsub = DownloadService.addListListener(() => {
+      setActiveDownloadsCount(DownloadService.getActiveDownloadsCount());
+    });
+    return unsub;
+  }, []);
 
   React.useEffect(() => {
     const timer = setTimeout(() => {
@@ -664,6 +677,11 @@ export default function HomeScreen() {
           onSearchPress={() => {
             Haptics.selectionAsync().catch(() => {});
             setIsSearchActive(true);
+          }}
+          activeDownloadsCount={activeDownloadsCount}
+          onDownloadsPress={() => {
+            Haptics.selectionAsync().catch(() => {});
+            router.push('/downloads' as any);
           }}
         />
       )}

@@ -1,5 +1,5 @@
 import React from 'react';
-import { useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import {
   Text,
   View,
@@ -32,8 +32,10 @@ import {
   settingsStyles as styles,
   ThemeSettingsCard,
   SourceSettingsCard,
+  DownloadSettingsCard,
   QUICK_DOMAINS,
 } from '@/components/settings';
+import { DownloadService, type DownloadSettings, type StorageUsageInfo } from '@/services/downloads';
 import { scraperConfig } from '@/services/scraper/config';
 import {
   UpdaterService,
@@ -46,6 +48,7 @@ import { CURRENT_CHANGELOG, formatChangelog } from '@/constants/changelog';
 import { useResponsiveLayout } from '@/hooks';
 
 export default function SettingsScreen() {
+  const router = useRouter();
   const params = useLocalSearchParams<{ scrollTo?: string }>();
   const scrollViewRef = React.useRef<React.ElementRef<typeof ScrollView>>(null);
   const shouldScrollToUpdateRef = React.useRef(false);
@@ -103,6 +106,30 @@ export default function SettingsScreen() {
   });
   const [isClearHistoryConfirmOpen, setIsClearHistoryConfirmOpen] = React.useState(false);
   const [historyNotice, setHistoryNotice] = React.useState<string | null>(null);
+
+  // Download settings state
+  const [downloadSettings, setDownloadSettings] = React.useState<DownloadSettings>(() => {
+    return DownloadService.getSettings();
+  });
+  const [storageInfo, setStorageInfo] = React.useState<StorageUsageInfo>({
+    appDownloadsBytes: 0,
+    appDownloadsFormatted: '0 B',
+  });
+  const [isClearAllDownloadsConfirmOpen, setIsClearAllDownloadsConfirmOpen] = React.useState(false);
+
+  React.useEffect(() => {
+    DownloadService.getStorageUsage().then(setStorageInfo).catch(() => {});
+    const unsubSettings = DownloadService.addSettingsListener((s) => {
+      setDownloadSettings(s);
+    });
+    const unsubList = DownloadService.addListListener(() => {
+      DownloadService.getStorageUsage().then(setStorageInfo).catch(() => {});
+    });
+    return () => {
+      unsubSettings();
+      unsubList();
+    };
+  }, []);
 
   // AniSkip settings state
   const [aniSkipSettings, setAniSkipSettings] = React.useState<AniSkipSettings>(() => {
@@ -225,6 +252,18 @@ export default function SettingsScreen() {
     AppStorage.clearSearchHistory();
     setIsClearSearchHistoryConfirmOpen(false);
     showSearchHistoryNotice('CRONOLOGIA RICERCHE CANCELLATA CON SUCCESSO');
+  };
+
+  const handleChangeDownloadDirectory = async () => {
+    await DownloadService.requestCustomDirectoryPermissions();
+  };
+
+  const handleResetDownloadDirectory = () => {
+    DownloadService.setCustomDirectoryUri(null);
+  };
+
+  const handleToggleWifiOnly = (enabled: boolean) => {
+    DownloadService.setWifiOnly(enabled);
   };
 
   // OTA state (strictly in-app, zero native Alert dialogs)
@@ -392,11 +431,27 @@ export default function SettingsScreen() {
     }, 1500);
   }, []);
 
+  const downloadSectionYRef = React.useRef<number>(0);
+
+  const scrollToDownloadsSection = React.useCallback(() => {
+    setTimeout(() => {
+      if (downloadSectionYRef.current > 0) {
+        scrollViewRef.current?.scrollTo({ y: Math.max(0, downloadSectionYRef.current - 16), animated: true });
+      }
+    }, 100);
+    setTimeout(() => {
+      if (downloadSectionYRef.current > 0) {
+        scrollViewRef.current?.scrollTo({ y: Math.max(0, downloadSectionYRef.current - 16), animated: true });
+      }
+    }, 350);
+  }, []);
+
   // Handle auto-download from startup modal or pending update synchronization
   useFocusEffect(
     React.useCallback(() => {
       const isAuto = UpdateStore.isAutoDownloadRequested();
       const shouldScroll = isAuto || params.scrollTo === 'update';
+      const shouldScrollDownloads = params.scrollTo === 'downloads';
 
       if (isAuto) {
         UpdateStore.setAutoDownloadRequested(false);
@@ -415,10 +470,12 @@ export default function SettingsScreen() {
         }
       }
 
-      if (shouldScroll) {
+      if (shouldScrollDownloads) {
+        scrollToDownloadsSection();
+      } else if (shouldScroll) {
         scrollToUpdateSection();
       }
-    }, [handleStartDownloadUpdate, params.scrollTo, scrollToUpdateSection])
+    }, [handleStartDownloadUpdate, params.scrollTo, scrollToDownloadsSection, scrollToUpdateSection])
   );
 
   const handleCheckUpdates = async () => {
@@ -748,6 +805,23 @@ export default function SettingsScreen() {
           theme={theme}
         />
 
+        {/* DOWNLOAD & STORAGE */}
+        <View
+          onLayout={(e) => {
+            downloadSectionYRef.current = e.nativeEvent.layout.y;
+          }}
+        >
+          <DownloadSettingsCard
+            settings={downloadSettings}
+            storageInfo={storageInfo}
+            onChangeDirectory={handleChangeDownloadDirectory}
+            onResetDirectory={handleResetDownloadDirectory}
+            onToggleWifiOnly={handleToggleWifiOnly}
+            onClearAllDownloads={() => setIsClearAllDownloadsConfirmOpen(true)}
+            onOpenDownloadsScreen={() => router.push('/downloads' as any)}
+          />
+        </View>
+
         {/* INFORMAZIONI, CHANGELOG & UPDATER INTEGRATO */}
         <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
           <Text style={[styles.cardTitle, { color: theme.colors.text }]}>INFORMAZIONI</Text>
@@ -977,6 +1051,20 @@ export default function SettingsScreen() {
         confirmText="CANCELLA TUTTO"
         onConfirm={handleConfirmClearSearchHistory}
         onCancel={() => setIsClearSearchHistoryConfirmOpen(false)}
+      />
+
+      {/* Modal di Conferma Svuota Tutti i Download */}
+      <ConfirmModal
+        visible={isClearAllDownloadsConfirmOpen}
+        title="SVUOTA SCARICATI"
+        message="VUOI ELIMINARE TUTTI GLI EPISODI SCARICATI? L'OPERAZIONE NON È REVERSIBILE."
+        icon="trash-outline"
+        confirmText="SVUOTA"
+        onConfirm={() => {
+          DownloadService.clearAllDownloads();
+          setIsClearAllDownloadsConfirmOpen(false);
+        }}
+        onCancel={() => setIsClearAllDownloadsConfirmOpen(false)}
       />
     </View>
   );

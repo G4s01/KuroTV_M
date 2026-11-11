@@ -10,7 +10,9 @@ interface EpisodeItemProps {
   isCurrent?: boolean;
   progressPercent?: number;
   variant?: 'list' | 'grid';
+  downloadStatus?: 'none' | 'queued' | 'downloading' | 'paused' | 'completed' | 'error';
   onPress: () => void;
+  onDownloadPress?: () => void;
 }
 
 export const EpisodeItem: React.FC<EpisodeItemProps> = React.memo(({
@@ -18,7 +20,9 @@ export const EpisodeItem: React.FC<EpisodeItemProps> = React.memo(({
   isCurrent = false,
   progressPercent = 0,
   variant = 'list',
+  downloadStatus = 'none',
   onPress,
+  onDownloadPress,
 }) => {
   const { theme } = useTheme();
   const handlePress = () => {
@@ -53,6 +57,52 @@ export const EpisodeItem: React.FC<EpisodeItemProps> = React.memo(({
             </Text>
           )}
         </View>
+
+        {onDownloadPress && (
+          <Pressable
+            style={styles.gridDownloadBtn}
+            onPress={(e) => {
+              e.stopPropagation();
+              Haptics.selectionAsync().catch(() => {});
+              onDownloadPress();
+            }}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel={
+              downloadStatus === 'downloading' || downloadStatus === 'queued' || downloadStatus === 'paused'
+                ? `ANNULLA DOWNLOAD EPISODIO ${episode.number}`
+                : `SCARICA EPISODIO ${episode.number}`
+            }
+          >
+            {downloadStatus === 'completed' ? (
+              <Ionicons name="checkmark-circle" size={13} color={theme.colors.success || oledTheme.colors.success} />
+            ) : downloadStatus === 'downloading' ? (
+              <Ionicons
+                name="cloud-download"
+                size={13}
+                color={isCurrent ? getContrastTextColor(theme.colors.primary) : theme.colors.primary}
+              />
+            ) : downloadStatus === 'queued' ? (
+              <Ionicons
+                name="time-outline"
+                size={13}
+                color={isCurrent ? getContrastTextColor(theme.colors.primary) : theme.colors.warning || oledTheme.colors.warning}
+              />
+            ) : downloadStatus === 'paused' ? (
+              <Ionicons
+                name="pause-circle"
+                size={13}
+                color={isCurrent ? getContrastTextColor(theme.colors.primary) : theme.colors.warning || oledTheme.colors.warning}
+              />
+            ) : (
+              <Ionicons
+                name="cloud-download-outline"
+                size={13}
+                color={isCurrent ? getContrastTextColor(theme.colors.primary) : theme.colors.textMuted}
+              />
+            )}
+          </Pressable>
+        )}
 
         {progressPercent > 0 && !isCompleted && (
           <View style={styles.gridProgressTrack}>
@@ -123,11 +173,43 @@ export const EpisodeItem: React.FC<EpisodeItemProps> = React.memo(({
         </View>
       </View>
 
-      <Ionicons
-        name={isCurrent ? 'pause-circle-outline' : 'play-circle-outline'}
-        size={24}
-        color={isCurrent ? theme.colors.primary : theme.colors.textMuted}
-      />
+      <View style={styles.actionsRow}>
+        {onDownloadPress && (
+          <Pressable
+            style={styles.downloadBtn}
+            onPress={(e) => {
+              e.stopPropagation();
+              Haptics.selectionAsync().catch(() => {});
+              onDownloadPress();
+            }}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={
+              downloadStatus === 'downloading' || downloadStatus === 'queued' || downloadStatus === 'paused'
+                ? `ANNULLA DOWNLOAD EPISODIO ${episode.number}`
+                : `SCARICA EPISODIO ${episode.number}`
+            }
+          >
+            {downloadStatus === 'completed' ? (
+              <Ionicons name="checkmark-circle" size={20} color={theme.colors.success || oledTheme.colors.success} />
+            ) : downloadStatus === 'downloading' ? (
+              <Ionicons name="cloud-download" size={20} color={theme.colors.primary} />
+            ) : downloadStatus === 'queued' ? (
+              <Ionicons name="time-outline" size={20} color={theme.colors.warning || oledTheme.colors.warning} />
+            ) : downloadStatus === 'paused' ? (
+              <Ionicons name="pause-circle" size={20} color={theme.colors.warning || oledTheme.colors.warning} />
+            ) : (
+              <Ionicons name="cloud-download-outline" size={20} color={theme.colors.textMuted} />
+            )}
+          </Pressable>
+        )}
+
+        <Ionicons
+          name={isCurrent ? 'pause-circle-outline' : 'play-circle-outline'}
+          size={24}
+          color={isCurrent ? theme.colors.primary : theme.colors.textMuted}
+        />
+      </View>
 
       {progressPercent > 0 && (
         <View style={styles.progressTrack}>
@@ -233,6 +315,32 @@ const styles = StyleSheet.create({
     backgroundColor: oledTheme.colors.success,
   },
 
+  actionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  downloadBtn: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  gridDownloadBtn: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    width: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 2,
+  },
+  gridDownloadBadge: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+  },
   // Grid styles
   gridContainer: {
     flex: 1,

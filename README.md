@@ -23,7 +23,7 @@
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
 │  🎬 LIVE FRAME SCRUBBING  │  ⏭️ ANISKIP PROGRESS  │  🖤 OLED PURE BLACK │
-│  ⚡ MMKV ZERO LATENCY     │  📑 FLASHLIST CAROUSEL│  🚀 IN-APP OTA      │
+│  ⚡ MMKV ZERO LATENCY     │  📑 FLASHLIST CAROUSEL│  📥 OFFLINE & SAF   │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -70,6 +70,28 @@
 - **📑 Selettore Batch Touch-Native**: Bottom sheet modale basato su React Native `Modal` touch-safe, ripulito da contenuti correlati per garantire selezione istantanea ad ogni tocco e zero crash Fabric/Compose.
 - **🌐 Link Esterni con Icone SVG**: Pulsanti rapidi con icone SVG dedicate per Trailer YouTube, MAL e AniList.
 
+### 📥 Download Episodi, Storage SAF & Visione Offline
+- **⚡ Coda FIFO Sequenziale & Risoluzione Massima Automatica**: Download gestito dal singleton `DownloadService` con 1 download alla volta per azzerare rate limiting o saturazione di banda e rendere disponibile il primo episodio nel minor tempo possibile. Risoluzione automatica alla massima qualità disponibile (Server 9 a 1080p, con fallback a server secondari) senza modali bloccanti.
+- **📁 Storage Flessibile & Storage Access Framework (SAF)**:
+  - *Cartella Predefinita*: Memoria interna isolata (`${FileSystem.documentDirectory}downloads/${animeId}/ep_${num}.mp4`), con velocità massima I/O, zero permessi di runtime richiesti e totale immunità a cancellazioni da app terze.
+  - *Cartella Personalizzata (SAF)*: Possibilità di selezionare una qualsiasi cartella esterna (cartella di sistema *Download*, memoria utente o scheda MicroSD) tramite `StorageAccessFramework.requestDirectoryPermissionsAsync()` configurabile in Impostazioni con ripristino istantaneo alla cartella predefinita.
+- **📶 Protezione Rete Dati (Solo Wi-Fi)**: Opzione in Impostazioni per limitare i download esclusivamente a reti Wi-Fi non a consumo (verifica dinamica dello stato tramite `expo-network`).
+- **🎬 Integrazione Video Player & Riproduzione Offline Verificata**:
+  - Tasto download rapido nell'header OSD del player con feedback dinamico di avanzamento (`cloud-download-outline` -> percentuale progresso -> `checkmark-circle` verde a completamento).
+  - Priorità locale verificata su disco (`DownloadService.resolvePlayableLocalUri()`): avvio istantaneo da `SCARICATI` o dalle altre schermate con passaggio completo dei metadati (`animeId`, `episodeNumber`, progresso, copertina), resilienza ai path Expo Go e badge **`LOCALE / OFFLINE`** nell'header OSD.
+- **📋 Download da Intestazione Anime, Pre-Menù & Selezione Multi-Batch**:
+  - Pulsante download nell'intestazione della scheda anime accanto a Preferiti e Condivisione, che apre il modale `DownloadOptionsSheet` con chiusura swipe-down (`useBottomSheetDragDismiss`).
+  - Icona download interattiva su ogni episodio sia in vista griglia che lista con stato live. Premendo nuovamente sull'icona di un episodio in download, in coda o in pausa, l'operazione viene annullata all'istante in modo pulito.
+  - Pre-menù ordinato con scelta tra **`SCARICA TUTTI`**, **`SCARICA PER BATCH`** (con **selezione multipla** di più batch senza uscire dal modale e pulsante **`SCARICA BATCH`** adiacente) e **`INTERVALLO PERSONALIZZATO`** (`DA` – `A` con steppers `-`/`+` e input numerico), lasciando `BatchBottomSheet` dedicato alla sola navigazione tra gruppi di episodi (anch'esso con swipe-down dismiss).
+- **📱 Sezione Router `'SCARICATI'` (`app/downloads/index.tsx`)**:
+  - Schermata dedicata intitolata semplicemente **`SCARICATI`** con layout anti-overflow e protezione `minWidth: 0` su tutte le card.
+  - Scorciatoia impostazioni con navigazione e auto-scroll al punto esatto delle impostazioni di download in `app/(tabs)/settings.tsx`.
+  - Barra grafica di monitoraggio memoria (`StorageUsageBar`) con spazio occupato dai download dell'app e spazio libero sul dispositivo.
+  - **Prima sezione `EPISODI SALVATI`**: serie già completate raggruppate per anime (`DownloadedAnimeCard`) con locandina, conteggio puntate, peso in MB/GB, tasto rapido *"RIPRODUCI"* e modale swipe-down (`DownloadedEpisodesSheet`).
+  - **Seconda sezione `IN CORSO & IN CODA` espandibile (`ActiveDownloadGroupCard` & `ActiveDownloadCard`)**: serie attualmente in download sempre in cima (eventuali serie secondarie racchiuse in elementi espandibili); dentro ciascuna serie, episodio `downloading` in alto e restanti episodi ordinati per **numero crescente** e racchiusi in un pannello espandibile dedicato.
+- **🔔 Badge Notifica Download Attivi in Home**: Icona dedicata nell'header della Home con badge numerico dei download in corso e navigazione diretta a `/downloads`.
+- **⚙️ Card Impostazioni Minimale (`DownloadSettingsCard`)**: Testi essenziali e compatti (*`SCARICATI`*, *`PERCORSO`*, *`RETE`*, *`MEMORIA`*), selettore cartella SAF, toggle Wi-Fi e cancellazione rapida protetta da `ConfirmModal`.
+
 ### 🖤 Design System & Esperienza Touch
 - **Nero Assoluto OLED (`#000000`)**: Spegnimento fisico dei pixel sui display AMOLED per azzerare i consumi energetici e massimizzare il contrasto.
 - **Tipografia Monospace & CAPS LOCK**: Identità coerente su tutta l'app con font monospace di sistema e testi in maiuscolo.
@@ -103,6 +125,7 @@
 | **Video & Multimedialità** | **expo-video** & **ScreenOrientation** | Player HLS avanzato, PiP no-pause, MediaStyle notification e rotazione a 180° |
 | **Data Fetching** | **@tanstack/react-query v5** | Caching, deduplicazione e reattività |
 | **Local Storage** | **react-native-mmkv v3** | Key-value store sincrono C++ ad alta velocità |
+| **Download & Storage** | **expo-file-system** & **expo-network** | Download resumable, Storage Access Framework (SAF) e vincolo Wi-Fi |
 
 ---
 
@@ -115,11 +138,11 @@ cd KuroM
 npm install
 ```
 
-### 2. Test di Qualità (16 Stadi)
+### 2. Test di Qualità (21 Stadi)
 ```bash
 npm test
 ```
-*Valida SemVer, regole OLED, storage MMKV, batch puntate, intervalli AniSkip, skeleton animation, export delle rotte, touch sheets, updater, compatibilità navbar, gesture verticali, PiP no-pause, dimensioni sheets, AniSkipSlider, loader integrato, media notification, slider hero sincronizzato, parser upcoming, anti-corruzione titoli, palinsesto/schedule, affidabilità aggiornamenti manuali, cronologia ricerche Google-style, filtri multi-genere, audio e isolamento scraper.*
+*Valida SemVer, regole OLED, storage MMKV, batch puntate, intervalli AniSkip, skeleton animation, export delle rotte, touch sheets, updater, compatibilità navbar, gesture verticali, PiP no-pause, dimensioni sheets, AniSkipSlider, loader integrato, media notification, slider hero sincronizzato, parser upcoming, anti-corruzione titoli, palinsesto/schedule, affidabilità aggiornamenti manuali, cronologia ricerche Google-style, filtri multi-genere, audio, isolamento scraper, sincronizzazione focus raccomandati, simmetria filtri, swipe-down dismiss a doppia zona, stato IN PARI & sincronizzazione ibrida smart, supporto schermi larghi/tablet (sw600dp), left navigation rail, master-detail e sistema di download episodi con storage SAF & visione offline.*
 
 ### 3. Build & Verifica Bytecode Hermes
 ```bash

@@ -121,3 +121,19 @@ Per azzerare i blocchi dell'interfaccia utente durante la risoluzione e l'avvio 
      }
      ```
    - Questo previene unhandled promise rejections se l'utente cambia episodio velocemente o smonta il player prima del completamento dell'operazione.
+
+---
+
+## 📥 Download in Riproduzione & Visione Offline
+
+Il player video integra il supporto nativo alla visione offline e al download immediato della puntata in corso di visione:
+
+1. **Pulsante Download Rapido nell'Header OSD (`PlayerHeader.tsx`)**:
+   - Posizionato tra l'indicatore di qualità e il pulsante info, consente di accodare il download dell'episodio corrente con un singolo tocco.
+   - Mostra lo stato dinamico in tempo reale: icona `cloud-download-outline` se non scaricato, percentuale di avanzamento durante il download, spunta `checkmark-circle` verde a operazione completata.
+2. **Prioritizzazione Automatica del File Locale (Offline-First Playback)**:
+   - In `app/player/[id].tsx`, la funzione `loadStream` controlla prioritariamente se l'episodio è presente nella libreria locale (`DownloadService.isEpisodeDownloaded(animeId, episodeNum)`).
+   - Se il file è presente su disco, assegna istantaneamente la sorgente locale `file://` (`source = { uri: fileUri }`), bypassando interamente le chiamate di rete allo scraper e ai server di streaming.
+   - Azzeramento totale del tempo di caricamento (buffering a 0ms) e consumo nullo di traffico dati.
+3. **Badge OSD `LOCALE / OFFLINE`**:
+   - Quando l'episodio è riprodotto da disco, l'header OSD espone il badge visivo verde **`LOCALE / OFFLINE`**, informando l'utente dello stato di visione offline garantita anche in totale assenza di connessione internet.

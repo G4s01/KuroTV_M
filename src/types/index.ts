@@ -6,5 +6,5 @@ export type {
   ContinueWatchingItem,
   WatchProgressItem,
   SaveProgressPayload,
-} from '../services/storage';
+} from '../services/storage/app-storage';
 

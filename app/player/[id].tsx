@@ -27,6 +27,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { AnimeWorldScraper, ProviderRegistry } from '@/services/scraper';
 import { AniSkipService } from '@/services/aniskip';
 import { AppStorage } from '@/services/storage';
+import { DownloadService, type DownloadStatus } from '@/services/downloads';
 import { oledTheme, useTheme, getContrastTextColor } from '@/theme';
 import { AniSkipButton } from '@/components/AniSkipButton';
 import { PlayerSkeleton } from '@/components/skeleton';
@@ -59,11 +60,15 @@ export default function VideoPlayerScreen() {
     thumbnail?: string;
     position?: string;
     totalEpisodes?: string;
+    offline?: string;
+    localUri?: string;
+    episode?: string;
   }>();
 
   const episodeId = params.id || '';
   const animeId = params.animeId || '';
-  const episodeNumber = parseInt(params.episodeNumber || '1', 10);
+  const parsedEpNumber = parseInt(params.episodeNumber || params.episode || '1', 10);
+  const episodeNumber = Number.isFinite(parsedEpNumber) && parsedEpNumber > 0 ? parsedEpNumber : 1;
   const episodeDataId = params.episodeDataId || '';
   const animeTitle = params.animeTitle || 'Anime';
 
@@ -71,6 +76,44 @@ export default function VideoPlayerScreen() {
   const [videoUrl, setVideoUrl] = React.useState<string | null>(null);
   const [isLoadingSource, setIsLoadingSource] = React.useState(true);
   const [sourceError, setSourceError] = React.useState<string | null>(null);
+
+  // Offline and download status tracking
+  const [isOffline, setIsOffline] = React.useState<boolean>(() => {
+    return params.offline === '1' || DownloadService.isEpisodeDownloaded(animeId, episodeNumber);
+  });
+  const [downloadStatus, setDownloadStatus] = React.useState<DownloadStatus | 'none'>(() => {
+    return DownloadService.getEpisodeDownloadStatus(animeId, episodeNumber);
+  });
+  const [downloadProgress, setDownloadProgress] = React.useState<number>(() => {
+    const item = DownloadService.getDownloadItem(`${animeId}-ep-${episodeNumber}`);
+    return item ? item.progress : 0;
+  });
+
+  React.useEffect(() => {
+    const currentId = `${animeId}-ep-${episodeNumber}`;
+    setDownloadStatus(DownloadService.getEpisodeDownloadStatus(animeId, episodeNumber));
+    setIsOffline(params.offline === '1' || DownloadService.isEpisodeDownloaded(animeId, episodeNumber));
+
+    const unsubProgress = DownloadService.addProgressListener((item) => {
+      if (item.id === currentId) {
+        setDownloadStatus(item.status);
+        setDownloadProgress(item.progress);
+        if (item.status === 'completed') {
+          setIsOffline(true);
+        }
+      }
+    });
+
+    const unsubList = DownloadService.addListListener(() => {
+      setDownloadStatus(DownloadService.getEpisodeDownloadStatus(animeId, episodeNumber));
+      setIsOffline(params.offline === '1' || DownloadService.isEpisodeDownloaded(animeId, episodeNumber));
+    });
+
+    return () => {
+      unsubProgress();
+      unsubList();
+    };
+  }, [animeId, episodeNumber, params.offline]);
 
   // OSD controls
   const [showControls, setShowControls] = React.useState(true);
@@ -199,10 +242,11 @@ export default function VideoPlayerScreen() {
   const videoViewRef = React.useRef<VideoView>(null);
   const controlsTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Initialize video player with expo-video
+  // Initialize video player with null source so loadStream owns all replaceAsync calls
+  // without triggering duplicate source replacements or empty-URI native errors
   // staysActiveInBackground: false prevents persistent background playback when app or PiP is dismissed
   // showNowPlayingNotification: true provides notification shade playback controls on Android MediaSession
-  const player = useVideoPlayer(videoUrl || '', (p) => {
+  const player = useVideoPlayer(null, (p) => {
     p.loop = false;
     p.volume = 1.0;
     p.staysActiveInBackground = false;
@@ -314,6 +358,7 @@ export default function VideoPlayerScreen() {
 
   useEventListener(player, 'statusChange', ({ status, error }) => {
     if (status === 'readyToPlay') {
+      setSourceError(null);
       const dur = player.duration || durationRef.current;
       if (dur > 0) {
         setDuration(dur);
@@ -448,25 +493,42 @@ export default function VideoPlayerScreen() {
 
     try {
       let directUrl = '';
-      const targetEp = {
-        id: episodeId,
-        number: episodeNumber,
-        dataId: episodeDataId,
-      };
-      // Step 3: Resolve via ProviderRegistry with multi-provider fallback
-      const directSource = await ProviderRegistry.resolveVideoWithFallback(targetEp, serverId);
-      if (directSource?.url) {
-        directUrl = directSource.url;
-      }
+      let directHeaders: Record<string, string> | undefined;
+      const verifiedLocalUri = await DownloadService.resolvePlayableLocalUri(
+        animeId,
+        episodeNumber,
+        params.localUri
+      );
 
-      if (!directUrl && animeId) {
-        // Fallback to scraping episode directly from detail page
-        const detail = await AnimeWorldScraper.getAnimeDetail(animeId);
-        const ep = detail?.episodes?.find((e) => e.id === episodeId || e.number === episodeNumber);
-        if (ep) {
-          const direct = await ProviderRegistry.resolveVideoWithFallback(ep, serverId);
-          if (direct?.url) {
-            directUrl = direct.url;
+      if (verifiedLocalUri) {
+        setIsOffline(true);
+        directUrl = verifiedLocalUri;
+      } else {
+        setIsOffline(false);
+        const targetEp = {
+          id: episodeId,
+          number: episodeNumber,
+          dataId: episodeDataId,
+        };
+        // Step 3: Resolve via ProviderRegistry with multi-provider fallback (when online identifiers exist)
+        if (episodeDataId || (episodeId && !episodeId.endsWith(`-ep-${episodeNumber}`))) {
+          const directSource = await ProviderRegistry.resolveVideoWithFallback(targetEp, serverId);
+          if (directSource?.url) {
+            directUrl = directSource.url;
+            directHeaders = directSource.headers;
+          }
+        }
+
+        if (!directUrl && animeId) {
+          // Fallback to scraping episode directly from detail page
+          const detail = await AnimeWorldScraper.getAnimeDetail(animeId);
+          const ep = detail?.episodes?.find((e) => e.id === episodeId || e.number === episodeNumber);
+          if (ep) {
+            const direct = await ProviderRegistry.resolveVideoWithFallback(ep, serverId);
+            if (direct?.url) {
+              directUrl = direct.url;
+              directHeaders = direct.headers;
+            }
           }
         }
       }
@@ -477,20 +539,31 @@ export default function VideoPlayerScreen() {
           ? `${animeTitle} - EPISODIO ${episodeNumber}`
           : `EPISODIO ${episodeNumber}`;
         const artworkUri = thumbnailRef.current || thumbnail || animeDetail?.image || animeDetail?.thumbnail || undefined;
+        const isLocalSource = directUrl.startsWith('file://') || directUrl.startsWith('content://');
         const videoSource = {
           uri: directUrl,
+          ...( !isLocalSource && directHeaders && Object.keys(directHeaders).length > 0
+            ? { headers: directHeaders }
+            : {}),
           metadata: {
             title: formattedTitle,
             artist: animeTitle ? String(animeTitle).toUpperCase() : 'KURO MOBILE',
             artwork: artworkUri,
           },
         };
-        if (typeof player.replaceAsync === 'function') {
-          await player.replaceAsync(videoSource).catch((err) => {
-            console.warn('[VideoPlayer] replaceAsync error:', err);
-          });
-        } else {
-          player.replace(videoSource);
+        try {
+          if (typeof player.replaceAsync === 'function') {
+            await player.replaceAsync(videoSource);
+          } else {
+            player.replace(videoSource);
+          }
+        } catch (replaceErr: any) {
+          console.warn('[VideoPlayer] replaceAsync error:', replaceErr);
+          setVideoUrl(null);
+          setSourceError(
+            (replaceErr?.message || 'ERRORE DURANTE IL CARICAMENTO DEL VIDEO.').toUpperCase()
+          );
+          return;
         }
         player.playbackRate = playbackSpeedRef.current;
         player.showNowPlayingNotification = true;
@@ -501,14 +574,22 @@ export default function VideoPlayerScreen() {
           currentTimeRef.current = initialResumePosition;
         }
       } else {
-        setSourceError('NESSUN FLUSSO VIDEO TROVATO. RIPROVA TRA POCHI SECONDI.');
+        setSourceError(
+          params.offline === '1'
+            ? "FILE OFFLINE NON TROVATO O DANNEGGIATO. SCARICA DI NUOVO L'EPISODIO."
+            : 'NESSUN FLUSSO VIDEO TROVATO. RIPROVA TRA POCHI SECONDI.'
+        );
       }
     } catch (err: any) {
-      setSourceError((err.message || 'ERRORE DURANTE LA RISOLUZIONE DEL VIDEO.').toUpperCase());
+      if (params.offline === '1') {
+        setSourceError("FILE OFFLINE NON TROVATO O DANNEGGIATO. SCARICA DI NUOVO L'EPISODIO.");
+      } else {
+        setSourceError((err.message || 'ERRORE DURANTE LA RISOLUZIONE DEL VIDEO.').toUpperCase());
+      }
     } finally {
       setIsLoadingSource(false);
     }
-  }, [episodeId, episodeNumber, episodeDataId, serverId, animeId, player, initialResumePosition]);
+  }, [episodeId, episodeNumber, episodeDataId, serverId, animeId, player, initialResumePosition, params.localUri, params.offline]);
 
   React.useEffect(() => {
     loadStream();
@@ -923,6 +1004,31 @@ export default function VideoPlayerScreen() {
   // Combine Pan and Taps
   const composedGestures = Gesture.Race(panGesture, tapGestures);
 
+  const handleDownloadPress = React.useCallback(() => {
+    if (downloadStatus === 'completed') {
+      Haptics.selectionAsync().catch(() => {});
+      return;
+    }
+    if (downloadStatus === 'downloading') {
+      DownloadService.pauseDownload(`${animeId}-ep-${episodeNumber}`);
+      return;
+    }
+    if (downloadStatus === 'paused') {
+      DownloadService.resumeDownload(`${animeId}-ep-${episodeNumber}`);
+      return;
+    }
+    DownloadService.startDownload(
+      { id: animeId, title: animeTitle, thumbnail: thumbnailRef.current || thumbnail },
+      {
+        id: episodeId,
+        number: episodeNumber,
+        title: `Episodio ${episodeNumber}`,
+        dataId: episodeDataId,
+        servers: [],
+      }
+    );
+  }, [downloadStatus, animeId, episodeNumber, animeTitle, thumbnail, episodeId, episodeDataId]);
+
   return (
     <View style={styles.root}>
       <StatusBar hidden={true} />
@@ -940,7 +1046,7 @@ export default function VideoPlayerScreen() {
 
       {/* Video Content & Interaction Area */}
       <View style={styles.videoContainer}>
-        {videoUrl ? (
+        {videoUrl && !sourceError ? (
           <VideoView
             ref={videoViewRef}
             style={styles.video}
@@ -1110,6 +1216,10 @@ export default function VideoPlayerScreen() {
               animeTitle={animeTitle}
               episodeNumber={episodeNumber}
               insets={insets}
+              isOffline={isOffline}
+              downloadStatus={downloadStatus}
+              downloadProgress={downloadProgress}
+              onDownloadPress={handleDownloadPress}
               onBack={() => router.back()}
               onStartPiP={handleStartPiP}
               onOpenOptions={() => {

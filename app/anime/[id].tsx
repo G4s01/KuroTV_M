@@ -23,11 +23,13 @@ import { EpisodeItem } from '@/components/EpisodeItem';
 import { AnimeDetailScreenSkeleton } from '@/components/skeleton';
 import { ServerBottomSheet } from '@/components/ServerBottomSheet';
 import { BatchBottomSheet, type EpisodeBatch } from '@/components/BatchBottomSheet';
+import { DownloadService, type DownloadStatus } from '@/services/downloads';
 import {
   AnimeHeaderBackdrop,
   AnimeSynopsis,
   AnimeInfoTable,
   AnimeControlsBar,
+  DownloadOptionsSheet,
 } from '@/components/anime';
 import { useResponsiveLayout } from '@/hooks';
 import type { Episode, VideoServer } from '@/types';
@@ -51,6 +53,7 @@ export default function AnimeDetailScreen() {
   const [selectedServerId, setSelectedServerId] = React.useState('9'); // Default AnimeWorld server
   const [isServerSheetVisible, setIsServerSheetVisible] = React.useState(false);
   const [isBatchSheetVisible, setIsBatchSheetVisible] = React.useState(false);
+  const [isDownloadSheetVisible, setIsDownloadSheetVisible] = React.useState(false);
   const [viewMode, setViewMode] = React.useState<'grid' | 'list'>('grid');
   const [activeBatchId, setActiveBatchId] = React.useState<string>('batch-0');
   const [focusTick, setFocusTick] = React.useState(0);
@@ -88,29 +91,33 @@ export default function AnimeDetailScreen() {
     }
   };
 
-  const navigateToEpisode = (episode: Episode) => {
-    if (!anime) return;
-    Haptics.selectionAsync().catch(() => {});
-    const savedProg = AppStorage.getWatchProgress(anime.id, episode.number);
-    router.push({
-      pathname: '/player/[id]',
-      params: {
-        id: episode.id,
-        animeId: anime.id,
-        episodeNumber: String(episode.number),
-        episodeDataId: episode.dataId || '',
-        animeTitle: anime.title,
-        serverId: selectedServerId,
-        thumbnail: anime.image || anime.thumbnail || '',
-        position: String(savedProg && !savedProg.isCompleted ? savedProg.currentTime : 0),
-        totalEpisodes: String(anime.totalEpisodes ?? (episodes.length || '')),
-      },
-    });
-  };
+  const navigateToEpisode = React.useCallback(
+    (episode: Episode) => {
+      if (!anime) return;
+      Haptics.selectionAsync().catch(() => {});
+      const savedProg = AppStorage.getWatchProgress(anime.id, episode.number);
+      router.push({
+        pathname: '/player/[id]',
+        params: {
+          id: episode.id,
+          animeId: anime.id,
+          episodeNumber: String(episode.number),
+          episodeDataId: episode.dataId || '',
+          animeTitle: anime.title,
+          serverId: selectedServerId,
+          thumbnail: anime.image || anime.thumbnail || '',
+          position: String(savedProg && !savedProg.isCompleted ? savedProg.currentTime : 0),
+          totalEpisodes: String(anime.totalEpisodes ?? (anime.episodes?.length || '')),
+        },
+      });
+    },
+    [anime, selectedServerId, router]
+  );
 
-  const handleRestartPlayback = () => {
-    if (!anime || !episodes || episodes.length === 0) return;
-    const firstEp = episodes[0];
+  const handleRestartPlayback = React.useCallback(() => {
+    const eps = anime?.episodes || [];
+    if (!anime || eps.length === 0) return;
+    const firstEp = eps[0];
     Haptics.selectionAsync().catch(() => {});
     router.push({
       pathname: '/player/[id]',
@@ -123,10 +130,10 @@ export default function AnimeDetailScreen() {
         serverId: selectedServerId,
         thumbnail: anime.image || anime.thumbnail || '',
         position: '0',
-        totalEpisodes: String(anime.totalEpisodes ?? (episodes.length || '')),
+        totalEpisodes: String(anime.totalEpisodes ?? (eps.length || '')),
       },
     });
-  };
+  }, [anime, selectedServerId, router]);
 
   const episodes: Episode[] = anime?.episodes || [];
 
@@ -207,6 +214,125 @@ export default function AnimeDetailScreen() {
     return map;
   }, [currentProgressList]);
 
+  // Download status map for all episodes of this anime
+  const [downloadMap, setDownloadMap] = React.useState<Map<number, DownloadStatus>>(() => {
+    const map = new Map<number, DownloadStatus>();
+    const downloads = DownloadService.getAllDownloads();
+    for (const d of downloads) {
+      if (d.animeId === animeId) {
+        map.set(d.episodeNumber, d.status);
+      }
+    }
+    return map;
+  });
+
+  React.useEffect(() => {
+    const updateMap = () => {
+      const next = new Map<number, DownloadStatus>();
+      const downloads = DownloadService.getAllDownloads();
+      for (const d of downloads) {
+        if (d.animeId === animeId) {
+          next.set(d.episodeNumber, d.status);
+        }
+      }
+      setDownloadMap((prev) => {
+        if (prev.size === next.size) {
+          let identical = true;
+          for (const [k, v] of next) {
+            if (prev.get(k) !== v) {
+              identical = false;
+              break;
+            }
+          }
+          if (identical) return prev;
+        }
+        return next;
+      });
+    };
+
+    const unsubList = DownloadService.addListListener(updateMap);
+    const unsubProg = DownloadService.addProgressListener((item) => {
+      if (item.animeId === animeId) {
+        // Avoid re-rendering the entire detail screen on chunk ticks when episode status hasn't changed
+        setDownloadMap((prev) => {
+          if (prev.get(item.episodeNumber) === item.status) {
+            return prev;
+          }
+          const next = new Map(prev);
+          next.set(item.episodeNumber, item.status);
+          return next;
+        });
+      }
+    });
+
+    return () => {
+      unsubList();
+      unsubProg();
+    };
+  }, [animeId]);
+
+  const handleDownloadSingleEpisode = React.useCallback(
+    (ep: Episode) => {
+      const currentStatus = DownloadService.getEpisodeDownloadStatus(animeId, ep.number);
+      if (currentStatus === 'completed') {
+        Haptics.selectionAsync().catch(() => {});
+        return;
+      }
+      if (currentStatus === 'downloading' || currentStatus === 'queued' || currentStatus === 'paused') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+        DownloadService.cancelDownload(`${animeId}-ep-${ep.number}`);
+        return;
+      }
+      DownloadService.startDownload(
+        { id: animeId, title: anime?.title || 'Anime', thumbnail: anime?.thumbnail || anime?.image },
+        ep
+      );
+    },
+    [animeId, anime]
+  );
+
+  const handleDownloadBatches = React.useCallback(
+    (selectedBatches: EpisodeBatch[]) => {
+      setIsDownloadSheetVisible(false);
+      if (selectedBatches.length === 0) return;
+      const batchEps = episodes.filter((ep) =>
+        selectedBatches.some((b) => ep.number >= b.start && ep.number <= b.end)
+      );
+      if (batchEps.length === 0) return;
+      DownloadService.startBatchDownload(
+        { id: animeId, title: anime?.title || 'Anime', thumbnail: anime?.thumbnail || anime?.image },
+        batchEps
+      );
+    },
+    [episodes, animeId, anime]
+  );
+
+  const handleDownloadAll = React.useCallback(() => {
+    setIsDownloadSheetVisible(false);
+    if (episodes.length === 0) return;
+    DownloadService.startBatchDownload(
+      { id: animeId, title: anime?.title || 'Anime', thumbnail: anime?.thumbnail || anime?.image },
+      episodes
+    );
+  }, [episodes, animeId, anime]);
+
+  const handleDownloadRange = React.useCallback(
+    (startEpisode: number, endEpisode: number) => {
+      setIsDownloadSheetVisible(false);
+      const from = Math.min(startEpisode, endEpisode);
+      const to = Math.max(startEpisode, endEpisode);
+      const rangeEps = episodes.filter(
+        (ep) => ep.number >= from && ep.number <= to
+      );
+      if (rangeEps.length === 0) return;
+      DownloadService.startBatchDownload(
+        { id: animeId, title: anime?.title || 'Anime', thumbnail: anime?.thumbnail || anime?.image },
+        rangeEps
+      );
+    },
+    [episodes, animeId, anime]
+  );
+
   const firstUnwatched = React.useMemo(() => {
     return currentProgressList.find((p) => !p.isCompleted)?.episode || episodes[0];
   }, [currentProgressList, episodes]);
@@ -219,7 +345,7 @@ export default function AnimeDetailScreen() {
     return currentProgressList.some((p) => p.progress > 0 && !p.isCompleted);
   }, [currentProgressList]);
 
-  const renderHeader = () => {
+  const portraitHeaderElement = React.useMemo(() => {
     if (!anime) return null;
     return (
       <View style={[styles.headerWrapper, { backgroundColor: theme.colors.background }]}>
@@ -255,7 +381,49 @@ export default function AnimeDetailScreen() {
         />
       </View>
     );
-  };
+  }, [
+    anime,
+    theme,
+    windowWidth,
+    firstUnwatched,
+    hasStartedWatching,
+    navigateToEpisode,
+    episodes.length,
+    handleRestartPlayback,
+    batches.length,
+    currentBatch?.label,
+    viewMode,
+  ]);
+
+  const tabletDetailHeaderElement = React.useMemo(() => {
+    if (!anime) return null;
+    return (
+      <View style={[styles.rightDetailHeader, { paddingTop: Math.max(insets.top + 16, 24) }]}>
+        <AnimeSynopsis
+          synopsis={anime.synopsis}
+          description={anime.description}
+          theme={theme}
+        />
+        <AnimeControlsBar
+          totalEpisodes={episodes.length}
+          hasBatches={batches.length > 1}
+          currentBatchLabel={currentBatch?.label || 'Batch'}
+          viewMode={viewMode}
+          theme={theme}
+          onOpenBatchSheet={() => setIsBatchSheetVisible(true)}
+          onChangeViewMode={(mode) => setViewMode(mode)}
+        />
+      </View>
+    );
+  }, [
+    anime,
+    insets.top,
+    theme,
+    episodes.length,
+    batches.length,
+    currentBatch?.label,
+    viewMode,
+  ]);
 
   return (
     <View style={[styles.root, { paddingTop: insets.top, backgroundColor: theme.colors.background }]}>
@@ -277,6 +445,22 @@ export default function AnimeDetailScreen() {
         </Pressable>
 
         <View style={styles.navRight}>
+          <Pressable
+            style={[
+              styles.navIconBtn,
+              episodes.length === 0 && { opacity: 0.45 },
+            ]}
+            onPress={() => {
+              Haptics.selectionAsync().catch(() => {});
+              setIsDownloadSheetVisible(true);
+            }}
+            disabled={episodes.length === 0}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="SCARICA EPISODI"
+          >
+            <Ionicons name="cloud-download-outline" size={22} color="#FFFFFF" />
+          </Pressable>
           <Pressable
             style={styles.navIconBtn}
             onPress={toggleFavorite}
@@ -346,24 +530,7 @@ export default function AnimeDetailScreen() {
               data={displayedEpisodes}
               numColumns={viewMode === 'grid' ? episodeColumns : 1}
               keyExtractor={(item) => item.id}
-              ListHeaderComponent={() => (
-                <View style={[styles.rightDetailHeader, { paddingTop: Math.max(insets.top + 16, 24) }]}>
-                  <AnimeSynopsis
-                    synopsis={anime.synopsis}
-                    description={anime.description}
-                    theme={theme}
-                  />
-                  <AnimeControlsBar
-                    totalEpisodes={episodes.length}
-                    hasBatches={batches.length > 1}
-                    currentBatchLabel={currentBatch?.label || 'Batch'}
-                    viewMode={viewMode}
-                    theme={theme}
-                    onOpenBatchSheet={() => setIsBatchSheetVisible(true)}
-                    onChangeViewMode={(mode) => setViewMode(mode)}
-                  />
-                </View>
-              )}
+              ListHeaderComponent={tabletDetailHeaderElement}
               contentContainerStyle={[
                 styles.rightDetailListContent,
                 { paddingBottom: 48 + Math.max(0, insets.bottom) },
@@ -376,7 +543,9 @@ export default function AnimeDetailScreen() {
                     episode={item}
                     variant={viewMode}
                     progressPercent={prog?.progress || 0}
+                    downloadStatus={downloadMap.get(item.number) || 'none'}
                     onPress={() => navigateToEpisode(item)}
+                    onDownloadPress={() => handleDownloadSingleEpisode(item)}
                   />
                 );
               }}
@@ -389,7 +558,7 @@ export default function AnimeDetailScreen() {
           data={displayedEpisodes}
           numColumns={viewMode === 'grid' ? 4 : 1}
           keyExtractor={(item) => item.id}
-          ListHeaderComponent={renderHeader}
+          ListHeaderComponent={portraitHeaderElement}
           contentContainerStyle={[styles.listContentContainer, { paddingBottom: 48 + Math.max(0, insets.bottom) }]}
           maintainVisibleContentPosition={{ disabled: true }}
           renderItem={({ item }) => {
@@ -399,7 +568,9 @@ export default function AnimeDetailScreen() {
                 episode={item}
                 variant={viewMode}
                 progressPercent={prog?.progress || 0}
+                downloadStatus={downloadMap.get(item.number) || 'none'}
                 onPress={() => navigateToEpisode(item)}
+                onDownloadPress={() => handleDownloadSingleEpisode(item)}
               />
             );
           }}
@@ -415,13 +586,25 @@ export default function AnimeDetailScreen() {
         onSelectServer={(sId) => setSelectedServerId(sId)}
       />
 
-      {/* Batch Bottom Sheet */}
+      {/* Batch Bottom Sheet (visualizzazione intervallo episodi) */}
       <BatchBottomSheet
         isVisible={isBatchSheetVisible}
         onClose={() => setIsBatchSheetVisible(false)}
         batches={batches}
         currentBatchId={activeBatchId}
         onSelectBatch={(bId) => setActiveBatchId(bId)}
+      />
+
+      {/* Download Options Sheet (pre-menù Tutti / Batch multi-selezione / Intervallo) */}
+      <DownloadOptionsSheet
+        isVisible={isDownloadSheetVisible}
+        onClose={() => setIsDownloadSheetVisible(false)}
+        episodes={episodes}
+        batches={batches}
+        currentBatchId={activeBatchId}
+        onDownloadAll={handleDownloadAll}
+        onDownloadBatches={handleDownloadBatches}
+        onDownloadRange={handleDownloadRange}
       />
     </View>
   );

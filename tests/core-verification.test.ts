@@ -2182,21 +2182,21 @@ const serverSheetSource = fs.readFileSync(path.resolve(process.cwd(), 'src/compo
 assert(serverSheetSource.includes('useBottomSheetDragDismiss'), 'ServerBottomSheet deve integrare useBottomSheetDragDismiss');
 assert(serverSheetSource.includes('Animated.View'), 'ServerBottomSheet container deve essere un Animated.View');
 assert(serverSheetSource.includes('transform: [{ translateY }]'), 'ServerBottomSheet deve applicare translateY');
-assert(serverSheetSource.includes('dragHeaderArea'), 'ServerBottomSheet deve applicare panHandlers all area intestazione dragHeaderArea');
+assert(serverSheetSource.includes('dragStripArea'), 'ServerBottomSheet deve applicare panHandlers all area intestazione dragStripArea');
 
 // 3. Verifica Integrazione in PlayerInfoSheet.tsx (Scheda Informazioni)
 const playerInfoSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/player/PlayerInfoSheet.tsx'), 'utf-8');
 assert(playerInfoSource.includes('useBottomSheetDragDismiss'), 'PlayerInfoSheet deve integrare useBottomSheetDragDismiss');
 assert(playerInfoSource.includes('Animated.View'), 'PlayerInfoSheet container deve essere un Animated.View');
 assert(playerInfoSource.includes('transform: [{ translateY }]'), 'PlayerInfoSheet deve applicare translateY');
-assert(playerInfoSource.includes('dragHeaderArea'), 'PlayerInfoSheet deve applicare panHandlers all area intestazione dragHeaderArea');
+assert(playerInfoSource.includes('dragStripArea'), 'PlayerInfoSheet deve applicare panHandlers all area intestazione dragStripArea');
 
 // 4. Verifica Integrazione in PlayerEpisodesCarouselSheet.tsx (Carosello Episodi)
 const carouselSheetSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/player/PlayerEpisodesCarouselSheet.tsx'), 'utf-8');
 assert(carouselSheetSource.includes('useBottomSheetDragDismiss'), 'PlayerEpisodesCarouselSheet deve integrare useBottomSheetDragDismiss');
 assert(carouselSheetSource.includes('Animated.View'), 'PlayerEpisodesCarouselSheet container deve essere un Animated.View');
 assert(carouselSheetSource.includes('transform: [{ translateY }]'), 'PlayerEpisodesCarouselSheet deve applicare translateY');
-assert(carouselSheetSource.includes('dragHeaderArea'), 'PlayerEpisodesCarouselSheet deve applicare panHandlers all area intestazione dragHeaderArea');
+assert(carouselSheetSource.includes('dragStripArea'), 'PlayerEpisodesCarouselSheet deve applicare panHandlers all area intestazione dragStripArea');
 
 console.log('✓ Chiusura Menù Player Tramite Scorrimento (Swipe-Down Dismiss) verificata con successo.');
 
@@ -2340,8 +2340,188 @@ assert(respServerSheetSource.includes('maxWidth: 580'), 'ServerBottomSheet deve 
 
 const respBatchSheetSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/BatchBottomSheet.tsx'), 'utf-8');
 assert(respBatchSheetSource.includes('maxWidth: 580'), 'BatchBottomSheet deve limitare maxWidth a 580 su tablet');
+assert(respBatchSheetSource.includes('useBottomSheetDragDismiss'), 'BatchBottomSheet deve supportare swipe-down dismiss tramite useBottomSheetDragDismiss');
+
+const respDownloadSheetSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/anime/DownloadOptionsSheet.tsx'), 'utf-8');
+assert(respDownloadSheetSource.includes('maxWidth: 580'), 'DownloadOptionsSheet deve limitare maxWidth a 580 su tablet');
 
 console.log('✓ Supporto Schermi Larghi, Tablet (sw600dp), Left Navigation Rail & Master-Detail verificati con successo.');
+
+// -----------------------------------------------------------------------------
+// [21/21] Verifica Sistema di Download Episodi, Storage SAF & Visione Offline
+// -----------------------------------------------------------------------------
+console.log('\n[21/21] Verifica Sistema di Download Episodi, Storage SAF & Visione Offline...');
+
+// 1. Verifica DownloadService e funzioni helper
+const { DownloadService, formatDownloadBytes, sanitizeFileName, DEFAULT_DOWNLOAD_SETTINGS } = await import('../src/services/downloads');
+assert(typeof DownloadService.startDownload === 'function', 'DownloadService.startDownload deve essere una funzione');
+assert(typeof DownloadService.startBatchDownload === 'function', 'DownloadService.startBatchDownload deve essere una funzione');
+assert(typeof DownloadService.pauseDownload === 'function', 'DownloadService.pauseDownload deve essere una funzione');
+assert(typeof DownloadService.resumeDownload === 'function', 'DownloadService.resumeDownload deve essere una funzione');
+assert(typeof DownloadService.cancelDownload === 'function', 'DownloadService.cancelDownload deve essere una funzione');
+assert(typeof DownloadService.deleteDownload === 'function', 'DownloadService.deleteDownload deve essere una funzione');
+assert(typeof DownloadService.deleteAnimeDownloads === 'function', 'DownloadService.deleteAnimeDownloads deve essere una funzione');
+assert(typeof DownloadService.clearAllDownloads === 'function', 'DownloadService.clearAllDownloads deve essere una funzione');
+assert(typeof DownloadService.isEpisodeDownloaded === 'function', 'DownloadService.isEpisodeDownloaded deve essere una funzione');
+assert(typeof DownloadService.getDownloadedEpisodeUri === 'function', 'DownloadService.getDownloadedEpisodeUri deve essere una funzione');
+assert(typeof DownloadService.resolvePlayableLocalUri === 'function', 'DownloadService.resolvePlayableLocalUri deve essere una funzione');
+assert(typeof DownloadService.getDownloadedAnimeList === 'function', 'DownloadService.getDownloadedAnimeList deve essere una funzione');
+assert(typeof DownloadService.getStorageUsage === 'function', 'DownloadService.getStorageUsage deve essere una funzione');
+
+// 2. Test formatDownloadBytes & sanitizeFileName
+assert.strictEqual(formatDownloadBytes(0), '0 B');
+assert.strictEqual(formatDownloadBytes(1024), '1.0 KB');
+assert.strictEqual(formatDownloadBytes(1048576), '1.0 MB');
+assert.strictEqual(formatDownloadBytes(1073741824), '1.0 GB');
+
+assert.strictEqual(sanitizeFileName('Attack on Titan: Final Season!'), 'Attack_on_Titan__Final_Season_');
+
+// 3. Test DownloadSettings e persistenza
+assert.strictEqual(typeof DEFAULT_DOWNLOAD_SETTINGS.wifiOnly, 'boolean');
+assert.strictEqual(DEFAULT_DOWNLOAD_SETTINGS.wifiOnly, true);
+DownloadService.setWifiOnly(true);
+assert.strictEqual(DownloadService.getSettings().wifiOnly, true);
+DownloadService.setCustomDirectoryUri(null);
+assert.strictEqual(DownloadService.getSettings().customDirectoryUri, null);
+
+// 4. Test enqueuing download
+const offlineTestAnime = { id: 'test-anime-offline', title: 'Test Anime Offline', thumbnail: 'https://example.com/thumb.jpg' };
+const offlineTestEp1 = { id: 'test-ep-1', number: 1, title: 'Episodio 1', dataId: '123', remoteUrl: 'https://example.com/ep1.mp4' };
+const offlineTestEp2 = { id: 'test-ep-2', number: 2, title: 'Episodio 2', dataId: '124', remoteUrl: 'https://example.com/ep2.mp4' };
+
+await DownloadService.startDownload(offlineTestAnime, offlineTestEp1 as any);
+assert(DownloadService.getDownloadItem('test-anime-offline-ep-1') !== undefined, 'Download item deve essere registrato');
+assert(['queued', 'downloading', 'completed'].includes(DownloadService.getEpisodeDownloadStatus('test-anime-offline', 1)), 'Stato episodio deve essere queued/downloading/completed');
+
+await DownloadService.startBatchDownload(offlineTestAnime, [offlineTestEp2 as any]);
+assert(DownloadService.getDownloadItem('test-anime-offline-ep-2') !== undefined, 'Batch download item deve essere registrato');
+
+// Cleanup test items
+await DownloadService.deleteDownload('test-anime-offline-ep-1');
+await DownloadService.deleteDownload('test-anime-offline-ep-2');
+
+// Verifica annullamento intenzionale download senza console.warn né stato error
+const originalWarn = console.warn;
+const capturedCancelWarns: string[] = [];
+console.warn = (...args: any[]) => {
+  capturedCancelWarns.push(args.map(String).join(' '));
+};
+try {
+  const cancelTestEp = { id: 'test-ep-3', number: 3, title: 'Episodio 3', dataId: '125', remoteUrl: 'https://example.com/ep3.mp4' };
+  await DownloadService.startDownload(offlineTestAnime, cancelTestEp as any);
+  await DownloadService.cancelDownload('test-anime-offline-ep-3');
+  await new Promise((r) => setTimeout(r, 30));
+} finally {
+  console.warn = originalWarn;
+}
+assert(
+  !capturedCancelWarns.some((w) => w.includes('Download interrotto o non completato') || w.includes('Download failed')),
+  'L annullamento manuale del download non deve generare warning di errore'
+);
+assert.strictEqual(
+  DownloadService.getEpisodeDownloadStatus('test-anime-offline', 3),
+  'none',
+  'Dopo cancelDownload lo stato episodio deve tornare a none'
+);
+
+const downloadServiceSource = fs.readFileSync(path.resolve(process.cwd(), 'src/services/downloads/download-service.ts'), 'utf-8');
+assert(downloadServiceSource.includes('cancelledItems') && downloadServiceSource.includes('pausedItems'), 'DownloadService deve tracciare interruzioni intenzionali con WeakSet dedicati');
+
+// Verifica assenza Require Cycle su storage (app-storage.ts <- continue-watching-sync.ts <- index.ts)
+const storageIndexSource = fs.readFileSync(path.resolve(process.cwd(), 'src/services/storage/index.ts'), 'utf-8');
+const syncModuleSource = fs.readFileSync(path.resolve(process.cwd(), 'src/services/storage/continue-watching-sync.ts'), 'utf-8');
+const appStorageSource = fs.readFileSync(path.resolve(process.cwd(), 'src/services/storage/app-storage.ts'), 'utf-8');
+assert(storageIndexSource.includes("./app-storage") && storageIndexSource.includes("./continue-watching-sync"), 'storage/index.ts deve essere un barrel privo di cicli');
+assert(syncModuleSource.includes("./app-storage") && !syncModuleSource.includes("./index"), 'continue-watching-sync.ts deve importare da ./app-storage senza cicli con ./index');
+assert(!appStorageSource.includes('./continue-watching-sync'), 'app-storage.ts non deve importare o esportare continue-watching-sync');
+
+// 5. Verifica Esportazione Rotta Downloads (app/downloads/index.tsx)
+const downloadsRouteModule = await import('../app/downloads/index');
+assert(typeof downloadsRouteModule.default === 'function', 'app/downloads/index.tsx deve esportare un componente React');
+
+// 6. Verifica Componenti Download e Settings
+const { DownloadSettingsCard } = await import('../src/components/settings/DownloadSettingsCard');
+assert(typeof DownloadSettingsCard === 'function', 'DownloadSettingsCard deve essere esportata');
+
+const { StorageUsageBar, ActiveDownloadCard, ActiveDownloadGroupCard, DownloadedAnimeCard, DownloadedEpisodesSheet } = await import('../src/components/downloads');
+assert(Boolean(StorageUsageBar), 'StorageUsageBar deve essere esportata');
+assert(Boolean(ActiveDownloadCard), 'ActiveDownloadCard deve essere esportata');
+assert(Boolean(ActiveDownloadGroupCard), 'ActiveDownloadGroupCard deve essere esportata');
+assert(Boolean(DownloadedAnimeCard), 'DownloadedAnimeCard deve essere esportata');
+assert(Boolean(DownloadedEpisodesSheet), 'DownloadedEpisodesSheet deve essere esportata');
+
+// 7. Verifica Integrazione in DownloadOptionsSheet, BatchBottomSheet, PlayerHeader, EpisodeItem, Player & Downloads
+const batchSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/BatchBottomSheet.tsx'), 'utf-8');
+assert(batchSource.includes('useBottomSheetDragDismiss'), 'BatchBottomSheet deve supportare chiusura swipe-down tramite useBottomSheetDragDismiss');
+assert(!batchSource.includes('onDownloadAll'), 'BatchBottomSheet deve rimanere focalizzato sulla selezione visuale delle batch senza comandi download sparsi');
+
+const downloadSheetSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/anime/DownloadOptionsSheet.tsx'), 'utf-8');
+assert(downloadSheetSource.includes('useBottomSheetDragDismiss'), 'DownloadOptionsSheet deve supportare chiusura swipe-down tramite useBottomSheetDragDismiss');
+assert(downloadSheetSource.includes('SCARICA TUTTI'), 'DownloadOptionsSheet deve esporre opzione pre-menù SCARICA TUTTI');
+assert(downloadSheetSource.includes('SCARICA PER BATCH'), 'DownloadOptionsSheet deve esporre opzione pre-menù SCARICA PER BATCH');
+assert(downloadSheetSource.includes('onDownloadBatches'), 'DownloadOptionsSheet deve supportare selezione multipla batch tramite onDownloadBatches');
+assert(downloadSheetSource.includes('onDownloadRange'), 'DownloadOptionsSheet deve supportare onDownloadRange per intervalli personalizzati');
+assert(downloadSheetSource.includes('INTERVALLO PERSONALIZZATO'), 'DownloadOptionsSheet deve esporre il selettore INTERVALLO PERSONALIZZATO');
+assert(downloadSheetSource.includes('TextInput'), 'DownloadOptionsSheet deve permettere inserimento numerico e steppers per intervallo episodi');
+
+const playerHeaderSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/player/PlayerHeader.tsx'), 'utf-8');
+assert(playerHeaderSource.includes('onDownloadPress'), 'PlayerHeader deve supportare onDownloadPress');
+assert(playerHeaderSource.includes('downloadStatus'), 'PlayerHeader deve supportare downloadStatus');
+assert(playerHeaderSource.includes('isOffline'), 'PlayerHeader deve supportare isOffline');
+
+const episodeItemSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/EpisodeItem.tsx'), 'utf-8');
+assert(episodeItemSource.includes('onDownloadPress'), 'EpisodeItem deve supportare onDownloadPress');
+assert(episodeItemSource.includes('downloadStatus'), 'EpisodeItem deve supportare downloadStatus');
+assert(episodeItemSource.includes('gridDownloadBtn'), 'EpisodeItem deve supportare download interattivo anche in vista griglia (gridDownloadBtn)');
+
+const controlsBarSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/anime/AnimeControlsBar.tsx'), 'utf-8');
+assert(!controlsBarSource.includes('downloadBatchBtn'), 'AnimeControlsBar non deve contenere il pulsante downloadBatchBtn spostato in intestazione');
+assert(controlsBarSource.includes("flexWrap: 'wrap'"), 'AnimeControlsBar deve abilitare flexWrap per prevenire overflow');
+assert(controlsBarSource.includes("marginLeft: 'auto'"), 'AnimeControlsBar deve mantenere controlsRight allineato a destra al wrapping');
+
+const animeDetailSource = fs.readFileSync(path.resolve(process.cwd(), 'app/anime/[id].tsx'), 'utf-8');
+assert(animeDetailSource.includes('DownloadService.cancelDownload'), 'Scheda anime deve annullare il download al secondo tap sull episodio');
+assert(animeDetailSource.includes('DownloadOptionsSheet'), 'Scheda anime deve montare DownloadOptionsSheet');
+assert(animeDetailSource.includes('onDownloadBatches={handleDownloadBatches}'), 'Scheda anime deve passare handleDownloadBatches per il download multi-batch');
+assert(animeDetailSource.includes('onDownloadRange={handleDownloadRange}'), 'Scheda anime deve passare handleDownloadRange a DownloadOptionsSheet');
+assert(animeDetailSource.includes('setIsDownloadSheetVisible(true)'), 'Intestazione scheda anime deve aprire DownloadOptionsSheet accanto a Preferiti e Condivisione');
+assert(animeDetailSource.includes('prev.get(item.episodeNumber) === item.status'), 'Scheda anime deve ignorare i tick di progresso quando lo stato episodio non cambia per evitare re-render continui');
+assert(animeDetailSource.includes('ListHeaderComponent={portraitHeaderElement}'), 'Scheda anime deve passare ListHeaderComponent come elemento memoizzato per evitare refresh continuo immagini durante il download');
+assert(!animeDetailSource.includes('ConfirmModal'), 'Scheda anime non deve mostrare doppia conferma ConfirmModal dopo DownloadOptionsSheet');
+
+const animeHeaderBackdropSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/anime/AnimeHeaderBackdrop.tsx'), 'utf-8');
+assert(animeHeaderBackdropSource.includes('posterSource') && animeHeaderBackdropSource.includes('memory-disk'), 'AnimeHeaderBackdrop deve memoizzare posterSource con cache memory-disk per zero flickering');
+
+const downloadsScreenSource = fs.readFileSync(path.resolve(process.cwd(), 'app/downloads/index.tsx'), 'utf-8');
+assert(downloadsScreenSource.includes('SCARICATI'), 'Sezione router downloads deve avere titolo SCARICATI');
+assert(downloadsScreenSource.includes("scrollTo: 'downloads'"), 'Pulsante impostazioni in SCARICATI deve passare scrollTo: downloads');
+assert(downloadsScreenSource.includes('animeId: item.animeId') && downloadsScreenSource.includes('episodeNumber: String(item.episodeNumber)'), 'Riproduzione da SCARICATI deve passare animeId ed episodeNumber corretti al player');
+assert(
+  downloadsScreenSource.indexOf('EPISODI SALVATI') < downloadsScreenSource.indexOf('IN CORSO & IN CODA'),
+  'Sezione EPISODI SALVATI deve apparire prima di IN CORSO & IN CODA'
+);
+assert(downloadsScreenSource.includes('ActiveDownloadGroupCard'), 'Rotta SCARICATI deve usare ActiveDownloadGroupCard per raggruppare ed espandere serie/episodi in coda');
+assert(downloadsScreenSource.includes('aDownloading !== bDownloading'), 'Rotta SCARICATI deve mantenere sempre in cima l episodio in downloading prima dell ordine crescente');
+
+const activeGroupSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/downloads/ActiveDownloadGroupCard.tsx'), 'utf-8');
+assert(activeGroupSource.includes('isQueueExpanded') && activeGroupSource.includes('EPISODI IN CODA'), 'ActiveDownloadGroupCard deve racchiudere gli episodi in coda multipli in un elemento espandibile');
+
+const playerOfflineSource = fs.readFileSync(path.resolve(process.cwd(), 'app/player/[id].tsx'), 'utf-8');
+assert(playerOfflineSource.includes('resolvePlayableLocalUri'), 'VideoPlayer deve verificare effettiva esistenza/integrità del file locale tramite resolvePlayableLocalUri');
+assert(playerOfflineSource.includes('useVideoPlayer(null'), 'VideoPlayer deve inizializzare useVideoPlayer(null) evitando race condition replaceAsync e lookup URI vuoti');
+assert(playerOfflineSource.includes('videoUrl && !sourceError'), 'VideoPlayer deve mostrare la schermata di errore se ExoPlayer segnala error dopo loadStream');
+
+const settingsScreenSource = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/settings.tsx'), 'utf-8');
+assert(settingsScreenSource.includes('scrollToDownloadsSection'), 'Settings deve supportare lo scroll automatico alla sezione SCARICATI');
+
+const downloadsStylesSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/downloads/downloads.styles.ts'), 'utf-8');
+assert(downloadsStylesSource.includes('minWidth: 0'), 'downloads.styles.ts deve includere minWidth: 0 per prevenire overflow di testo nelle card');
+
+const homeAppBarSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/home/HomeSearchHeader.tsx'), 'utf-8');
+assert(homeAppBarSource.includes('onDownloadsPress'), 'HomeAppBar deve supportare onDownloadsPress');
+assert(homeAppBarSource.includes('activeDownloadsCount'), 'HomeAppBar deve supportare activeDownloadsCount');
+
+console.log('✓ Sistema di Download Episodi, Storage SAF & Visione Offline verificati con successo.');
 
 // -----------------------------------------------------------------------------
 // Fine Test

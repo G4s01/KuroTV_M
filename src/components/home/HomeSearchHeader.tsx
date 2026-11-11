@@ -91,9 +91,15 @@ export function HomeSearchHeader({
 
 export interface HomeAppBarProps {
   onSearchPress: () => void;
+  activeDownloadsCount?: number;
+  onDownloadsPress?: () => void;
 }
 
-export function HomeAppBar({ onSearchPress }: HomeAppBarProps) {
+export function HomeAppBar({
+  onSearchPress,
+  activeDownloadsCount = 0,
+  onDownloadsPress,
+}: HomeAppBarProps) {
   const { theme } = useTheme();
 
   return (
@@ -106,15 +112,57 @@ export function HomeAppBar({ onSearchPress }: HomeAppBarProps) {
         </View>
       </View>
 
-      <Pressable
-        style={[styles.searchButton, { backgroundColor: theme.colors.card, borderColor: theme.colors.border, borderWidth: 1 }]}
-        onPress={onSearchPress}
-        hitSlop={8}
-        accessibilityRole="button"
-        accessibilityLabel="CERCA ANIME"
-      >
-        <Ionicons name="search" size={20} color={theme.colors.text} />
-      </Pressable>
+      <View style={styles.appBarActions}>
+        {onDownloadsPress && (
+          <Pressable
+            style={[
+              styles.downloadButton,
+              {
+                backgroundColor: theme.colors.card,
+                borderColor: activeDownloadsCount > 0 ? theme.colors.primary : theme.colors.border,
+                borderWidth: 1,
+              },
+            ]}
+            onPress={onDownloadsPress}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="SCARICATI"
+          >
+            <Ionicons
+              name={activeDownloadsCount > 0 ? 'cloud-download' : 'cloud-download-outline'}
+              size={20}
+              color={activeDownloadsCount > 0 ? theme.colors.primary : theme.colors.text}
+            />
+            {activeDownloadsCount > 0 && (
+              <View
+                style={[
+                  styles.downloadBadge,
+                  { backgroundColor: theme.colors.primary },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.downloadBadgeText,
+                    { color: getContrastTextColor(theme.colors.primary) },
+                  ]}
+                >
+                  {activeDownloadsCount}
+                </Text>
+              </View>
+            )}
+          </Pressable>
+        )}
+
+        <Pressable
+          style={[styles.searchButton, { backgroundColor: theme.colors.card, borderColor: theme.colors.border, borderWidth: 1 }]}
+          onPress={onSearchPress}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="CERCA ANIME"
+        >
+          <Ionicons name="search" size={20} color={theme.colors.text} />
+        </Pressable>
+      </View>
     </View>
   );
 }

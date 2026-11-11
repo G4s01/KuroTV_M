@@ -3,3 +3,5 @@ export * from './scraper';
 export * from './updater';
 export * from './queries';
 export * from './aniskip';
+export * from './downloads';
+

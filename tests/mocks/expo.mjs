@@ -7,8 +7,30 @@ export const Constants = {
 
 export const documentDirectory = '/mock/documents/';
 
+export const makeDirectoryAsync = async () => {};
+export const getInfoAsync = async () => ({ exists: true, size: 104857600 });
+export const deleteAsync = async () => {};
+export const getFreeDiskStorageAsync = async () => 50000000000;
+export const StorageAccessFramework = {
+  requestDirectoryPermissionsAsync: async () => ({ granted: true, directoryUri: 'content://mock/dir' }),
+};
+
+export const getNetworkStateAsync = async () => ({
+  isConnected: true,
+  isInternetReachable: true,
+  type: 'WIFI',
+});
+export const NetworkStateType = {
+  NONE: 'NONE',
+  UNKNOWN: 'UNKNOWN',
+  CELLULAR: 'CELLULAR',
+  WIFI: 'WIFI',
+  ETHERNET: 'ETHERNET',
+};
+
 export const createDownloadResumable = () => ({
   downloadAsync: async () => ({ uri: '/mock/downloaded.apk' }),
+  pauseAsync: async () => ({ fileUri: '/mock/downloaded.apk' }),
 });
 
 export const startActivityAsync = async () => {};
@@ -99,4 +121,11 @@ export default {
   notificationAsync,
   ImpactFeedbackStyle,
   NotificationFeedbackType,
+  makeDirectoryAsync,
+  getInfoAsync,
+  deleteAsync,
+  getFreeDiskStorageAsync,
+  StorageAccessFramework,
+  getNetworkStateAsync,
+  NetworkStateType,
 };

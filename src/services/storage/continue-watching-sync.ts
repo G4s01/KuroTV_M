@@ -1,4 +1,4 @@
-import { AppStorage, type ContinueWatchingItem } from './index';
+import { AppStorage, type ContinueWatchingItem } from './app-storage';
 import { AnimeWorldScraper } from '../scraper';
 import type { AnimeItem } from '@/types';
 

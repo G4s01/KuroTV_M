@@ -11,6 +11,10 @@ export interface PlayerHeaderProps {
     left: number;
     right: number;
   };
+  isOffline?: boolean;
+  downloadStatus?: 'none' | 'queued' | 'downloading' | 'paused' | 'completed' | 'error';
+  downloadProgress?: number;
+  onDownloadPress?: () => void;
   onBack: () => void;
   onStartPiP: () => void;
   onOpenOptions: () => void;
@@ -21,6 +25,10 @@ export const PlayerHeader = React.memo<PlayerHeaderProps>(function PlayerHeader(
   animeTitle,
   episodeNumber,
   insets,
+  isOffline = false,
+  downloadStatus = 'none',
+  downloadProgress = 0,
+  onDownloadPress,
   onBack,
   onStartPiP,
   onOpenOptions,
@@ -50,10 +58,38 @@ export const PlayerHeader = React.memo<PlayerHeaderProps>(function PlayerHeader(
         <Text style={styles.osdTitle} numberOfLines={1}>
           {animeTitle}
         </Text>
-        <Text style={styles.osdSubtitle}>EPISODIO {episodeNumber}</Text>
+        <Text style={styles.osdSubtitle}>
+          EPISODIO {episodeNumber}
+          {isOffline && ' • LOCALE / OFFLINE'}
+        </Text>
       </View>
 
       <View style={styles.osdHeaderActions}>
+        {onDownloadPress && (
+          <Pressable
+            style={styles.osdIconBtn}
+            onPress={onDownloadPress}
+            hitSlop={8}
+            accessibilityLabel={
+              downloadStatus === 'completed'
+                ? 'EPISODIO SCARICATO IN LOCALE'
+                : downloadStatus === 'downloading'
+                ? `DOWNLOAD IN CORSO ${downloadProgress}%`
+                : 'SCARICA EPISODIO'
+            }
+          >
+            {downloadStatus === 'completed' ? (
+              <Ionicons name="checkmark-circle" size={22} color="#10B981" />
+            ) : downloadStatus === 'downloading' ? (
+              <Ionicons name="cloud-download" size={22} color="#3B82F6" />
+            ) : downloadStatus === 'queued' ? (
+              <Ionicons name="time-outline" size={22} color="#F59E0B" />
+            ) : (
+              <Ionicons name="cloud-download-outline" size={22} color="#FFFFFF" />
+            )}
+          </Pressable>
+        )}
+
         {onOpenInfo && (
           <Pressable
             style={styles.osdIconBtn}

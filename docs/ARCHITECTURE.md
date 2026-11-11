@@ -19,6 +19,8 @@ KuroM/
 │   │   └── settings.tsx         # Impostazioni: Temi SVG, AniSkip, Navbar Android, sorgente (.ac, .so, .tv), info & updater
 │   ├── anime/
 │   │   └── [id].tsx             # Scheda Dettaglio Anime (Header, Trama, Server, Griglia Puntate)
+│   ├── downloads/
+│   │   └── index.tsx            # Sezione Offline: Monitoraggio storage, download attivi e serie scaricate
 │   └── player/
 │       └── [id].tsx             # Player Video Touch Mobile (Gesture, OSD, PiP, MediaStyle notification, AniSkip)
 ├── assets/                      # Risorse statiche
@@ -27,9 +29,10 @@ KuroM/
 ├── src/                         # Moduli core dell'applicazione
 │   ├── components/              # Componenti UI riutilizzabili (FlashList items, Modali touch-native)
 │   │   ├── anime/               # Moduli dettaglio anime (Backdrop, Synopsis, AnimeInfoTable, Controls)
+│   │   ├── downloads/           # Moduli Sezione Download (StorageUsageBar, ActiveDownloadCard, DownloadedAnimeCard, DownloadedEpisodesSheet)
 │   │   ├── home/                # Moduli Home Screen (home.styles, HomeSection, ContinueWatching, Search)
 │   │   ├── player/              # Moduli isolati video player (Header, Timeline, Footer, Carousel, Info)
-│   │   ├── settings/            # Moduli Impostazioni (settings.styles, ThemeSettings, SourceSettings)
+│   │   ├── settings/            # Moduli Impostazioni (settings.styles, ThemeSettings, SourceSettings, DownloadSettings)
 │   │   ├── skeleton/            # Primitive e layout skeleton animati (Zero CLS, OLED #161616)
 │   │   ├── FilterBottomSheet.tsx# Modale filtri di ricerca touch-safe
 │   │   ├── UpdateModal.tsx      # Modale notifica aggiornamento in-app all'avvio
@@ -40,15 +43,16 @@ KuroM/
 │   │   └── AniSkipDurationSlider.tsx # Slider durata pulsante salto (5s - 60s, ∞)
 │   ├── services/
 │   │   ├── aniskip/             # Servizio timestamp per skip intro/outro/recap
+│   │   ├── downloads/           # Gestore download offline, coda sequenziale, SAF e persistenza MMKV
 │   │   ├── queries/             # QueryOptions TanStack React Query v5
 │   │   ├── scraper/             # Web Scraper AnimeWorld con cheerio/slim
-│   │   ├── storage/             # Storage locale a zero-latenza MMKV v3
+│   │   ├── storage/             # Storage locale MMKV v3 (app-storage.ts, continue-watching-sync.ts, barrel privo di cicli)
 │   │   └── updater/             # Client OTA manifest, update store reattivo e download APK
 │   ├── theme/                   # Sistema di stili reattivo e ThemeProvider
 │   └── types/                   # Definizioni TypeScript condivise
 ├── workers/                     # Cloudflare Worker unificato per OTA
 ├── scripts/                     # Tooling DevOps, release pipeline & patch native (apply-patches, build-release)
-└── tests/                       # Suite di verifica qualità a 16 stadi
+└── tests/                       # Suite di verifica qualità a 21 stadi
 ```
 
 ---
@@ -304,3 +308,41 @@ L'applicazione include un sistema di notifica e aggiornamento in-app progettato 
 4. **Resilienza Aggiornamenti Manuali & Event Guard**:
    - Convalida rigorosa dell'oggetto manifest in `handleStartDownloadUpdate` e `UpdaterService.downloadApk` per neutralizzare eventi touch (`GestureResponderEvent`) emessi dai bottoni `Pressable`, azzerando l'errore `URL DEL PACCHETTO APK NON DISPONIBILE O NON VALIDO`.
    - Ripristino automatico dello stato `available` al rientro in focus della schermata Impostazioni in caso di errore transitorio, con pulsante per rieseguire la verifica anche a download completato.
+
+---
+
+## 📥 Sistema di Download Episodi, Storage SAF & Visione Offline
+
+Il sottosistema di download e visione offline (`src/services/downloads/` e `app/downloads/index.tsx`) permette di scaricare qualsiasi puntata o intera serie per la riproduzione in locale senza connessione di rete:
+
+### 1. Architettura del Servizio Singleton (`DownloadService`)
+- **Coda FIFO Sequenziale (1 Download alla Volta)**: Per evitare il rate limiting dai server di streaming, non saturare la banda dell'utente e avere il primo episodio pronto nel minor tempo possibile, i download vengono accodati sequenzialmente.
+- **Risoluzione Automatica alla Massima Risoluzione (Server 9 a 1080p)**: Il servizio interroga lo scraper ed estrae automaticamente il flusso alla massima qualità disponibile (1080p -> 720p -> 480p), con fallback automatico a server secondari in caso di mancata disponibilità dello stream primario.
+- **Gestione Stato Reattivo**: Il pattern a sottoscrizione con `subscribe((event) => ...)` garantisce aggiornamenti in tempo reale di progresso percentuale, byte scaricati e velocità a tutti i componenti UI montati.
+- **Persistenza Zero-Latency con MMKV**: Il catalogo degli episodi scaricati (`kuro_downloads_catalog`) e le impostazioni (`kuro_download_settings`) risiedono su MMKV per letture e scritture sincrone a latenza zero.
+
+### 2. Archiviazione & Storage Access Framework (SAF)
+- **Cartella Predefinita Interna**: Di default, i file vengono archiviati nello storage sandbox protetto dell'applicazione (`${FileSystem.documentDirectory}downloads/${animeId}/ep_${num}.mp4`). Questa soluzione offre massima velocità di I/O, totale assenza di permessi di runtime Android ed è immune da cancellazioni accidentali di app terze.
+- **Cartella Personalizzata (SAF)**: L'utente può scegliere una cartella esterna personalizzata (es. memoria interna, cartella di sistema *Download* o scheda MicroSD) tramite Android Storage Access Framework (`FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync()`).
+- **Protezione Connessione Dati**: L'opzione `wifiOnly` (attiva per impostazione predefinita) verifica lo stato della connessione tramite `expo-network` (`Network.getNetworkStateAsync()`), sospendendo o impedendo il download su rete dati cellulare a consumo.
+- **Monitoraggio Spazio Disco**: `getStorageUsage()` aggrega le dimensioni effettive su disco tramite `FileSystem.getInfoAsync` per mostrare l'esatto spazio occupato dai file di Kuro Mobile e lo spazio totale residuo sul dispositivo.
+
+### 3. Integrazione con i Componenti Esistenti
+- **Video Player (`app/player/[id].tsx` & `PlayerHeader.tsx`)**:
+  - Icona download nell'header OSD per scaricare l'episodio in riproduzione con un singolo tocco.
+  - Prioritizzazione automatica del file locale: al caricamento (`loadStream`), `app/player/[id].tsx` verifica l'integrità su disco tramite `DownloadService.resolvePlayableLocalUri()` ed esegue un singolo caricamento su `useVideoPlayer(null)` senza race condition, mostrando il badge **`LOCALE / OFFLINE`** nell'header OSD.
+- **Scheda Dettaglio Anime (`app/anime/[id].tsx`, `DownloadOptionsSheet.tsx`, `EpisodeItem.tsx`, `BatchBottomSheet.tsx`)**:
+  - Pulsante download nell'intestazione (`navRight`, 44×44 dp) accanto a Preferiti e Condivisione, con modale dedicato `DownloadOptionsSheet` dotato di chiusura swipe-down (`useBottomSheetDragDismiss`).
+  - Icona di download e stato visuale su ciascuna card o riga episodio sia in vista griglia (`gridDownloadBtn`) che lista. Premendo nuovamente l'icona durante il download, la coda o la pausa, il download viene annullato all'istante (`cancelDownload`) senza warning o stati di errore.
+  - Pre-menù ordinato (*"SCARICA TUTTI"*, *"SCARICA PER BATCH"* con selezione multipla persistente e pulsante **`SCARICA BATCH`** adiacente, *"INTERVALLO PERSONALIZZATO"* `DA` – `A` con steppers e input numerico); `BatchBottomSheet.tsx` resta dedicato esclusivamente al filtro visivo delle batch e integra `useBottomSheetDragDismiss`.
+  - Stabilità visiva durante download: gli header della `FlashList` sono passati come elementi JSX memoizzati (`portraitHeaderElement` / `tabletDetailHeaderElement`), `downloadMap` aggiorna lo stato solo alle transizioni effettive di status e `AnimeHeaderBackdrop.tsx` memorizza la `posterSource` con cache `memory-disk` per eliminare ogni refresh/flickering della copertina.
+- **Home Header & Impostazioni**:
+  - Badge numerico dinamico dei download attivi nell'header della Home con accesso rapido alla schermata dei download.
+  - Sezione minimale `DownloadSettingsCard.tsx` nelle Impostazioni con supporto allo scroll automatico (`scrollTo: 'downloads'`) per cambio cartella SAF, toggle Wi-Fi e svuotamento archivio.
+
+### 4. Schermata Offline Dedicata `'SCARICATI'` (`app/downloads/index.tsx`)
+- Intitolata **`SCARICATI`** con layout protetto da `minWidth: 0` e troncamento controllato per eliminare overflow e sovrapposizioni su display compatti, presentando per prima la sezione **`EPISODI SALVATI`** seguita da **`IN CORSO & IN CODA`**.
+- **`StorageUsageBar.tsx`**: Barra OLED con visualizzazione grafica della quota disco utilizzata dai download rispetto allo spazio libero totale del dispositivo.
+- **`ActiveDownloadGroupCard.tsx` & `ActiveDownloadCard.tsx`**: Raggruppamento per serie espandibile (serie attiva in download espansa in cima, altre serie racchiuse di default); all'interno l'episodio in `downloading` rimane sempre in testa seguito in ordine crescente di numero episodio dagli altri episodi in coda racchiusi in un pannello espandibile dedicato.
+- **`DownloadedAnimeCard.tsx`**: Lista delle serie scaricate raggruppate per anime con locandina, conteggio puntate, peso in MB/GB e tasto rapido *"RIPRODUCI"*.
+- **`DownloadedEpisodesSheet.tsx`**: Modale touch-safe a scorrimento con swipe-down dismiss a doppia zona per consultare l'elenco delle puntate scaricate ed eliminarle singolarmente con aggiornamento istantaneo dello spazio disco.
