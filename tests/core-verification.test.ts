@@ -31,7 +31,7 @@ import {
   Orientation,
   getContrastTextColor,
 } from '../src/theme/unistyles';
-import { AppStorage } from '../src/services/storage/index';
+import { AppStorage, StorageKeys } from '../src/services/storage/index';
 import { scraperConfig } from '../src/services/scraper/config';
 import { ProviderRegistry } from '../src/services/scraper/registry';
 import {
@@ -68,6 +68,21 @@ import {
   computeAniSkipOverlayState,
 } from '../src/services/aniskip/index';
 import type { AniSkipResult, AniSkipSettings } from '../src/types/index';
+import {
+  SyncManager,
+  DEFAULT_SYNC_SERVER_URL,
+  KUROSYNC_GITHUB_REPO_URL,
+  parseKuroSyncDeepLink,
+  KuroSyncClient,
+  mergeLocalAndRemote,
+} from '../src/services/sync/index';
+import {
+  SyncSettingsCard,
+  SyncConnectModal,
+  AuthorizeTvModal,
+  SyncProfileModal,
+  QrScannerModal,
+} from '../src/components/settings/index';
 
 console.log('=== Inizio Test di Verifica KuroTV Mobile ===\n');
 
@@ -3009,6 +3024,649 @@ assert(
 );
 
 console.log("✓ AniSkip Ending 'PROSSIMO' & Post-Ending Sequenziale verificati con successo.");
+
+// -----------------------------------------------------------------------------
+// 25. Verifica Sincronizzazione Self-Hosted KuroSync (KuroTV_S, MMKV Storage Bridge, Debounce & TV Pairing)
+// -----------------------------------------------------------------------------
+console.log('\n[25/25] Verifica Sincronizzazione Self-Hosted KuroSync (KuroTV_S, MMKV Storage Bridge, Debounce & TV Pairing)...');
+
+// 1. Deep-link URL scheme parsing (kurosync://connect?url=...&token=...&profile=...)
+const validDeepLink = 'kurosync://connect?url=' + encodeURIComponent('https://my-sync.workers.dev') + '&token=' + encodeURIComponent('token-abc-123') + '&profile=' + encodeURIComponent('prof-primary');
+const parsedLink = parseKuroSyncDeepLink(validDeepLink);
+assert(parsedLink !== null, 'Il parser deep-link deve riconoscere kurosync://');
+assert.strictEqual(parsedLink?.url, 'https://my-sync.workers.dev', 'URL del server estratto correttamente');
+assert.strictEqual(parsedLink?.token, 'token-abc-123', 'Token estratto correttamente');
+assert.strictEqual(parsedLink?.profile, 'prof-primary', 'Profilo estratto correttamente');
+
+const noProfileLink = 'kurosync://connect?url=' + encodeURIComponent('https://my-sync.workers.dev') + '&token=' + encodeURIComponent('tok-xyz');
+const parsedNoProfile = parseKuroSyncDeepLink(noProfileLink);
+assert(parsedNoProfile !== null);
+assert.strictEqual(parsedNoProfile?.token, 'tok-xyz');
+assert.strictEqual(parsedNoProfile?.profile, undefined);
+
+const invalidLink = 'https://google.com/search?q=kurotv';
+assert.strictEqual(parseKuroSyncDeepLink(invalidLink), null, 'Link non inerenti devono restituire null');
+
+const tvPairSchemeLink = 'kurosync://pair?code=K7X9P2';
+const parsedTvScheme = parseKuroSyncDeepLink(tvPairSchemeLink);
+assert(parsedTvScheme !== null, 'Il parser deep-link deve riconoscere kurosync://pair');
+assert.strictEqual(parsedTvScheme?.code, 'K7X9P2', 'Codice TV K7X9P2 estratto da kurosync://pair');
+
+const tvPairWebLink = 'https://my-sync.workers.dev/pair?code=ABC123';
+const parsedTvWeb = parseKuroSyncDeepLink(tvPairWebLink);
+assert(parsedTvWeb !== null, 'Il parser deep-link deve riconoscere link web /pair?code=');
+assert.strictEqual(parsedTvWeb?.code, 'ABC123', 'Codice TV ABC123 estratto da link web');
+assert.strictEqual(parsedTvWeb?.url, 'https://my-sync.workers.dev', 'URL estratto da origin di link web /pair');
+
+const webConsoleLink = 'https://my-sync.workers.dev/connect?token=xyz';
+const parsedWebConsole = parseKuroSyncDeepLink(webConsoleLink);
+assert(parsedWebConsole !== null, 'Il parser deep-link deve riconoscere link web console /connect?token=');
+assert.strictEqual(parsedWebConsole?.url, 'https://my-sync.workers.dev', 'URL del server estratto da origin del link web console');
+assert.strictEqual(parsedWebConsole?.token, 'xyz', 'Token estratto dal link web console');
+
+const jsonQrPayload = JSON.stringify({ url: 'https://my-sync.workers.dev', token: 'json-token-999', profile: 'prof-2' });
+const parsedJson = parseKuroSyncDeepLink(jsonQrPayload);
+assert(parsedJson !== null, 'Il parser deep-link deve supportare codici QR in formato JSON');
+assert.strictEqual(parsedJson?.url, 'https://my-sync.workers.dev');
+assert.strictEqual(parsedJson?.token, 'json-token-999');
+assert.strictEqual(parsedJson?.profile, 'prof-2');
+
+const jsonTvCode = JSON.stringify({ code: 'TVCODE' });
+const parsedJsonTv = parseKuroSyncDeepLink(jsonTvCode);
+assert(parsedJsonTv !== null);
+assert.strictEqual(parsedJsonTv?.code, 'TVCODE');
+
+// 2. Pure Merge Engine Tests (mergeLocalAndRemote)
+// Case A: Tombstone Dominance for Favorites and Continue Watching
+const localFavItem = {
+  id: 'fav-anime-1',
+  title: 'Demon Slayer',
+  thumbnail: 'https://example.com/thumb.jpg',
+  genres: ['Action'],
+  link: '/anime/fav-anime-1',
+  updatedAt: 1000,
+};
+const localCwItem = {
+  animeId: 'cw-anime-1',
+  title: 'Demon Slayer',
+  thumbnail: 'https://example.com/thumb.jpg',
+  episodeId: 'ep-10',
+  episodeNumber: 10,
+  position: 300,
+  duration: 1400,
+  percentage: 21,
+  updatedAt: 1000,
+  isCaughtUp: false,
+};
+
+const mergeTombstoneResult = mergeLocalAndRemote(
+  {
+    favorites: [localFavItem],
+    continueWatching: [localCwItem],
+    watchHistory: [],
+    watchProgress: [],
+    sharedSettings: {},
+    searchHistory: [{ query: 'NARUTO', timestamp: 1000 }],
+  },
+  {
+    serverTime: 2000,
+    deltas: {
+      favorites: [],
+      continueWatching: [],
+      watchHistory: [],
+      watchProgress: [],
+      sharedSettings: {},
+      searchHistory: [],
+    },
+    tombstones: [
+      { type: 'favorite', key: 'fav-anime-1', deletedAt: 1500 },
+      { type: 'continue_watching', key: 'cw-anime-1', deletedAt: 1500 },
+      { type: 'search_history', key: 'NARUTO', deletedAt: 1500 },
+    ],
+  }
+);
+assert.strictEqual(mergeTombstoneResult.state.favorites.length, 0, 'Il preferito con tombstone deve essere eliminato');
+assert.strictEqual(mergeTombstoneResult.state.continueWatching.length, 0, 'Il continue watching con tombstone deve essere eliminato');
+assert.strictEqual(mergeTombstoneResult.state.searchHistory.length, 0, 'La ricerca con tombstone deve essere eliminata');
+assert(mergeTombstoneResult.appliedDeletions >= 3, 'Tombstones applicati con successo');
+
+// Case B: Continue Watching Episode Regression Prevention (Local Ahead)
+const localAheadCw = {
+  animeId: 'anime-ahead-1',
+  title: 'One Piece',
+  thumbnail: 'https://example.com/op.jpg',
+  episodeId: 'ep-13',
+  episodeNumber: 13,
+  position: 120,
+  duration: 1440,
+  percentage: 8,
+  updatedAt: 2000,
+  isCaughtUp: false,
+};
+const remoteBehindCw = {
+  animeId: 'anime-ahead-1',
+  title: 'One Piece',
+  thumbnail: 'https://example.com/op.jpg',
+  episodeId: 'ep-12',
+  episodeNumber: 12,
+  position: 1400,
+  duration: 1440,
+  percentage: 97,
+  updatedAt: 2500,
+  isCaughtUp: true, // Stale isCaughtUp from older episode
+};
+
+const mergeRegressionResult = mergeLocalAndRemote(
+  {
+    favorites: [],
+    continueWatching: [localAheadCw],
+    watchHistory: [],
+    watchProgress: [],
+    sharedSettings: {},
+    searchHistory: [],
+  },
+  {
+    serverTime: 3000,
+    deltas: {
+      favorites: [],
+      continueWatching: [remoteBehindCw],
+      watchHistory: [],
+      watchProgress: [],
+      sharedSettings: {},
+      searchHistory: [],
+    },
+    tombstones: [],
+  }
+);
+assert.strictEqual(mergeRegressionResult.state.continueWatching.length, 1);
+const mergedCwAhead = mergeRegressionResult.state.continueWatching[0];
+assert.strictEqual(mergedCwAhead.episodeNumber, 13, 'Non deve regredire all episodio 12 remoto');
+assert.strictEqual(mergedCwAhead.isCaughtUp, false, 'Non deve ereditare isCaughtUp dall episodio 12 obsoleto');
+
+// Case C: Continue Watching Advance Progression (Remote Ahead)
+const localBehindCw = { ...localAheadCw, episodeNumber: 13, isCaughtUp: false };
+const remoteAheadCw = {
+  ...localAheadCw,
+  episodeId: 'ep-14',
+  episodeNumber: 14,
+  position: 0,
+  percentage: 0,
+  updatedAt: 3000,
+  isCaughtUp: true,
+};
+
+const mergeAdvanceResult = mergeLocalAndRemote(
+  {
+    favorites: [],
+    continueWatching: [localBehindCw],
+    watchHistory: [],
+    watchProgress: [],
+    sharedSettings: {},
+    searchHistory: [],
+  },
+  {
+    serverTime: 4000,
+    deltas: {
+      favorites: [],
+      continueWatching: [remoteAheadCw],
+      watchHistory: [],
+      watchProgress: [],
+      sharedSettings: {},
+      searchHistory: [],
+    },
+    tombstones: [],
+  }
+);
+const mergedCwAdvance = mergeAdvanceResult.state.continueWatching[0];
+assert.strictEqual(mergedCwAdvance.episodeNumber, 14, 'Deve avanzare all episodio 14 remoto');
+assert.strictEqual(mergedCwAdvance.isCaughtUp, true, 'Deve ereditare lo stato IN PARI dall episodio 14');
+
+// Case D: Timeline Progress Safeguard (Same Episode: Max Position & Percentage)
+const localEp1Progress = {
+  animeId: 'anime-safeguard-1',
+  animeTitle: 'Solo Leveling',
+  thumbnail: '',
+  episodeId: 'ep-1',
+  episodeNumber: 1,
+  currentTime: 500,
+  duration: 1440,
+  percentage: 35,
+  isCompleted: false,
+  updatedAt: 2000,
+};
+const remoteEp1Progress = {
+  animeId: 'anime-safeguard-1',
+  animeTitle: 'Solo Leveling',
+  thumbnail: '',
+  episodeId: 'ep-1',
+  episodeNumber: 1,
+  currentTime: 300,
+  duration: 1440,
+  percentage: 21,
+  isCompleted: false,
+  updatedAt: 2500, // Newer timestamp but smaller progress!
+};
+
+const mergeProgressResult = mergeLocalAndRemote(
+  {
+    favorites: [],
+    continueWatching: [],
+    watchHistory: [],
+    watchProgress: [localEp1Progress],
+    sharedSettings: {},
+    searchHistory: [],
+  },
+  {
+    serverTime: 3000,
+    deltas: {
+      favorites: [],
+      continueWatching: [],
+      watchHistory: [],
+      watchProgress: [remoteEp1Progress],
+      sharedSettings: {},
+      searchHistory: [],
+    },
+    tombstones: [],
+  }
+);
+const mergedProgress = mergeProgressResult.state.watchProgress[0];
+assert.strictEqual(mergedProgress.currentTime, 500, 'Timeline Progress Safeguard: deve preservare la posizione maggiore');
+assert.strictEqual(mergedProgress.percentage, 35, 'Timeline Progress Safeguard: deve preservare la percentuale maggiore');
+
+// Case E: Merge Sorting Order (Newest updatedAt / timestamp First)
+const olderCw = { ...localCwItem, animeId: 'older-cw', updatedAt: 1000 };
+const newerRemoteCw = { ...localCwItem, animeId: 'newer-cw', updatedAt: 5000 };
+const mergeSortResult = mergeLocalAndRemote(
+  {
+    favorites: [
+      { ...localFavItem, id: 'fav-old', updatedAt: 1000 },
+    ],
+    continueWatching: [olderCw],
+    watchHistory: [
+      { animeId: 'a1', episodeNumber: 1, episodeId: 'e1', title: 'A', thumbnail: '', position: 0, duration: 100, progressPercent: 0, isCompleted: false, updatedAt: 1000 },
+    ],
+    watchProgress: [],
+    sharedSettings: {},
+    searchHistory: [{ query: 'OLD_SEARCH', timestamp: 1000 }],
+  },
+  {
+    serverTime: 6000,
+    deltas: {
+      favorites: [
+        { ...localFavItem, id: 'fav-new', updatedAt: 5000 },
+      ],
+      continueWatching: [newerRemoteCw],
+      watchHistory: [
+        { animeId: 'a2', episodeNumber: 1, episodeId: 'e2', title: 'B', thumbnail: '', position: 0, duration: 100, progressPercent: 0, isCompleted: false, updatedAt: 5000 },
+      ],
+      watchProgress: [],
+      sharedSettings: {},
+      searchHistory: [{ query: 'NEW_SEARCH', timestamp: 5000 }],
+    },
+    tombstones: [],
+  }
+);
+assert.strictEqual(mergeSortResult.state.continueWatching[0].animeId, 'newer-cw', 'Continue watching deve essere ordinato con il più recente in testa');
+assert.strictEqual(mergeSortResult.state.watchHistory[0].animeId, 'a2', 'Watch history deve essere ordinata con il più recente in testa');
+assert.strictEqual(mergeSortResult.state.favorites[0].id, 'fav-new', 'Favorites deve essere ordinato con il più recente in testa');
+assert.strictEqual(mergeSortResult.state.searchHistory[0].query, 'NEW_SEARCH', 'Search history deve essere ordinata con la più recente in testa');
+
+// 3. Storage Bridge with MMKV (app-storage.ts)
+AppStorage.clearPendingSyncDeletions();
+AppStorage.clearPendingSyncMutations();
+assert.strictEqual(AppStorage.getPendingSyncDeletions().length, 0);
+
+// Test tombstone generation on favorite removal
+const testSyncAnime = {
+  id: 'sync-anime-fav',
+  title: 'Bleach',
+  thumbnail: 'https://example.com/bleach.jpg',
+  genres: ['Action'],
+  link: '/anime/bleach',
+};
+AppStorage.toggleFavorite(testSyncAnime); // Added
+const mutationsAfterFavAdd = AppStorage.getPendingSyncMutations();
+assert(Array.isArray(mutationsAfterFavAdd.favorites), 'Aggiunta ai preferiti deve accodare una mutation');
+assert(mutationsAfterFavAdd.favorites.some((f: any) => f.id === 'sync-anime-fav'));
+
+AppStorage.toggleFavorite(testSyncAnime); // Removed
+const deletionsAfterFavRemove = AppStorage.getPendingSyncDeletions();
+assert(deletionsAfterFavRemove.some((d) => d.type === 'favorite' && d.key === 'sync-anime-fav'), 'Rimozione dai preferiti deve generare tombstone favorite');
+
+// Test tombstone generation on continue watching removal
+AppStorage.removeContinueWatching('anime-cw-del');
+const deletionsAfterCw = AppStorage.getPendingSyncDeletions();
+assert(deletionsAfterCw.some((d) => d.type === 'continue_watching' && d.key === 'anime-cw-del'), 'Rimozione da continue watching deve generare tombstone continue_watching');
+
+// Test tombstone generation on watch history removal
+AppStorage.removeWatchHistoryItem('anime-hist-del', 'ep-5', 5);
+const deletionsAfterHist = AppStorage.getPendingSyncDeletions();
+assert(deletionsAfterHist.some((d) => d.type === 'watch_history' && d.key === 'anime-hist-del:5'), 'Rimozione cronologia deve generare tombstone watch_history');
+assert(deletionsAfterHist.some((d) => d.type === 'watch_progress' && d.key === 'anime-hist-del:5'), 'Rimozione cronologia deve generare tombstone watch_progress');
+
+// Test tombstone generation on search history removal
+AppStorage.removeSearchHistoryItem('ATTACK ON TITAN');
+const deletionsAfterSearch = AppStorage.getPendingSyncDeletions();
+assert(deletionsAfterSearch.some((d) => d.type === 'search_history' && d.key === 'ATTACK ON TITAN'), 'Rimozione ricerca deve generare tombstone search_history');
+
+// Test progress saving and mutation queuing
+AppStorage.saveWatchProgress({
+  animeId: 'sync-progress-anime',
+  animeTitle: 'Frieren',
+  episodeId: 'ep-1',
+  episodeNumber: 1,
+  currentTime: 100,
+  duration: 1400,
+});
+const mutationsAfterProgress = AppStorage.getPendingSyncMutations();
+assert(Array.isArray(mutationsAfterProgress.watchProgress), 'Salvataggio progresso deve accodare watchProgress');
+assert(mutationsAfterProgress.watchProgress.some((wp: any) => wp.animeId === 'sync-progress-anime'));
+
+const allWatchProgress = AppStorage.getAllWatchProgress();
+assert(allWatchProgress.some((wp) => wp.animeId === 'sync-progress-anime'), 'getAllWatchProgress deve recuperare gli elementi da user.progress.*');
+
+// Test queue reconciliation: re-adding favorite clears deletion tombstone
+AppStorage.clearPendingSyncDeletions();
+AppStorage.clearPendingSyncMutations();
+AppStorage.recordSyncDeletion('favorite', 're-add-anime');
+assert.strictEqual(AppStorage.getPendingSyncDeletions().length, 1);
+AppStorage.recordSyncMutation('favorites', { id: 're-add-anime', title: 'ReAdd', thumbnail: '', genres: [], link: '' });
+assert.strictEqual(AppStorage.getPendingSyncDeletions().length, 0, 'La ri-aggiunta deve cancellare il tombstone pendente');
+assert.strictEqual(AppStorage.getPendingSyncMutations().favorites.length, 1, 'La ri-aggiunta deve accodare la mutation');
+
+// Test queue reconciliation: deleting item clears pending mutation
+AppStorage.recordSyncDeletion('favorite', 're-add-anime');
+assert.strictEqual(AppStorage.getPendingSyncDeletions().length, 1, 'Cancellazione deve accodare tombstone');
+assert.strictEqual((AppStorage.getPendingSyncMutations().favorites || []).length, 0, 'Cancellazione deve rimuovere la mutation pendente');
+
+// Test wildcard history deletion generates watch_progress tombstones for discrete keys
+AppStorage.saveWatchProgress({
+  animeId: 'wildcard-test-anime',
+  animeTitle: 'Wildcard Title',
+  episodeId: 'ep-1',
+  episodeNumber: 1,
+  currentTime: 50,
+  duration: 1400,
+});
+AppStorage.saveWatchProgress({
+  animeId: 'wildcard-test-anime',
+  animeTitle: 'Wildcard Title',
+  episodeId: 'ep-2',
+  episodeNumber: 2,
+  currentTime: 80,
+  duration: 1400,
+});
+AppStorage.clearPendingSyncDeletions();
+AppStorage.removeWatchHistoryItem('wildcard-test-anime'); // Wildcard removal (no ep specified)
+const wildcardDels = AppStorage.getPendingSyncDeletions();
+assert(wildcardDels.some((d) => d.type === 'watch_progress' && d.key === 'wildcard-test-anime:1'), 'Wildcard deletion deve generare tombstone progress per ep 1');
+assert(wildcardDels.some((d) => d.type === 'watch_progress' && d.key === 'wildcard-test-anime:2'), 'Wildcard deletion deve generare tombstone progress per ep 2');
+
+// 4. KuroSyncClient SDK Methods Verification with Mock Fetch
+const mockClient = new KuroSyncClient({
+  baseUrl: 'https://my-sync.workers.dev',
+  deviceToken: 'mock-token-123',
+});
+assert.strictEqual(mockClient.getBaseUrl(), 'https://my-sync.workers.dev');
+assert.strictEqual(mockClient.getDeviceToken(), 'mock-token-123');
+
+const originalFetch = globalThis.fetch;
+let lastFetchUrl = '';
+let lastFetchOptions: any = null;
+
+// Mock globalThis.fetch for SDK methods
+(globalThis as any).fetch = async (url: string, options: any) => {
+  lastFetchUrl = url;
+  lastFetchOptions = options;
+  if (url.includes('/api/health')) {
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true, initialized: true, version: '1.0.0' }),
+    } as any;
+  }
+  if (url.includes('/api/pair/approve')) {
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true, deviceId: 'tv-device-uuid-999' }),
+    } as any;
+  }
+  if (url.includes('/api/sync/pull')) {
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        serverTime: 1234567890,
+        deltas: {
+          favorites: [],
+          continueWatching: [],
+          watchHistory: [],
+          watchProgress: [],
+          sharedSettings: {},
+          searchHistory: [],
+        },
+        tombstones: [],
+      }),
+    } as any;
+  }
+  if (url.includes('/api/sync/push')) {
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true, serverTime: 1234567895, appliedCount: 1 }),
+    } as any;
+  }
+  if (url.includes('/api/profiles')) {
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        ok: true,
+        profiles: [
+          { id: 'prof-1', name: 'Principale', avatar_color: '#E50914' },
+          { id: 'prof-2', name: 'Salotto TV', avatar_color: '#3B82F6' },
+        ],
+      }),
+    } as any;
+  }
+  return {
+    ok: true,
+    status: 200,
+    json: async () => ({ ok: true }),
+  } as any;
+};
+
+// 4.1 Check Health
+const healthRes = await mockClient.checkHealth();
+assert.strictEqual(healthRes.ok, true, 'checkHealth deve restituire ok');
+assert(lastFetchUrl.endsWith('/api/health'));
+
+// 4.2 TV Pairing Approval
+const pairRes = await mockClient.approveTvPairing({
+  code: 'K7X9P2',
+  profileId: 'prof-1',
+  deviceLabel: 'Living Room TV',
+});
+assert.strictEqual(pairRes.ok, true, 'approveTvPairing deve restituire ok');
+assert(lastFetchUrl.endsWith('/api/pair/approve'));
+assert.strictEqual(lastFetchOptions.headers['Authorization'], 'Bearer mock-token-123');
+const pairBody = JSON.parse(lastFetchOptions.body);
+assert.strictEqual(pairBody.code, 'K7X9P2');
+assert.strictEqual(pairBody.profileId, 'prof-1');
+
+// 4.3 List Profiles
+const profilesList = await mockClient.listProfiles();
+assert.strictEqual(profilesList.length, 2, 'listProfiles deve restituire i 2 profili');
+assert.strictEqual(profilesList[0].name, 'Principale');
+
+// 5. TV Pairing in SyncManager (Supporto sia codice che URL completa del QR)
+AppStorage.setString(StorageKeys.SYNC_SERVER_URL, 'https://my-sync.workers.dev');
+AppStorage.setString(StorageKeys.SYNC_DEVICE_TOKEN, 'test-sync-token');
+AppStorage.setString(StorageKeys.SYNC_PROFILE_ID, 'prof-1');
+const tvApprovalRaw = await SyncManager.approveTvPairing('K7X9P2', 'prof-1');
+assert.strictEqual(tvApprovalRaw.ok, true, 'Approvazione con codice raw deve riuscire');
+
+const tvApprovalUrl = await SyncManager.approveTvPairing('https://my-sync.workers.dev/pair?code=K7X9P2', 'prof-1');
+assert.strictEqual(tvApprovalUrl.ok, true, 'Approvazione con URL QR deve estrarre il codice e riuscire');
+
+// 6. Playback Debounce (45-60s) & Immediate Flush
+let pushCount = 0;
+const originalPushDelta = (SyncManager as any).client.pushDelta.bind((SyncManager as any).client);
+(SyncManager as any).client.pushDelta = async (delta: any) => {
+  pushCount++;
+  return { ok: true, serverTime: Date.now(), appliedCount: 1 };
+};
+
+// Initial playback update (sets baseline)
+await SyncManager.recordPlaybackProgress({
+  animeId: 'anime-debounce-test',
+  episodeId: 'ep-1',
+  episodeNumber: 1,
+  currentTime: 10,
+  duration: 1400,
+  isCompleted: false,
+});
+assert.strictEqual(pushCount, 0, 'Il primo tick non deve invocare push immediato se non trascorso 45s');
+
+// Tick 4s later (normal playback tick): must be debounced, NO push!
+await SyncManager.recordPlaybackProgress({
+  animeId: 'anime-debounce-test',
+  episodeId: 'ep-1',
+  episodeNumber: 1,
+  currentTime: 14,
+  duration: 1400,
+  isCompleted: false,
+});
+assert.strictEqual(pushCount, 0, 'Tick di avanzamento normale (4s) deve essere debounced a 45-60s per rispettare i limiti D1');
+
+// Immediate flush on Pause / Unmount / Completion
+await SyncManager.recordPlaybackProgress(
+  {
+    animeId: 'anime-debounce-test',
+    episodeId: 'ep-1',
+    episodeNumber: 1,
+    currentTime: 14,
+    duration: 1400,
+    isCompleted: false,
+  },
+  true // Immediate!
+);
+assert.strictEqual(pushCount, 1, 'Invocazione con immediate=true (pausa o uscita) deve forzare il flush istantaneo');
+
+// Immediate flush on completion (>= 90%)
+await SyncManager.recordPlaybackProgress({
+  animeId: 'anime-debounce-test',
+  episodeId: 'ep-1',
+  episodeNumber: 1,
+  currentTime: 1300,
+  duration: 1400,
+  isCompleted: true, // Completed!
+});
+assert.strictEqual(pushCount, 2, 'Raggiungimento della soglia di fine episodio (isCompleted) deve forzare il flush istantaneo');
+
+// Test atomic push: pushPending with pending playback payload must invoke pushDelta exactly once
+pushCount = 0;
+await SyncManager.recordPlaybackProgress({
+  animeId: 'atomic-push-test',
+  episodeId: 'ep-1',
+  episodeNumber: 1,
+  currentTime: 50,
+  duration: 1400,
+  isCompleted: false,
+});
+assert.strictEqual(pushCount, 0);
+await SyncManager.pushPending(true);
+assert.strictEqual(pushCount, 1, 'pushPending con payload in sospeso deve eseguire ESATTAMENTE un solo pushDelta atomico');
+
+// Restore original fetch and pushDelta
+(SyncManager as any).client.pushDelta = originalPushDelta;
+globalThis.fetch = originalFetch;
+
+// Clean up test token in storage
+AppStorage.remove(StorageKeys.SYNC_DEVICE_TOKEN);
+AppStorage.remove(StorageKeys.SYNC_SERVER_URL);
+
+// 7. Verify UI Components Export & AGENTS.md Compliance
+assert(
+  typeof SyncSettingsCard === 'function' || typeof SyncSettingsCard === 'object',
+  'SyncSettingsCard deve essere un componente React valido'
+);
+assert(
+  typeof SyncConnectModal === 'function' || typeof SyncConnectModal === 'object',
+  'SyncConnectModal deve essere un componente React valido'
+);
+assert(
+  typeof AuthorizeTvModal === 'function' || typeof AuthorizeTvModal === 'object',
+  'AuthorizeTvModal deve essere un componente React valido'
+);
+assert(
+  typeof SyncProfileModal === 'function' || typeof SyncProfileModal === 'object',
+  'SyncProfileModal deve essere un componente React valido'
+);
+assert(
+  typeof QrScannerModal === 'function' || typeof QrScannerModal === 'object',
+  'QrScannerModal deve essere un componente React valido'
+);
+
+const appJsonRaw = fs.readFileSync(path.resolve(process.cwd(), 'app.json'), 'utf-8');
+const appJson = JSON.parse(appJsonRaw);
+const cameraPlugin = appJson.expo.plugins.find((p: any) => Array.isArray(p) && p[0] === 'expo-camera');
+assert(cameraPlugin, 'Plugin expo-camera configurato in app.json');
+assert.strictEqual(cameraPlugin[1].recordAudioAndroid, false, 'recordAudioAndroid deve essere false per non richiedere il microfono');
+assert(!appJson.expo.android.permissions.includes('android.permission.RECORD_AUDIO'), 'RECORD_AUDIO non deve essere nei permessi Android');
+
+const qrScannerSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/settings/QrScannerModal.tsx'), 'utf-8');
+assert(qrScannerSource.includes('onMountError'), 'QrScannerModal deve gestire onMountError per prevenire blocchi hardware');
+assert(qrScannerSource.includes('openSettings'), 'QrScannerModal deve offrire openSettings quando il permesso è bloccato');
+
+// Verify NO hardcoded personal URL exists and generic placeholder / empty default is used
+assert.strictEqual(DEFAULT_SYNC_SERVER_URL, '', 'DEFAULT_SYNC_SERVER_URL non deve esporre l\'istanza privata');
+assert.strictEqual(KUROSYNC_GITHUB_REPO_URL, 'https://github.com/G4s01/KuroTV_S', 'KUROSYNC_GITHUB_REPO_URL deve puntare al repo ufficiale');
+
+const settingsCardSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/settings/SyncSettingsCard.tsx'), 'utf-8');
+assert(settingsCardSource.includes('KUROSYNC_GITHUB_REPO_URL'), 'SyncSettingsCard deve collegare il repository GitHub di KuroTV_S');
+assert(settingsCardSource.includes('Linking.openURL'), 'SyncSettingsCard deve aprire il link GitHub con Linking.openURL');
+
+const connectModalSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/settings/SyncConnectModal.tsx'), 'utf-8');
+assert(connectModalSource.includes('QrScannerModal'), 'SyncConnectModal deve integrare QrScannerModal');
+assert(connectModalSource.includes('SCANSIONA CON FOTOCAMERA'), 'SyncConnectModal deve offrire il pulsante per scansionare con fotocamera');
+assert(connectModalSource.includes('tuo-kurotv-s'), 'SyncConnectModal deve usare un placeholder generico es. tuo-kurotv-s');
+assert(!connectModalSource.includes('kurotv-s.g4s01.workers.dev'), 'SyncConnectModal non deve contenere URL personale hardcoded');
+
+const authorizeTvSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/settings/AuthorizeTvModal.tsx'), 'utf-8');
+assert(authorizeTvSource.includes('QrScannerModal'), 'AuthorizeTvModal deve integrare QrScannerModal');
+assert(authorizeTvSource.includes('SCANSIONA QR DELLA TV'), 'AuthorizeTvModal deve offrire il pulsante scanner fotocamera');
+
+const settingsSyncCheckSource = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/settings.tsx'), 'utf-8');
+assert(settingsSyncCheckSource.includes('<SyncSettingsCard'), 'settings.tsx deve includere SyncSettingsCard');
+
+const layoutSource = fs.readFileSync(path.resolve(process.cwd(), 'app/_layout.tsx'), 'utf-8');
+assert(layoutSource.includes('kurosync://'), '_layout.tsx deve gestire il deep-link kurosync://');
+assert(layoutSource.includes('SyncManager.pullDelta'), '_layout.tsx deve sincronizzare al rientro in foreground');
+assert(layoutSource.includes('SyncManager.pushPending'), '_layout.tsx deve fare push delle modifiche pendenti su background');
+
+const playerSource = fs.readFileSync(path.resolve(process.cwd(), 'app/player/[id].tsx'), 'utf-8');
+assert(playerSource.includes('SyncManager.recordPlaybackProgress'), 'player/[id].tsx deve inviare il progresso a SyncManager');
+assert(playerSource.includes('SyncManager.flushPlaybackProgress'), 'player/[id].tsx deve fare flush immediato del progresso su pausa o unmount');
+
+// Check AGENTS.md rule: NO Alert.alert in any sync component
+const syncFiles = [
+  'src/services/sync/sync-manager.ts',
+  'src/services/sync/client.ts',
+  'src/components/settings/SyncSettingsCard.tsx',
+  'src/components/settings/SyncConnectModal.tsx',
+  'src/components/settings/AuthorizeTvModal.tsx',
+  'src/components/settings/SyncProfileModal.tsx',
+  'src/components/settings/QrScannerModal.tsx',
+];
+for (const f of syncFiles) {
+  const content = fs.readFileSync(path.resolve(process.cwd(), f), 'utf-8');
+  assert(!content.includes('Alert.alert'), `Divieto Alert.alert violato in ${f}`);
+  assert(!content.includes('kurotv-s.g4s01.workers.dev'), `URL personale non rimosso da ${f}`);
+}
+
+console.log('✓ Sincronizzazione Self-Hosted KuroSync, MMKV Storage Bridge, Debounce & TV Pairing verificati con successo.');
 
 // -----------------------------------------------------------------------------
 // Fine Test

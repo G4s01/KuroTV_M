@@ -9,6 +9,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider, useTheme } from '@/theme';
 import { AppStorage, type NavBarMode } from '@/services/storage';
 import { UpdaterService, UpdateStore } from '@/services/updater';
+import { SyncManager, parseKuroSyncDeepLink } from '@/services/sync';
+import * as Linking from 'expo-linking';
 import { UpdateModal } from '@/components';
 
 const queryClient = new QueryClient({
@@ -37,7 +39,16 @@ function RootNavigation() {
 
     const subAppState = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
-        applyNavBarVisibility(AppStorage.getNavBarMode());
+        if (Platform.OS === 'android') {
+          applyNavBarVisibility(AppStorage.getNavBarMode());
+        }
+        if (SyncManager.isConnected()) {
+          SyncManager.pullDelta().catch(() => {});
+        }
+      } else if (state === 'background' || state === 'inactive') {
+        if (SyncManager.isConnected()) {
+          SyncManager.pushPending(true).catch(() => {});
+        }
       }
     });
 
@@ -52,6 +63,46 @@ function RootNavigation() {
       unsubSettings();
     };
   }, [navBarMode]);
+
+  // KuroSync deep-link handling (e.g. kurosync://connect?url=...&token=...&profile=... or kurosync://pair?code=...)
+  React.useEffect(() => {
+    const processDeepLink = (url: string) => {
+      if (!url) return;
+      const parsed = parseKuroSyncDeepLink(url);
+      if (parsed?.token) {
+        SyncManager.connectFromDeepLink(url).catch(() => {});
+      } else if (parsed?.code) {
+        if (SyncManager.isConnected()) {
+          SyncManager.approveTvPairing(parsed.code).catch(() => {});
+        }
+      } else if (
+        url.startsWith('kurosync://') ||
+        url.includes('token=') ||
+        url.includes('kurosync')
+      ) {
+        SyncManager.connectFromDeepLink(url).catch(() => {});
+      }
+    };
+
+    const handleUrl = (event: { url: string }) => {
+      if (event?.url) {
+        processDeepLink(event.url);
+      }
+    };
+
+    Linking.getInitialURL()
+      .then((initialUrl) => {
+        if (initialUrl) {
+          processDeepLink(initialUrl);
+        }
+      })
+      .catch(() => {});
+
+    const subLinking = Linking.addEventListener('url', handleUrl);
+    return () => {
+      subLinking.remove();
+    };
+  }, []);
 
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: theme.colors.background }}>
@@ -120,9 +171,17 @@ export default function RootLayout() {
         .catch(() => {});
     }, 1200);
 
+    // Initial KuroSync delta pull on app startup
+    const syncTimer = setTimeout(() => {
+      if (SyncManager.isConnected()) {
+        SyncManager.performFullSync().catch(() => {});
+      }
+    }, 1500);
+
     return () => {
       clearTimeout(timer);
       clearTimeout(updateTimer);
+      clearTimeout(syncTimer);
     };
   }, []);
 

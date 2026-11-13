@@ -20,6 +20,7 @@ export interface AnimeItem {
   rank?: string;
   audio?: string;
   badge?: string;
+  updatedAt?: number;
 }
 
 export interface VideoServer {

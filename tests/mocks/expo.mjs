@@ -96,6 +96,23 @@ export const notificationAsync = async () => {};
 export const ImpactFeedbackStyle = { Light: 'light', Medium: 'medium', Heavy: 'heavy' };
 export const NotificationFeedbackType = { Success: 'success', Warning: 'warning', Error: 'error' };
 
+export const openURL = async () => {};
+export const canOpenURL = async () => true;
+export const openSettings = async () => {};
+export const getInitialURL = async () => null;
+export const addEventListener = () => ({ remove: () => {} });
+
+export const CameraView = ({ children }) => children || null;
+export const useCameraPermissions = () => [
+  { granted: true, canAskAgain: true, status: 'granted' },
+  async () => ({ granted: true, canAskAgain: true, status: 'granted' }),
+  async () => ({ granted: true, canAskAgain: true, status: 'granted' }),
+];
+export const Camera = {
+  getCameraPermissionsAsync: async () => ({ granted: true, canAskAgain: true, status: 'granted' }),
+  requestCameraPermissionsAsync: async () => ({ granted: true, canAskAgain: true, status: 'granted' }),
+};
+
 export default {
   Constants,
   Stack,
@@ -106,6 +123,9 @@ export default {
   StatusBar,
   Image,
   VideoView,
+  CameraView,
+  useCameraPermissions,
+  Camera,
   useVideoPlayer,
   useEventListener,
   lockAsync,

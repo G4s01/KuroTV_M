@@ -32,6 +32,7 @@ import {
   type AniSkipOverlayState,
 } from '@/services/aniskip';
 import { AppStorage } from '@/services/storage';
+import { SyncManager } from '@/services/sync';
 import { DownloadService, type DownloadStatus } from '@/services/downloads';
 import { oledTheme, useTheme, getContrastTextColor } from '@/theme';
 import { AniSkipButton } from '@/components/AniSkipButton';
@@ -197,6 +198,38 @@ export default function VideoPlayerScreen() {
             }
           : undefined,
       });
+
+      if (SyncManager.isConnected()) {
+        const isCompleted =
+          currentDuration > 0 &&
+          (pos / currentDuration >= 0.9 ||
+            currentDuration - pos <= (AppStorage.getEndingThreshold() || 90));
+        SyncManager.recordPlaybackProgress(
+          {
+            animeId,
+            animeTitle,
+            episodeId,
+            episodeNumber,
+            totalEpisodes: totalEpisodesRef.current,
+            currentTime: pos,
+            duration: currentDuration,
+            dataId: episodeDataId,
+            serverId,
+            thumbnail: thumbnailRef.current,
+            isOngoing: isOngoingRef.current,
+            isCompleted,
+            nextEpisode: nextEp
+              ? {
+                  id: nextEp.id,
+                  number: nextEp.number,
+                  dataId: nextEp.dataId,
+                }
+              : undefined,
+          },
+          isCompleted
+        ).catch(() => {});
+      }
+
       lastSavedTimeRef.current = pos;
     },
     [animeId, animeTitle, episodeId, episodeNumber, episodeDataId, serverId]
@@ -374,6 +407,7 @@ export default function VideoPlayerScreen() {
     }
     if (!playing && animeId) {
       saveProgress(currentTimeRef.current, durationRef.current);
+      SyncManager.flushPlaybackProgress().catch(() => {});
     }
   });
 
@@ -431,6 +465,7 @@ export default function VideoPlayerScreen() {
             if (currentAnimeIdRef.current && currentEpisodeIdRef.current) {
               saveProgressRef.current(currentTimeRef.current, durationRef.current);
             }
+            SyncManager.flushPlaybackProgress().catch(() => {});
           }
         }, 600);
       } else if (nextAppState === 'active') {
@@ -470,6 +505,7 @@ export default function VideoPlayerScreen() {
       if (currentAnimeIdRef.current && currentEpisodeIdRef.current) {
         saveProgressRef.current(currentTimeRef.current, durationRef.current);
       }
+      SyncManager.flushPlaybackProgress().catch(() => {});
     };
   }, [player]);
 
@@ -803,6 +839,7 @@ export default function VideoPlayerScreen() {
           ? durationRef.current
           : currentTimeRef.current;
       saveProgress(savePos, durationRef.current);
+      SyncManager.flushPlaybackProgress().catch(() => {});
       hasResumedRef.current = false;
       primarySkipRef.current = null;
       setPrimarySkipState(null);

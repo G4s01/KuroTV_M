@@ -34,6 +34,13 @@ export const useWindowDimensions = () => ({ width: 400, height: 800 });
 export const BackHandler = { addEventListener: () => ({ remove: () => {} }) };
 export const Keyboard = { dismiss: () => {}, addListener: () => ({ remove: () => {} }) };
 export const Share = { share: async () => ({ action: 'sharedAction' }) };
+export const Linking = {
+  openURL: async () => {},
+  canOpenURL: async () => true,
+  openSettings: async () => {},
+  getInitialURL: async () => null,
+  addEventListener: () => ({ remove: () => {} }),
+};
 export const Modal = ({ children }) => children;
 export const StatusBar = {
   setBarStyle: () => {},

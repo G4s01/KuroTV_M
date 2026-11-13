@@ -5,11 +5,14 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "kurotv",
+    "scheme": [
+      "kurotv",
+      "kurosync"
+    ],
     "userInterfaceStyle": "automatic",
     "android": {
       "package": "com.kurotv.mobile",
-      "versionCode": 35,
+      "versionCode": 37,
       "adaptiveIcon": {
         "backgroundColor": "#000000",
         "foregroundImage": "./assets/images/android-icon-foreground.png"
@@ -20,7 +23,8 @@
         "android.permission.ACCESS_NETWORK_STATE",
         "android.permission.REQUEST_INSTALL_PACKAGES",
         "android.permission.SYSTEM_ALERT_WINDOW",
-        "android.permission.FOREGROUND_SERVICE"
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.CAMERA"
       ]
     },
     "plugins": [
@@ -40,7 +44,16 @@
           "supportsPictureInPicture": true
         }
       ],
-      "expo-font"
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Permetti a KuroTV di usare la fotocamera per scansionare codici QR di KuroSync.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
+      ],
+      "expo-font",
+      "expo-status-bar"
     ],
     "experiments": {
       "typedRoutes": true

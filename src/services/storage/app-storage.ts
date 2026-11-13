@@ -123,6 +123,17 @@ export const StorageKeys = {
   SCHEDULE_DATA: 'cache.scheduleData',
   ANISKIP_SETTINGS: 'settings.aniSkipSettings',
   SEARCH_HISTORY: 'user.searchHistory',
+  SYNC_SERVER_URL: 'sync.server_url',
+  SYNC_DEVICE_TOKEN: 'sync.device_token',
+  SYNC_DEVICE_ID: 'sync.device_id',
+  SYNC_PROFILE_ID: 'sync.profile_id',
+  SYNC_PROFILE_NAME: 'sync.profile_name',
+  SYNC_LAST_TIMESTAMP: 'sync.last_timestamp',
+  SYNC_LAST_TIME: 'sync.last_sync_time',
+  SYNC_PENDING_MUTATIONS: 'sync.pending_mutations',
+  SYNC_PENDING_DELETIONS: 'sync.pending_deletions',
+  SYNC_IS_ENABLED: 'sync.is_enabled',
+  SYNC_MASTER_PASSWORD: 'sync.master_password',
 } as const;
 
 export type ThemeMode = 'oled' | 'light' | 'custom';
@@ -281,9 +292,14 @@ function removeWatchHistoryTargets(targets: WatchHistoryDeleteTarget[]): {
   // 1. Remove matching entries from watch history in a single pass
   const rawHistory = AppStorage.getObject<WatchHistoryItem[]>(StorageKeys.WATCH_HISTORY);
   if (Array.isArray(rawHistory)) {
-    const filtered = rawHistory.filter(
-      (item) => !validTargets.some((target) => matchesHistoryTarget(item, target))
-    );
+    const filtered = rawHistory.filter((item) => {
+      const isTarget = validTargets.some((target) => matchesHistoryTarget(item, target));
+      if (isTarget) {
+        AppStorage.recordSyncDeletion('watch_history', `${item.animeId}:${item.episodeNumber}`);
+        AppStorage.recordSyncDeletion('watch_progress', `${item.animeId}:${item.episodeNumber}`);
+      }
+      return !isTarget;
+    });
     removedCount = rawHistory.length - filtered.length;
     if (removedCount > 0) {
       modified = true;
@@ -295,6 +311,8 @@ function removeWatchHistoryTargets(targets: WatchHistoryDeleteTarget[]): {
   const wildcardAnimeIds = new Set<string>();
   for (const target of validTargets) {
     if (target.episodeNumber !== undefined) {
+      AppStorage.recordSyncDeletion('watch_progress', `${target.animeId}:${target.episodeNumber}`);
+      AppStorage.recordSyncDeletion('watch_history', `${target.animeId}:${target.episodeNumber}`);
       const progressKey = `${StorageKeys.WATCH_PROGRESS_PREFIX}${target.animeId}.${target.episodeNumber}`;
       if (storage.contains(progressKey)) {
         storage.remove(progressKey);
@@ -307,15 +325,31 @@ function removeWatchHistoryTargets(targets: WatchHistoryDeleteTarget[]): {
 
   if (wildcardAnimeIds.size > 0) {
     const allKeys = storage.getAllKeys();
+    const wildcardDeletions: Array<{ type: string; key: string }> = [];
     for (const k of allKeys) {
       if (!k.startsWith(StorageKeys.WATCH_PROGRESS_PREFIX)) continue;
       for (const animeId of wildcardAnimeIds) {
-        if (k.startsWith(`${StorageKeys.WATCH_PROGRESS_PREFIX}${animeId}.`)) {
+        const prefix = `${StorageKeys.WATCH_PROGRESS_PREFIX}${animeId}.`;
+        if (k.startsWith(prefix)) {
+          const epNumStr = k.slice(prefix.length);
+          if (epNumStr) {
+            wildcardDeletions.push({
+              type: 'watch_progress',
+              key: `${animeId}:${epNumStr}`,
+            });
+            wildcardDeletions.push({
+              type: 'watch_history',
+              key: `${animeId}:${epNumStr}`,
+            });
+          }
           storage.remove(k);
           modified = true;
           break;
         }
       }
+    }
+    if (wildcardDeletions.length > 0) {
+      AppStorage.recordSyncDeletions(wildcardDeletions);
     }
   }
 
@@ -794,10 +828,16 @@ export const AppStorage = {
     if (existingIndex >= 0) {
       favorites.splice(existingIndex, 1);
       AppStorage.setObject(StorageKeys.FAVORITES, favorites);
+      AppStorage.recordSyncDeletion('favorite', item.id);
       return false;
     } else {
-      favorites.unshift(item);
+      const withTimestamp: AnimeItem = {
+        ...item,
+        updatedAt: item.updatedAt || Date.now(),
+      };
+      favorites.unshift(withTimestamp);
       AppStorage.setObject(StorageKeys.FAVORITES, favorites);
+      AppStorage.recordSyncMutation('favorites', withTimestamp);
       return true;
     }
   },
@@ -806,6 +846,7 @@ export const AppStorage = {
     if (!animeId) return;
     const favorites = AppStorage.getFavorites().filter((fav) => fav.id !== animeId);
     AppStorage.setObject(StorageKeys.FAVORITES, favorites);
+    AppStorage.recordSyncDeletion('favorite', animeId);
   },
 
   removeFavorites: (animeIds: string[]): number => {
@@ -817,6 +858,11 @@ export const AppStorage = {
     const removed = favorites.length - remaining.length;
     if (removed > 0) {
       AppStorage.setObject(StorageKeys.FAVORITES, remaining);
+      const deletions = Array.from(idSet).map((id) => ({
+        type: 'favorite',
+        key: id,
+      }));
+      AppStorage.recordSyncDeletions(deletions);
     }
     return removed;
   },
@@ -959,6 +1005,7 @@ export const AppStorage = {
     if (!animeId) return;
     const current = AppStorage.getContinueWatching().filter((c) => c.animeId !== animeId);
     AppStorage.setObject(StorageKeys.CONTINUE_WATCHING, current);
+    AppStorage.recordSyncDeletion('continue_watching', animeId);
   },
 
   updateContinueWatchingEpisode: (
@@ -1229,10 +1276,29 @@ export const AppStorage = {
     }
     AppStorage.setObject(StorageKeys.CONTINUE_WATCHING, continueList.slice(0, 50));
 
+    AppStorage.recordSyncMutation('watchProgress', progressItem);
+    AppStorage.recordSyncMutation('watchHistory', historyItem);
+    if (continueList.length > 0) {
+      AppStorage.recordSyncMutation('continueWatching', continueList[0]);
+    }
+
     return progressItem;
   },
 
   clearWatchHistory: (): void => {
+    const rawHistory = AppStorage.getObject<WatchHistoryItem[]>(StorageKeys.WATCH_HISTORY) || [];
+    const continueList = AppStorage.getObject<ContinueWatchingItem[]>(StorageKeys.CONTINUE_WATCHING) || [];
+    const deletions: Array<{ type: string; key: string }> = [];
+    for (const item of rawHistory) {
+      deletions.push({ type: 'watch_history', key: `${item.animeId}:${item.episodeNumber}` });
+      deletions.push({ type: 'watch_progress', key: `${item.animeId}:${item.episodeNumber}` });
+    }
+    for (const c of continueList) {
+      deletions.push({ type: 'continue_watching', key: c.animeId });
+    }
+    if (deletions.length > 0) {
+      AppStorage.recordSyncDeletions(deletions);
+    }
     AppStorage.remove(StorageKeys.WATCH_HISTORY);
     AppStorage.remove(StorageKeys.CONTINUE_WATCHING);
     // Remove all episode-level progress keys
@@ -1319,13 +1385,15 @@ export const AppStorage = {
       return true;
     });
 
-    filtered.unshift({
+    const newItem: SearchHistoryItem = {
       query: clean,
       timestamp: Date.now(),
-    });
+    };
+    filtered.unshift(newItem);
 
     const maxItems = 50;
     AppStorage.setObject(StorageKeys.SEARCH_HISTORY, filtered.slice(0, maxItems));
+    AppStorage.recordSyncMutation('searchHistory', newItem);
   },
 
   removeSearchHistoryItem: (query: string): void => {
@@ -1336,9 +1404,18 @@ export const AppStorage = {
       (item) => item.query.trim().toLowerCase() !== clean,
     );
     AppStorage.setObject(StorageKeys.SEARCH_HISTORY, filtered);
+    AppStorage.recordSyncDeletion('search_history', query.trim());
   },
 
   clearSearchHistory: (): void => {
+    const current = AppStorage.getSearchHistory();
+    const deletions = current.map((item) => ({
+      type: 'search_history',
+      key: item.query,
+    }));
+    if (deletions.length > 0) {
+      AppStorage.recordSyncDeletions(deletions);
+    }
     AppStorage.remove(StorageKeys.SEARCH_HISTORY);
   },
 
@@ -1380,6 +1457,201 @@ export const AppStorage = {
   saveScheduleData: (data: SchedulePageData): void => {
     if (!data) return;
     AppStorage.setObject(StorageKeys.SCHEDULE_DATA, data);
+  },
+
+  // ----------------------------------------------------
+  // Sync Bridge & Deletion Tombstones
+  // ----------------------------------------------------
+  recordSyncDeletions: (
+    items: Array<{ type: string; key: string; deletedAt?: number }>
+  ): void => {
+    if (!Array.isArray(items) || items.length === 0) return;
+    try {
+      const now = Date.now();
+      const existing =
+        AppStorage.getObject<Array<{ type: string; key: string; deletedAt: number }>>(
+          StorageKeys.SYNC_PENDING_DELETIONS
+        ) || [];
+
+      const map = new Map<string, { type: string; key: string; deletedAt: number }>();
+      for (const d of existing) {
+        map.set(`${d.type}:${d.key}`, d);
+      }
+      for (const item of items) {
+        if (!item?.type || !item?.key) continue;
+        map.set(`${item.type}:${item.key}`, {
+          type: item.type,
+          key: item.key,
+          deletedAt: item.deletedAt || now,
+        });
+      }
+      const updated = Array.from(map.values()).slice(-200);
+      AppStorage.setObject(StorageKeys.SYNC_PENDING_DELETIONS, updated);
+
+      // Reconcile pending mutations: remove any pending mutations for deleted items
+      const pendingMutations =
+        AppStorage.getObject<Record<string, any>>(StorageKeys.SYNC_PENDING_MUTATIONS);
+      if (pendingMutations && typeof pendingMutations === 'object') {
+        let mutModified = false;
+        for (const item of items) {
+          if (item.type === 'favorite' && Array.isArray(pendingMutations.favorites)) {
+            const before = pendingMutations.favorites.length;
+            pendingMutations.favorites = pendingMutations.favorites.filter((f: any) => f.id !== item.key);
+            if (pendingMutations.favorites.length !== before) mutModified = true;
+          } else if (item.type === 'continue_watching' && Array.isArray(pendingMutations.continueWatching)) {
+            const before = pendingMutations.continueWatching.length;
+            pendingMutations.continueWatching = pendingMutations.continueWatching.filter((c: any) => c.animeId !== item.key);
+            if (pendingMutations.continueWatching.length !== before) mutModified = true;
+          } else if (item.type === 'watch_history' || item.type === 'watch_progress') {
+            const [animeId, epStr] = item.key.split(':');
+            const epNum = epStr ? parseInt(epStr, 10) : undefined;
+            const targetProp = item.type === 'watch_history' ? 'watchHistory' : 'watchProgress';
+            if (Array.isArray(pendingMutations[targetProp])) {
+              const before = pendingMutations[targetProp].length;
+              pendingMutations[targetProp] = pendingMutations[targetProp].filter(
+                (p: any) => !(p.animeId === animeId && (epNum === undefined || p.episodeNumber === epNum))
+              );
+              if (pendingMutations[targetProp].length !== before) mutModified = true;
+            }
+          } else if (item.type === 'search_history' && Array.isArray(pendingMutations.searchHistory)) {
+            const before = pendingMutations.searchHistory.length;
+            pendingMutations.searchHistory = pendingMutations.searchHistory.filter(
+              (s: any) => (s.query || '').toLowerCase() !== item.key.toLowerCase()
+            );
+            if (pendingMutations.searchHistory.length !== before) mutModified = true;
+          }
+        }
+        if (mutModified) {
+          AppStorage.setObject(StorageKeys.SYNC_PENDING_MUTATIONS, pendingMutations);
+        }
+      }
+    } catch {
+      // Safe fallback
+    }
+  },
+
+  recordSyncDeletion: (type: string, key: string, deletedAt = Date.now()): void => {
+    if (!type || !key) return;
+    AppStorage.recordSyncDeletions([{ type, key, deletedAt }]);
+  },
+
+  getPendingSyncDeletions: (): Array<{ type: string; key: string; deletedAt?: number }> => {
+    const data = AppStorage.getObject<Array<{ type: string; key: string; deletedAt?: number }>>(
+      StorageKeys.SYNC_PENDING_DELETIONS
+    );
+    return Array.isArray(data) ? data : [];
+  },
+
+  clearPendingSyncDeletions: (): void => {
+    AppStorage.remove(StorageKeys.SYNC_PENDING_DELETIONS);
+  },
+
+  recordSyncMutation: (
+    type:
+      | 'favorites'
+      | 'continueWatching'
+      | 'watchHistory'
+      | 'watchProgress'
+      | 'searchHistory'
+      | 'sharedSettings',
+    item: any
+  ): void => {
+    if (!type || !item) return;
+    try {
+      // Reconcile pending deletions: remove tombstone if re-adding/updating
+      const existingDeletions =
+        AppStorage.getObject<Array<{ type: string; key: string; deletedAt: number }>>(
+          StorageKeys.SYNC_PENDING_DELETIONS
+        );
+      if (Array.isArray(existingDeletions) && existingDeletions.length > 0) {
+        let tombType: string | null = null;
+        let tombKey: string | null = null;
+        if (type === 'favorites') {
+          tombType = 'favorite';
+          tombKey = item.id;
+        } else if (type === 'continueWatching') {
+          tombType = 'continue_watching';
+          tombKey = item.animeId;
+        } else if (type === 'watchHistory') {
+          tombType = 'watch_history';
+          tombKey = `${item.animeId}:${item.episodeNumber}`;
+        } else if (type === 'watchProgress') {
+          tombType = 'watch_progress';
+          tombKey = `${item.animeId}:${item.episodeNumber}`;
+        } else if (type === 'searchHistory') {
+          tombType = 'search_history';
+          tombKey = item.query;
+        }
+        if (tombType && tombKey) {
+          const filteredTombstones = existingDeletions.filter(
+            (d) => !(d.type === tombType && d.key.toLowerCase() === tombKey!.toLowerCase())
+          );
+          if (filteredTombstones.length !== existingDeletions.length) {
+            AppStorage.setObject(StorageKeys.SYNC_PENDING_DELETIONS, filteredTombstones);
+          }
+        }
+      }
+
+      const pending =
+        AppStorage.getObject<Record<string, any>>(StorageKeys.SYNC_PENDING_MUTATIONS) || {};
+      if (type === 'sharedSettings') {
+        pending.sharedSettings = { ...(pending.sharedSettings || {}), ...item };
+      } else {
+        const list = Array.isArray(pending[type]) ? [...pending[type]] : [];
+        if (type === 'favorites') {
+          const idx = list.findIndex((x) => x.id === item.id);
+          if (idx >= 0) list[idx] = item;
+          else list.push(item);
+        } else if (type === 'continueWatching') {
+          const idx = list.findIndex((x) => x.animeId === item.animeId);
+          if (idx >= 0) list[idx] = item;
+          else list.push(item);
+        } else if (type === 'watchHistory' || type === 'watchProgress') {
+          const idx = list.findIndex(
+            (x) => x.animeId === item.animeId && x.episodeNumber === item.episodeNumber
+          );
+          if (idx >= 0) list[idx] = item;
+          else list.push(item);
+        } else if (type === 'searchHistory') {
+          const idx = list.findIndex(
+            (x) => (x.query || '').toLowerCase() === (item.query || '').toLowerCase()
+          );
+          if (idx >= 0) list[idx] = item;
+          else list.push(item);
+        }
+        pending[type] = list.slice(-100);
+      }
+      AppStorage.setObject(StorageKeys.SYNC_PENDING_MUTATIONS, pending);
+    } catch {
+      // Safe fallback
+    }
+  },
+
+  notifyStorageChanged: (): void => {
+    notifySettingsListeners(AppStorage.getSettings());
+  },
+
+  getPendingSyncMutations: (): Record<string, any> => {
+    const data = AppStorage.getObject<Record<string, any>>(StorageKeys.SYNC_PENDING_MUTATIONS);
+    return data && typeof data === 'object' ? data : {};
+  },
+
+  clearPendingSyncMutations: (): void => {
+    AppStorage.remove(StorageKeys.SYNC_PENDING_MUTATIONS);
+  },
+
+  getAllWatchProgress: (): WatchProgressItem[] => {
+    const allKeys = storage.getAllKeys();
+    const items: WatchProgressItem[] = [];
+    for (const key of allKeys) {
+      if (key.startsWith(StorageKeys.WATCH_PROGRESS_PREFIX)) {
+        const item = AppStorage.getObject<WatchProgressItem>(key);
+        if (item && item.animeId) {
+          items.push(item);
+        }
+      }
+    }
+    return items;
   },
 
   clearCache: (): void => {

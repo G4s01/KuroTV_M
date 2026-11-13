@@ -33,6 +33,7 @@ import {
   ThemeSettingsCard,
   SourceSettingsCard,
   DownloadSettingsCard,
+  SyncSettingsCard,
   QUICK_DOMAINS,
 } from '@/components/settings';
 import { DownloadService, type DownloadSettings, type StorageUsageInfo } from '@/services/downloads';
@@ -821,6 +822,9 @@ export default function SettingsScreen() {
             onOpenDownloadsScreen={() => router.push('/downloads' as any)}
           />
         </View>
+
+        {/* KUROSYNC (SINCRONIZZAZIONE SELF-HOSTED CON KUROTV_S & ANDROID TV) */}
+        <SyncSettingsCard theme={theme} />
 
         {/* INFORMAZIONI, CHANGELOG & UPDATER INTEGRATO */}
         <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>

@@ -2,4 +2,9 @@ export * from './settings.styles';
 export * from './ThemeSettingsCard';
 export * from './SourceSettingsCard';
 export * from './DownloadSettingsCard';
+export * from './SyncSettingsCard';
+export * from './SyncConnectModal';
+export * from './AuthorizeTvModal';
+export * from './SyncProfileModal';
+export * from './QrScannerModal';
 

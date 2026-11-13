@@ -56,6 +56,13 @@ export default function FavoritesScreen() {
     }, [loadFavorites])
   );
 
+  React.useEffect(() => {
+    const unsub = AppStorage.addSettingsListener(() => {
+      loadFavorites();
+    });
+    return unsub;
+  }, [loadFavorites]);
+
   useFocusEffect(
     React.useCallback(() => {
       if (!isSelectionMode) return;

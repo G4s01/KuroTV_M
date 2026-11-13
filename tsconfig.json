@@ -17,6 +17,7 @@
   ],
   "exclude": [
     "node_modules",
-    "workers/**/*"
+    "workers/**/*",
+    "_kurosync_ref/**/*"
   ]
 }
