@@ -140,6 +140,7 @@ export const SyncSettingsCard: React.FC<SyncSettingsCardProps> = React.memo(({ t
       {/* Body: Connected vs Disconnected */}
       {syncStatus.isConnected ? (
         <View>
+          {/* Server Endpoint */}
           <View style={[styles.syncRow, { borderBottomColor: theme.colors.border }]}>
             <Text style={[styles.syncRowLabel, { color: theme.colors.textMuted }]}>SERVER</Text>
             <Text
@@ -151,7 +152,7 @@ export const SyncSettingsCard: React.FC<SyncSettingsCardProps> = React.memo(({ t
             </Text>
           </View>
 
-          {/* Interactive Profile Row with Switch Action */}
+          {/* Interactive Profile Row with CAMBIA action */}
           <Pressable
             style={[styles.syncRow, { borderBottomColor: theme.colors.border, minHeight: 48 }]}
             onPress={() => {
@@ -164,8 +165,12 @@ export const SyncSettingsCard: React.FC<SyncSettingsCardProps> = React.memo(({ t
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <Text style={[styles.syncRowLabel, { color: theme.colors.textMuted }]}>PROFILO</Text>
             </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <Text style={[styles.syncRowValue, { color: theme.colors.primary }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 1 }}>
+              <Text
+                style={[styles.syncRowValue, { color: theme.colors.primary, flexShrink: 1 }]}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
                 {syncStatus.profileName}
               </Text>
               <View
@@ -197,6 +202,7 @@ export const SyncSettingsCard: React.FC<SyncSettingsCardProps> = React.memo(({ t
             </View>
           </Pressable>
 
+          {/* Last Sync Timestamp */}
           <View style={[styles.syncRow, { borderBottomColor: theme.colors.border }]}>
             <Text style={[styles.syncRowLabel, { color: theme.colors.textMuted }]}>
               ULTIMO SYNC
@@ -239,7 +245,7 @@ export const SyncSettingsCard: React.FC<SyncSettingsCardProps> = React.memo(({ t
             </View>
           ) : null}
 
-          {/* Action Buttons */}
+          {/* Symmetrical Action Buttons Row: Sync (flex: 1) | Authorize TV (flex: 1) | Disconnect (44x44 icon) */}
           <View style={styles.syncActionsRow}>
             {/* Sync Now */}
             <Pressable
@@ -249,27 +255,26 @@ export const SyncSettingsCard: React.FC<SyncSettingsCardProps> = React.memo(({ t
                   backgroundColor: theme.colors.primary,
                   borderColor: theme.colors.primary,
                   flex: 1,
-                  minWidth: 140,
                 },
               ]}
               onPress={handleSyncNow}
               disabled={syncStatus.isSyncing}
               accessibilityRole="button"
-              accessibilityLabel="SINCRONIZZA ORA"
+              accessibilityLabel="SINCRONIZZA"
             >
               {syncStatus.isSyncing ? (
                 <ActivityIndicator size="small" color={primaryContrast} />
               ) : (
                 <>
                   <Ionicons name="sync" size={16} color={primaryContrast} />
-                  <Text style={[styles.syncBtnText, { color: primaryContrast }]}>
-                    SINCRONIZZA ORA
+                  <Text style={[styles.syncBtnText, { color: primaryContrast }]} numberOfLines={1}>
+                    SINCRONIZZA
                   </Text>
                 </>
               )}
             </Pressable>
 
-            {/* Authorize Android TV */}
+            {/* Authorize TV */}
             <Pressable
               style={[
                 styles.syncBtn,
@@ -277,7 +282,6 @@ export const SyncSettingsCard: React.FC<SyncSettingsCardProps> = React.memo(({ t
                   backgroundColor: theme.colors.card,
                   borderColor: theme.colors.border,
                   flex: 1,
-                  minWidth: 140,
                 },
               ]}
               onPress={() => {
@@ -288,42 +292,18 @@ export const SyncSettingsCard: React.FC<SyncSettingsCardProps> = React.memo(({ t
               accessibilityLabel="AUTORIZZA ANDROID TV"
             >
               <Ionicons name="tv-outline" size={16} color={theme.colors.text} />
-              <Text style={[styles.syncBtnText, { color: theme.colors.text }]}>
+              <Text style={[styles.syncBtnText, { color: theme.colors.text }]} numberOfLines={1}>
                 AUTORIZZA TV
               </Text>
             </Pressable>
 
-            {/* Change Profile */}
+            {/* Disconnect - Touch-Safe Icon Button */}
             <Pressable
               style={[
-                styles.syncBtn,
-                {
-                  backgroundColor: theme.colors.card,
-                  borderColor: theme.colors.border,
-                  minWidth: 120,
-                },
-              ]}
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-                setIsProfileModalOpen(true);
-              }}
-              accessibilityRole="button"
-              accessibilityLabel="CAMBIA PROFILO"
-            >
-              <Ionicons name="people-outline" size={16} color={theme.colors.text} />
-              <Text style={[styles.syncBtnText, { color: theme.colors.text }]}>
-                PROFILO
-              </Text>
-            </Pressable>
-
-            {/* Disconnect */}
-            <Pressable
-              style={[
-                styles.syncBtn,
+                styles.syncIconBtn,
                 {
                   backgroundColor: `${theme.colors.error || '#EF4444'}18`,
                   borderColor: theme.colors.error || '#EF4444',
-                  minWidth: 110,
                 },
               ]}
               onPress={() => {
@@ -331,23 +311,22 @@ export const SyncSettingsCard: React.FC<SyncSettingsCardProps> = React.memo(({ t
                 setIsDisconnectConfirmOpen(true);
               }}
               accessibilityRole="button"
-              accessibilityLabel="DISCONNETTI"
+              accessibilityLabel="DISCONNETTI KUROSYNC"
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <Ionicons name="log-out-outline" size={16} color={theme.colors.error || '#EF4444'} />
-              <Text style={[styles.syncBtnText, { color: theme.colors.error || '#EF4444' }]}>
-                ESCI
-              </Text>
+              <Ionicons name="log-out-outline" size={18} color={theme.colors.error || '#EF4444'} />
             </Pressable>
           </View>
         </View>
       ) : (
         <View>
           <Text style={[styles.syncDesc, { color: theme.colors.textMuted }]}>
-            SINCRONIZZA CRONOLOGIA, PREFERITI, PROGRESSO E SERIE IN CORSO TRA SMARTPHONE E ANDROID TV TRAMITE IL BACKEND KUROTV_S.
+            SINCRONIZZA PREFERITI, CRONOLOGIA E PROGRESSI TRA SMARTPHONE E ANDROID TV.
           </Text>
 
+          {/* Symmetrical 50/50 Connection Buttons */}
           <View style={styles.syncActionsRow}>
-            {/* Connect with QR / Link */}
+            {/* Connect with QR */}
             <Pressable
               style={[
                 styles.syncBtn,
@@ -355,7 +334,6 @@ export const SyncSettingsCard: React.FC<SyncSettingsCardProps> = React.memo(({ t
                   backgroundColor: theme.colors.primary,
                   borderColor: theme.colors.primary,
                   flex: 1,
-                  minWidth: 150,
                 },
               ]}
               onPress={() => {
@@ -364,11 +342,11 @@ export const SyncSettingsCard: React.FC<SyncSettingsCardProps> = React.memo(({ t
                 setIsConnectModalOpen(true);
               }}
               accessibilityRole="button"
-              accessibilityLabel="COLLEGA CON QR O LINK"
+              accessibilityLabel="COLLEGA CON QR CODE"
             >
               <Ionicons name="qr-code-outline" size={16} color={primaryContrast} />
-              <Text style={[styles.syncBtnText, { color: primaryContrast }]}>
-                COLLEGA CON QR / LINK
+              <Text style={[styles.syncBtnText, { color: primaryContrast }]} numberOfLines={1}>
+                QR CODE
               </Text>
             </Pressable>
 
@@ -380,7 +358,6 @@ export const SyncSettingsCard: React.FC<SyncSettingsCardProps> = React.memo(({ t
                   backgroundColor: theme.colors.card,
                   borderColor: theme.colors.border,
                   flex: 1,
-                  minWidth: 140,
                 },
               ]}
               onPress={() => {
@@ -389,10 +366,10 @@ export const SyncSettingsCard: React.FC<SyncSettingsCardProps> = React.memo(({ t
                 setIsConnectModalOpen(true);
               }}
               accessibilityRole="button"
-              accessibilityLabel="CONNESSIONE MANUALE"
+              accessibilityLabel="COLLEGAMENTO MANUALE"
             >
               <Ionicons name="key-outline" size={16} color={theme.colors.text} />
-              <Text style={[styles.syncBtnText, { color: theme.colors.text }]}>
+              <Text style={[styles.syncBtnText, { color: theme.colors.text }]} numberOfLines={1}>
                 MANUALE
               </Text>
             </Pressable>
@@ -416,11 +393,11 @@ export const SyncSettingsCard: React.FC<SyncSettingsCardProps> = React.memo(({ t
         accessibilityRole="link"
         accessibilityLabel="GUIDA & REPO GITHUB KUROTV_S"
       >
-        <Ionicons name="logo-github" size={17} color={theme.colors.text} />
+        <Ionicons name="logo-github" size={16} color={theme.colors.text} />
         <Text style={[styles.syncGithubBtnText, { color: theme.colors.text }]}>
-          REPOSITORY GITHUB & SELF-HOSTING (KUROTV_S)
+          REPO & SELF-HOSTING (KUROTV_S)
         </Text>
-        <Ionicons name="open-outline" size={14} color={theme.colors.textMuted} />
+        <Ionicons name="open-outline" size={13} color={theme.colors.textMuted} />
       </Pressable>
 
       {/* Disconnect Confirmation Modal */}

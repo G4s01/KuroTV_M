@@ -3728,6 +3728,21 @@ const restoreGlobalFetch = globalThis.fetch;
     } as any;
   }
 
+  // 2.1b GET /api/profiles (Authenticated profile list for QR flow & profile switch)
+  if (url.includes('/api/profiles') && !url.includes('/api/auth/profiles')) {
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        ok: true,
+        profiles: [
+          { id: 'prof-net-1', name: 'Marco', avatarColor: '#E50914' },
+          { id: 'prof-net-2', name: 'Sara', avatarColor: '#00E5FF' },
+        ],
+      }),
+    } as any;
+  }
+
   // 2.2 POST /api/auth/device-login (Device login with selected profile)
   if (url.includes('/api/auth/device-login')) {
     return {
@@ -3900,6 +3915,39 @@ assert.strictEqual(exchangeReq.body.platform, 'android', 'platform android su ex
 assert.strictEqual(AppStorage.getString(StorageKeys.SYNC_DEVICE_TOKEN), 'exchanged-token-xyz');
 assert.strictEqual(AppStorage.getString(StorageKeys.SYNC_DEVICE_ID), 'dev-qr-123', 'deviceId deve essere salvato su token exchange');
 
+// Test 4.1: Ephemeral QR Token Prepare & Netflix Profile Selection
+const prepQrRes = await SyncManager.prepareQrConnection('kurotv://sync?token=valid-qr-prep&endpoint=https%3A%2F%2Ftest-sync.workers.dev');
+assert.strictEqual(prepQrRes.ok, true, 'prepareQrConnection deve riuscire');
+assert(prepQrRes.profiles && prepQrRes.profiles.length > 0, 'prepareQrConnection deve restituire i profili per la selezione Netflix');
+assert.strictEqual(prepQrRes.deviceToken, 'exchanged-token-xyz');
+
+// Test 4.2: Robustness edge cases for prepareQrConnection & completeQrConnection
+const emptyQrRes = await SyncManager.prepareQrConnection('');
+assert.strictEqual(emptyQrRes.ok, false, 'prepareQrConnection deve fallire con input vuoto');
+assert.strictEqual(emptyQrRes.message, 'Codice QR o link mancante');
+
+const expiredPrepQrRes = await SyncManager.prepareQrConnection('kurotv://sync?token=expired-qr-token&endpoint=https%3A%2F%2Ftest-sync.workers.dev');
+assert.strictEqual(expiredPrepQrRes.ok, false, 'prepareQrConnection deve fallire per QR scaduto');
+assert.strictEqual(expiredPrepQrRes.isExpiredQr, true, 'isExpiredQr deve essere true per 410');
+
+const invalidCompleteQrRes = await SyncManager.completeQrConnection({
+  serverUrl: '',
+  deviceToken: '',
+  profileId: '',
+});
+assert.strictEqual(invalidCompleteQrRes.ok, false, 'completeQrConnection deve validare i parametri obbligatori');
+
+const completeQrRes = await SyncManager.completeQrConnection({
+  serverUrl: prepQrRes.serverUrl!,
+  deviceToken: prepQrRes.deviceToken!,
+  deviceId: prepQrRes.deviceId,
+  profileId: 'prof-net-2',
+  profileName: 'Sara',
+});
+assert.strictEqual(completeQrRes.ok, true, 'completeQrConnection deve finalizzare la connessione con il profilo selezionato');
+assert.strictEqual(AppStorage.getString(StorageKeys.SYNC_PROFILE_ID), 'prof-net-2');
+assert.strictEqual(AppStorage.getString(StorageKeys.SYNC_PROFILE_NAME), 'Sara');
+
 // Test 5: Clean Logout & Session Revocation
 await SyncManager.disconnect();
 const logoutReq = recordedRequests.find((r) => r.url.endsWith('/api/auth/logout'));
@@ -3916,6 +3964,9 @@ globalThis.fetch = restoreGlobalFetch;
 const connectModalCode = fs.readFileSync(path.resolve(process.cwd(), 'src/components/settings/SyncConnectModal.tsx'), 'utf-8');
 assert(connectModalCode.includes('listProfilesWithPassword'), 'SyncConnectModal deve usare listProfilesWithPassword');
 assert(connectModalCode.includes('loginDeviceWithProfile'), 'SyncConnectModal deve usare loginDeviceWithProfile');
+assert(connectModalCode.includes('prepareQrConnection'), 'SyncConnectModal deve usare prepareQrConnection per lo scan QR');
+assert(connectModalCode.includes('completeQrConnection'), 'SyncConnectModal deve usare completeQrConnection dopo la scelta profilo');
+assert(!connectModalCode.includes('deepLinkInput'), 'SyncConnectModal non deve contenere campi di input per token o deep link');
 assert(connectModalCode.includes('CHI STA GUARDANDO?'), 'SyncConnectModal deve mostrare il selettore Netflix CHI STA GUARDANDO?');
 assert(connectModalCode.includes('avatarColor'), 'SyncConnectModal deve supportare avatarColor');
 assert(connectModalCode.includes('Il codice QR è scaduto o è già stato utilizzato'), 'SyncConnectModal deve mostrare messaggio esplicativo per 410');
@@ -3927,6 +3978,8 @@ assert(profileModalCode.includes('activeProfileId'), 'SyncProfileModal deve evid
 const syncCardCode = fs.readFileSync(path.resolve(process.cwd(), 'src/components/settings/SyncSettingsCard.tsx'), 'utf-8');
 assert(syncCardCode.includes('setIsProfileModalOpen(true)'), 'SyncSettingsCard deve permettere di aprire il modal di cambio profilo');
 assert(syncCardCode.includes('CAMBIA'), 'SyncSettingsCard deve includere pulsante CAMBIA per il profilo');
+assert(syncCardCode.includes('syncIconBtn'), 'SyncSettingsCard deve usare syncIconBtn per la disconnessione touch-safe');
+assert((syncCardCode.match(/setIsProfileModalOpen\(true\)/g) || []).length === 1, 'SyncSettingsCard non deve avere pulsante doppio per il cambio profilo');
 
 const layoutCode = fs.readFileSync(path.resolve(process.cwd(), 'app/_layout.tsx'), 'utf-8');
 assert(layoutCode.includes('Il codice QR è scaduto o è già stato utilizzato'), '_layout.tsx deve mostrare alert per QR scaduto');

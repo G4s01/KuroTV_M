@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Text,
   View,
@@ -12,7 +12,7 @@ import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { settingsStyles as styles } from './settings.styles';
-import { SyncManager, parseKuroSyncDeepLink, type ProfileItem } from '@/services/sync';
+import { SyncManager, type ProfileItem } from '@/services/sync';
 import { AppStorage, StorageKeys } from '@/services/storage/app-storage';
 import { QrScannerModal } from './QrScannerModal';
 import { getContrastTextColor } from '@/theme';
@@ -34,18 +34,24 @@ export const SyncConnectModal: React.FC<SyncConnectModalProps> = React.memo(({
 }) => {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<'qr' | 'manual'>(initialTab);
+  const [isScannerOpen, setIsScannerOpen] = useState(() => initialTab === 'qr');
 
-  // QR / Deep Link state
-  const [deepLinkInput, setDeepLinkInput] = useState('');
-  const [isScannerOpen, setIsScannerOpen] = useState(false);
+  // Connection mode & session data
+  const [step, setStep] = useState<'credentials' | 'select_profile'>('credentials');
+  const [connectionSource, setConnectionSource] = useState<'qr' | 'manual'>('qr');
+  const qrSessionData = useRef<{
+    serverUrl: string;
+    deviceToken: string;
+    deviceId?: string;
+    currentProfileId?: string;
+  } | null>(null);
 
-  // Manual state - initialized without hardcoded personal URL
+  // Manual state
   const [serverUrl, setServerUrl] = useState(() => AppStorage.getString(StorageKeys.SYNC_SERVER_URL) || '');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
-  // Netflix-style Profile Selection Step in Manual Mode
-  const [manualStep, setManualStep] = useState<'credentials' | 'select_profile'>('credentials');
+  // Netflix-style Profile Selection State
   const [availableProfiles, setAvailableProfiles] = useState<ProfileItem[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
 
@@ -54,60 +60,70 @@ export const SyncConnectModal: React.FC<SyncConnectModalProps> = React.memo(({
 
   const primaryContrast = getContrastTextColor(theme.colors.primary);
 
-  React.useEffect(() => {
-    setActiveTab(initialTab);
-    setManualStep('credentials');
-    setAvailableProfiles([]);
-    setSelectedProfileId(null);
-    setErrorMsg(null);
+  useEffect(() => {
+    if (visible) {
+      setActiveTab(initialTab);
+      setStep('credentials');
+      setConnectionSource(initialTab);
+      setAvailableProfiles([]);
+      setSelectedProfileId(null);
+      setErrorMsg(null);
+      qrSessionData.current = null;
+      setIsScannerOpen(initialTab === 'qr');
+    } else {
+      setIsScannerOpen(false);
+      setIsLoading(false);
+    }
   }, [initialTab, visible]);
 
   const handleClose = () => {
     if (isLoading) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     setErrorMsg(null);
-    setManualStep('credentials');
+    setStep('credentials');
     setIsScannerOpen(false);
     onClose();
   };
 
-  const handleConnectWithRaw = async (inputStr: string) => {
-    const raw = inputStr.trim();
-    if (!raw) {
-      setErrorMsg('INQUADRA UN QR KUROSYNC O INCOLLA IL LINK / TOKEN');
-      return;
+  const handleSelectTab = (tab: 'qr' | 'manual') => {
+    Haptics.selectionAsync().catch(() => {});
+    setActiveTab(tab);
+    setErrorMsg(null);
+    if (tab === 'qr') {
+      setIsScannerOpen(true);
     }
+  };
+
+  /**
+   * QR Flow - Step 1: Handle Scanned QR Data, exchange token, and fetch profiles
+   */
+  const handleScanQr = async (scannedData: string) => {
+    setIsScannerOpen(false);
+    const clean = scannedData?.trim();
+    if (!clean) return;
 
     setIsLoading(true);
     setErrorMsg(null);
 
     try {
-      let res: { ok: boolean; isExpiredQr?: boolean; message?: string };
-      const parsed = parseKuroSyncDeepLink(raw);
-      if (parsed && (parsed.token || parsed.url)) {
-        res = await SyncManager.connectFromDeepLink(raw);
-      } else {
-        // Raw token: requires serverUrl
-        const targetUrl = serverUrl.trim() || AppStorage.getString(StorageKeys.SYNC_SERVER_URL) || '';
-        if (!targetUrl) {
-          setErrorMsg('URL DEL SERVER MANCANTE: CONFIGURA IL SERVER SU MANUALE O USA UN LINK COMPLETO');
-          setIsLoading(false);
-          return;
-        }
-        res = await SyncManager.connectWithToken(targetUrl, raw);
-      }
-
-      if (res.ok) {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-        onSuccess?.();
-        handleClose();
-        router.replace('/(tabs)');
+      const res = await SyncManager.prepareQrConnection(clean);
+      if (res.ok && res.deviceToken && res.serverUrl) {
+        qrSessionData.current = {
+          serverUrl: res.serverUrl,
+          deviceToken: res.deviceToken,
+          deviceId: res.deviceId,
+          currentProfileId: res.currentProfileId,
+        };
+        setConnectionSource('qr');
+        setAvailableProfiles(res.profiles || []);
+        setStep('select_profile');
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
       } else {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
         if (res.isExpiredQr || res.message?.includes('410') || res.message?.toLowerCase().includes('scaduto')) {
           setErrorMsg('Il codice QR è scaduto o è già stato utilizzato. Generane uno nuovo dalla console Web.');
         } else {
-          setErrorMsg(res.message || 'CONNESSIONE FALLITA');
+          setErrorMsg(res.message || 'Scansione QR fallita');
         }
       }
     } catch (err: any) {
@@ -115,26 +131,15 @@ export const SyncConnectModal: React.FC<SyncConnectModalProps> = React.memo(({
       if (err?.status === 410 || String(err?.message).includes('410') || String(err?.message).toLowerCase().includes('scaduto')) {
         setErrorMsg('Il codice QR è scaduto o è già stato utilizzato. Generane uno nuovo dalla console Web.');
       } else {
-        setErrorMsg(err?.message || 'ERRORE DI RETE');
+        setErrorMsg(err?.message || 'Errore di connessione');
       }
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleConnectQr = () => {
-    handleConnectWithRaw(deepLinkInput);
-  };
-
-  const handleScanQr = (scannedData: string) => {
-    setIsScannerOpen(false);
-    const clean = scannedData.trim();
-    setDeepLinkInput(clean);
-    handleConnectWithRaw(clean);
-  };
-
   /**
-   * Master Password Flow - Step 1: Validate credentials & list profiles
+   * Manual Password Flow - Step 1: Validate credentials & list profiles
    */
   const handleFetchProfiles = async () => {
     const url = serverUrl.trim();
@@ -155,13 +160,14 @@ export const SyncConnectModal: React.FC<SyncConnectModalProps> = React.memo(({
     try {
       const profiles = await SyncManager.listProfilesWithPassword(url, pass);
       if (!profiles || profiles.length === 0) {
-        setErrorMsg('NESSUN PROFILO TROVATO SULL\'ISTANZA KUROTV_S');
+        setErrorMsg("NESSUN PROFILO TROVATO SULL'ISTANZA KUROTV_S");
         return;
       }
 
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      setConnectionSource('manual');
       setAvailableProfiles(profiles);
-      setManualStep('select_profile');
+      setStep('select_profile');
     } catch (err: any) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
       setErrorMsg(err?.message || 'AUTENTICAZIONE FALLITA');
@@ -171,28 +177,42 @@ export const SyncConnectModal: React.FC<SyncConnectModalProps> = React.memo(({
   };
 
   /**
-   * Master Password Flow - Step 2: User taps desired profile -> Login & initial sync
+   * Profile Selection Step (Both QR & Manual): User taps desired profile -> Finalize login & initial sync
    */
-  const handleSelectProfileAndLogin = async (profile: ProfileItem) => {
-    const url = serverUrl.trim();
-    const pass = password.trim();
+  const handleSelectProfile = async (profile: ProfileItem) => {
     setSelectedProfileId(profile.id);
     setIsLoading(true);
     setErrorMsg(null);
 
     try {
-      const res = await SyncManager.loginDeviceWithProfile({
-        serverUrl: url,
-        password: pass,
-        profileId: profile.id,
-        profileName: profile.name,
-      });
+      let res: { ok: boolean; message?: string };
+      if (connectionSource === 'qr' && qrSessionData.current) {
+        res = await SyncManager.completeQrConnection({
+          serverUrl: qrSessionData.current.serverUrl,
+          deviceToken: qrSessionData.current.deviceToken,
+          deviceId: qrSessionData.current.deviceId,
+          profileId: profile.id,
+          profileName: profile.name,
+        });
+      } else if (connectionSource === 'manual') {
+        res = await SyncManager.loginDeviceWithProfile({
+          serverUrl: serverUrl.trim(),
+          password: password.trim(),
+          profileId: profile.id,
+          profileName: profile.name,
+        });
+      } else {
+        setErrorMsg('Sessione QR scaduta. Ripeti la scansione.');
+        setStep('credentials');
+        setIsLoading(false);
+        setSelectedProfileId(null);
+        return;
+      }
 
       if (res.ok) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
         onSuccess?.();
         handleClose();
-        router.replace('/(tabs)');
       } else {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
         setErrorMsg(res.message || 'LOGIN FALLITO');
@@ -209,7 +229,7 @@ export const SyncConnectModal: React.FC<SyncConnectModalProps> = React.memo(({
   return (
     <>
       <Modal
-        visible={visible}
+        visible={visible && (!isScannerOpen || step === 'select_profile')}
         transparent={true}
         animationType="fade"
         statusBarTranslucent={true}
@@ -230,17 +250,17 @@ export const SyncConnectModal: React.FC<SyncConnectModalProps> = React.memo(({
             {/* Header */}
             <View style={styles.syncModalHeader}>
               <View style={styles.syncModalTitleRow}>
-                {manualStep === 'select_profile' ? (
+                {step === 'select_profile' ? (
                   <Pressable
                     style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', marginLeft: -8 }}
                     onPress={() => {
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-                      setManualStep('credentials');
+                      setStep('credentials');
                       setErrorMsg(null);
                     }}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     accessibilityRole="button"
-                    accessibilityLabel="TORNA ALLE CREDENZIALI"
+                    accessibilityLabel="TORNA INDIETRO"
                   >
                     <Ionicons name="arrow-back-outline" size={20} color={theme.colors.text} />
                   </Pressable>
@@ -248,7 +268,7 @@ export const SyncConnectModal: React.FC<SyncConnectModalProps> = React.memo(({
                   <Ionicons name="cloud-upload-outline" size={18} color={theme.colors.primary} />
                 )}
                 <Text style={[styles.syncModalTitle, { color: theme.colors.text }]}>
-                  {manualStep === 'select_profile' ? 'CHI STA GUARDANDO?' : 'COLLEGA KUROSYNC'}
+                  {step === 'select_profile' ? 'CHI STA GUARDANDO?' : 'COLLEGA KUROSYNC'}
                 </Text>
               </View>
               <Pressable
@@ -261,8 +281,8 @@ export const SyncConnectModal: React.FC<SyncConnectModalProps> = React.memo(({
               </Pressable>
             </View>
 
-            {/* Tab Row (Visible only during credentials input) */}
-            {manualStep === 'credentials' ? (
+            {/* Symmetrical Mode Selector: QR CODE vs MANUALE (Visible only during connection step) */}
+            {step === 'credentials' ? (
               <View style={styles.syncTabRow}>
                 <Pressable
                   style={[
@@ -270,22 +290,26 @@ export const SyncConnectModal: React.FC<SyncConnectModalProps> = React.memo(({
                     {
                       backgroundColor: activeTab === 'qr' ? `${theme.colors.primary}22` : theme.colors.card,
                       borderColor: activeTab === 'qr' ? theme.colors.primary : theme.colors.border,
+                      flexDirection: 'row',
+                      gap: 6,
                     },
                   ]}
-                  onPress={() => {
-                    Haptics.selectionAsync().catch(() => {});
-                    setActiveTab('qr');
-                    setErrorMsg(null);
-                  }}
+                  onPress={() => handleSelectTab('qr')}
                   accessibilityRole="tab"
+                  accessibilityLabel="SELEZIONA MODALITÀ QR CODE"
                 >
+                  <Ionicons
+                    name="qr-code-outline"
+                    size={16}
+                    color={activeTab === 'qr' ? theme.colors.primary : theme.colors.textMuted}
+                  />
                   <Text
                     style={[
                       styles.syncTabBtnText,
                       { color: activeTab === 'qr' ? theme.colors.primary : theme.colors.textMuted },
                     ]}
                   >
-                    QR O LINK
+                    QR CODE
                   </Text>
                 </Pressable>
 
@@ -296,15 +320,19 @@ export const SyncConnectModal: React.FC<SyncConnectModalProps> = React.memo(({
                       backgroundColor:
                         activeTab === 'manual' ? `${theme.colors.primary}22` : theme.colors.card,
                       borderColor: activeTab === 'manual' ? theme.colors.primary : theme.colors.border,
+                      flexDirection: 'row',
+                      gap: 6,
                     },
                   ]}
-                  onPress={() => {
-                    Haptics.selectionAsync().catch(() => {});
-                    setActiveTab('manual');
-                    setErrorMsg(null);
-                  }}
+                  onPress={() => handleSelectTab('manual')}
                   accessibilityRole="tab"
+                  accessibilityLabel="SELEZIONA MODALITÀ MANUALE"
                 >
+                  <Ionicons
+                    name="key-outline"
+                    size={16}
+                    color={activeTab === 'manual' ? theme.colors.primary : theme.colors.textMuted}
+                  />
                   <Text
                     style={[
                       styles.syncTabBtnText,
@@ -317,14 +345,27 @@ export const SyncConnectModal: React.FC<SyncConnectModalProps> = React.memo(({
               </View>
             ) : null}
 
-            {/* TAB 1: QR o Link */}
-            {activeTab === 'qr' ? (
+            {/* Content: Mode 1 - QR CODE */}
+            {step === 'credentials' && activeTab === 'qr' ? (
               <View style={{ gap: 12 }}>
-                <Text style={[styles.syncDesc, { color: theme.colors.textMuted, marginBottom: 2 }]}>
-                  INQUADRA IL QR DALLA WEB CONSOLE DI KUROTV_S CON LA FOTOCAMERA, OPPURE INCOLLA QUI IL LINK O TOKEN.
-                </Text>
+                <View
+                  style={[
+                    styles.syncQrBox,
+                    { backgroundColor: theme.colors.card, borderColor: theme.colors.border },
+                  ]}
+                >
+                  <Ionicons name="qr-code-outline" size={44} color={theme.colors.primary} />
+                  <Text
+                    style={[
+                      styles.syncDesc,
+                      { color: theme.colors.textMuted, textAlign: 'center', marginBottom: 0 },
+                    ]}
+                  >
+                    INQUADRA IL CODICE QR DALLA WEB CONSOLE DI KUROTV_S PER COLLEGARE IL DISPOSITIVO ISTANTANEAMENTE.
+                  </Text>
+                </View>
 
-                {/* Camera Scanner Trigger Button */}
+                {/* Direct Camera Open Button */}
                 <Pressable
                   style={[
                     styles.syncBtn,
@@ -340,66 +381,24 @@ export const SyncConnectModal: React.FC<SyncConnectModalProps> = React.memo(({
                   }}
                   disabled={isLoading}
                   accessibilityRole="button"
-                  accessibilityLabel="SCANSIONA QR CON FOTOCAMERA"
+                  accessibilityLabel="SCANSIONA CON FOTOCAMERA"
                 >
-                  <Ionicons name="camera-outline" size={18} color={primaryContrast} />
-                  <Text style={[styles.syncBtnText, { color: primaryContrast }]}>
-                    SCANSIONA CON FOTOCAMERA
-                  </Text>
+                  {isLoading ? (
+                    <ActivityIndicator size="small" color={primaryContrast} />
+                  ) : (
+                    <>
+                      <Ionicons name="camera-outline" size={18} color={primaryContrast} />
+                      <Text style={[styles.syncBtnText, { color: primaryContrast }]}>
+                        SCANSIONA CON FOTOCAMERA
+                      </Text>
+                    </>
+                  )}
                 </Pressable>
-
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginVertical: 2 }}>
-                  <View style={{ flex: 1, height: 1, backgroundColor: theme.colors.border }} />
-                  <Text style={{ color: theme.colors.textMuted, fontFamily: 'monospace', fontSize: 10, fontWeight: '700' }}>
-                    OPPURE INCOLLA LINK O TOKEN
-                  </Text>
-                  <View style={{ flex: 1, height: 1, backgroundColor: theme.colors.border }} />
-                </View>
-
-                <View style={styles.syncFieldGroup}>
-                  <Text style={[styles.syncFieldLabel, { color: theme.colors.textMuted }]}>
-                    LINK O TOKEN DI CONNESSIONE
-                  </Text>
-                  <TextInput
-                    style={[
-                      styles.syncInput,
-                      {
-                        backgroundColor: theme.colors.card,
-                        borderColor: errorMsg ? theme.colors.error || '#EF4444' : theme.colors.border,
-                        color: theme.colors.text,
-                        minHeight: 56,
-                      },
-                    ]}
-                    value={deepLinkInput}
-                    onChangeText={(t) => {
-                      setDeepLinkInput(t);
-                      setErrorMsg(null);
-                    }}
-                    placeholder="kurosync://connect?url=...&token=..."
-                    placeholderTextColor={theme.colors.textMuted}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    multiline={true}
-                    editable={!isLoading}
-                  />
-                </View>
-
-                {deepLinkInput.length > 0 ? (
-                  <Pressable
-                    style={{ alignSelf: 'flex-end', padding: 6 }}
-                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                    onPress={() => setDeepLinkInput('')}
-                    accessibilityRole="button"
-                    accessibilityLabel="CANCELLA TESTO"
-                  >
-                    <Text style={{ color: theme.colors.primary, fontFamily: 'monospace', fontSize: 11, fontWeight: '700' }}>
-                      CANCELLA TESTO
-                    </Text>
-                  </Pressable>
-                ) : null}
               </View>
-            ) : manualStep === 'credentials' ? (
-              /* TAB 2 - Step 1: Input URL & Password */
+            ) : null}
+
+            {/* Content: Mode 2 - MANUALE */}
+            {step === 'credentials' && activeTab === 'manual' ? (
               <View style={{ gap: 12 }}>
                 <View style={styles.syncFieldGroup}>
                   <Text style={[styles.syncFieldLabel, { color: theme.colors.textMuted }]}>
@@ -466,9 +465,39 @@ export const SyncConnectModal: React.FC<SyncConnectModalProps> = React.memo(({
                     </Pressable>
                   </View>
                 </View>
+
+                {/* Manual Submit Button */}
+                <Pressable
+                  style={[
+                    styles.syncBtn,
+                    {
+                      backgroundColor: theme.colors.primary,
+                      borderColor: theme.colors.primary,
+                      opacity: isLoading ? 0.7 : 1,
+                      marginTop: 4,
+                    },
+                  ]}
+                  onPress={handleFetchProfiles}
+                  disabled={isLoading}
+                  accessibilityRole="button"
+                  accessibilityLabel="AVANTI SELEZIONA PROFILO"
+                >
+                  {isLoading ? (
+                    <ActivityIndicator size="small" color={primaryContrast} />
+                  ) : (
+                    <>
+                      <Ionicons name="arrow-forward-outline" size={18} color={primaryContrast} />
+                      <Text style={[styles.syncBtnText, { color: primaryContrast }]}>
+                        AVANTI (SELEZIONA PROFILO)
+                      </Text>
+                    </>
+                  )}
+                </Pressable>
               </View>
-            ) : (
-              /* TAB 2 - Step 2: Netflix-style Profile Selector */
+            ) : null}
+
+            {/* Profile Selection Step (Unified Netflix-style picker for both QR and Manual) */}
+            {step === 'select_profile' ? (
               <View style={{ gap: 14 }}>
                 <View style={styles.netflixProfileHeader}>
                   <Text style={[styles.netflixProfileHeaderSubtitle, { color: theme.colors.textMuted }]}>
@@ -496,7 +525,7 @@ export const SyncConnectModal: React.FC<SyncConnectModalProps> = React.memo(({
                         onPress={() => {
                           if (isLoading) return;
                           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-                          handleSelectProfileAndLogin(p);
+                          handleSelectProfile(p);
                         }}
                         disabled={isLoading}
                         accessibilityRole="button"
@@ -552,7 +581,7 @@ export const SyncConnectModal: React.FC<SyncConnectModalProps> = React.memo(({
                   })}
                 </ScrollView>
               </View>
-            )}
+            ) : null}
 
             {/* Error Notice */}
             {errorMsg ? (
@@ -570,40 +599,6 @@ export const SyncConnectModal: React.FC<SyncConnectModalProps> = React.memo(({
                   {errorMsg}
                 </Text>
               </View>
-            ) : null}
-
-            {/* Primary Action Button (Only in QR mode or credentials input step) */}
-            {manualStep === 'credentials' ? (
-              <Pressable
-                style={[
-                  styles.syncBtn,
-                  {
-                    backgroundColor: theme.colors.primary,
-                    borderColor: theme.colors.primary,
-                    opacity: isLoading ? 0.7 : 1,
-                    marginTop: 6,
-                  },
-                ]}
-                onPress={activeTab === 'qr' ? handleConnectQr : handleFetchProfiles}
-                disabled={isLoading}
-                accessibilityRole="button"
-                accessibilityLabel={activeTab === 'qr' ? 'CONNETTI ISTANZA' : 'AVANTI SELEZIONA PROFILO'}
-              >
-                {isLoading ? (
-                  <ActivityIndicator size="small" color={primaryContrast} />
-                ) : (
-                  <>
-                    <Ionicons
-                      name={activeTab === 'qr' ? 'link' : 'arrow-forward-outline'}
-                      size={18}
-                      color={primaryContrast}
-                    />
-                    <Text style={[styles.syncBtnText, { color: primaryContrast }]}>
-                      {activeTab === 'qr' ? 'CONNETTI ISTANZA' : 'AVANTI (SELEZIONA PROFILO)'}
-                    </Text>
-                  </>
-                )}
-              </Pressable>
             ) : null}
           </Pressable>
         </Pressable>

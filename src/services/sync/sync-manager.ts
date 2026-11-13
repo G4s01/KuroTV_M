@@ -235,6 +235,214 @@ class SyncManagerClass {
   // Connection Methods
   // --------------------------------------------------------------------------
 
+  /**
+   * Prepares connection from a scanned QR code or deep link.
+   * Exchanges the ephemeral QR token for a device token and fetches available profiles
+   * so the user can select their profile (Netflix-style) before initial sync.
+   */
+  async prepareQrConnection(deepLinkOrRaw: string): Promise<{
+    ok: boolean;
+    isExpiredQr?: boolean;
+    message?: string;
+    serverUrl?: string;
+    deviceToken?: string;
+    deviceId?: string;
+    currentProfileId?: string;
+    profiles?: ProfileItem[];
+  }> {
+    const raw = deepLinkOrRaw?.trim();
+    if (!raw) {
+      return { ok: false, message: 'Codice QR o link mancante' };
+    }
+
+    const parsed = parseKuroSyncDeepLink(raw);
+    let serverUrl: string | undefined;
+    let rawToken: string | undefined;
+    let explicitProfileId: string | undefined;
+
+    if (parsed && (parsed.token || parsed.url)) {
+      serverUrl = parsed.url || AppStorage.getString(StorageKeys.SYNC_SERVER_URL) || DEFAULT_SYNC_SERVER_URL;
+      rawToken = parsed.token;
+      explicitProfileId = parsed.profile;
+    } else {
+      serverUrl = AppStorage.getString(StorageKeys.SYNC_SERVER_URL) || DEFAULT_SYNC_SERVER_URL;
+      rawToken = raw;
+    }
+
+    if (!serverUrl || !serverUrl.trim()) {
+      return { ok: false, message: 'URL del server KuroSync mancante nel QR code' };
+    }
+    if (!rawToken || !rawToken.trim()) {
+      return { ok: false, message: 'Token non valido nel QR code' };
+    }
+
+    const cleanUrl = serverUrl.trim().replace(/\/+$/, '');
+    this.client.setBaseUrl(cleanUrl);
+
+    const isExplicitQr = rawToken.trim().startsWith('qr_');
+
+    try {
+      this.isSyncing = true;
+      this.lastError = null;
+      this.notify();
+
+      let finalToken = rawToken.trim();
+      let activeDeviceId: string | undefined;
+      let activeProfileId = explicitProfileId;
+
+      try {
+        const exchangeRes = await this.client.exchangeToken({
+          token: finalToken,
+          deviceName: getDeviceName(),
+          deviceType: 'mobile',
+          platform: 'android',
+        });
+        if (exchangeRes.ok && exchangeRes.deviceToken) {
+          finalToken = exchangeRes.deviceToken;
+          activeDeviceId = exchangeRes.deviceId;
+          this.client.setDeviceToken(finalToken);
+          if (exchangeRes.profileId) {
+            activeProfileId = exchangeRes.profileId;
+          }
+        }
+      } catch (err: any) {
+        const status = err?.status;
+        const msg = String(err?.message || '').toLowerCase();
+        const isExpiredOrConsumed =
+          status === 410 ||
+          msg.includes('410') ||
+          msg.includes('scaduto') ||
+          msg.includes('expired') ||
+          msg.includes('già utilizzato') ||
+          msg.includes('already consumed') ||
+          (status === 404 && isExplicitQr);
+
+        if (isExpiredOrConsumed) {
+          this.isSyncing = false;
+          this.lastError =
+            'Il codice QR è scaduto o è già stato utilizzato. Generane uno nuovo dalla console Web.';
+          this.notify();
+          return {
+            ok: false,
+            isExpiredQr: true,
+            message: this.lastError,
+          };
+        }
+
+        if (isExplicitQr) {
+          this.isSyncing = false;
+          this.lastError = err?.message || 'Scambio token QR fallito';
+          this.notify();
+          return {
+            ok: false,
+            message: this.lastError || undefined,
+          };
+        }
+        // Direct device token fallback
+        this.client.setDeviceToken(finalToken);
+      }
+
+      // Fetch profile list from server using authenticated device token
+      let profiles: ProfileItem[] = [];
+      try {
+        profiles = await this.client.listProfiles();
+      } catch {
+        // Fallback
+      }
+
+      if (profiles.length === 0) {
+        profiles = [{ id: activeProfileId || 'default', name: 'Principale', avatarColor: '#E50914' }];
+      }
+
+      this.isSyncing = false;
+      this.notify();
+
+      return {
+        ok: true,
+        serverUrl: cleanUrl,
+        deviceToken: finalToken,
+        deviceId: activeDeviceId,
+        currentProfileId: activeProfileId,
+        profiles,
+      };
+    } catch (err: any) {
+      this.ensureClientConfigured();
+      this.isSyncing = false;
+      this.lastError = err?.message || 'Errore durante la scansione QR';
+      this.notify();
+      return { ok: false, message: this.lastError || undefined };
+    }
+  }
+
+  /**
+   * Finalizes QR connection after the user selects their profile from the Netflix-style picker.
+   */
+  async completeQrConnection(params: {
+    serverUrl: string;
+    deviceToken: string;
+    deviceId?: string;
+    profileId: string;
+    profileName?: string;
+  }): Promise<{ ok: boolean; message?: string }> {
+    const { serverUrl, deviceToken, deviceId, profileId, profileName } = params;
+    const cleanUrl = serverUrl?.trim().replace(/\/+$/, '');
+    if (!cleanUrl || !deviceToken || !profileId) {
+      return { ok: false, message: 'Parametri di connessione non validi' };
+    }
+
+    this.client.setBaseUrl(cleanUrl);
+    this.client.setDeviceToken(deviceToken);
+
+    try {
+      this.isSyncing = true;
+      this.lastError = null;
+      this.notify();
+
+      let activeName = profileName || 'Principale';
+      try {
+        const switchRes = await this.client.switchProfile(profileId);
+        if (switchRes.profile?.name) {
+          activeName = switchRes.profile.name;
+        }
+      } catch {
+        // Non-blocking: profile may already be active or single-profile instance
+      }
+
+      AppStorage.setString(StorageKeys.SYNC_SERVER_URL, cleanUrl);
+      AppStorage.setString(StorageKeys.SYNC_DEVICE_TOKEN, deviceToken);
+      if (deviceId) {
+        AppStorage.setString(StorageKeys.SYNC_DEVICE_ID, deviceId);
+      }
+      AppStorage.setString(StorageKeys.SYNC_PROFILE_ID, profileId);
+      AppStorage.setString(StorageKeys.SYNC_PROFILE_NAME, activeName);
+      AppStorage.setBoolean(StorageKeys.SYNC_IS_ENABLED, true);
+      AppStorage.setNumber(StorageKeys.SYNC_LAST_TIMESTAMP, 0);
+
+      // Trigger initial full sync
+      const syncRes = await this.performFullSync(0);
+      if (!syncRes.ok && syncRes.error && (syncRes.error.includes('401') || syncRes.error.toLowerCase().includes('unauthorized'))) {
+        AppStorage.remove(StorageKeys.SYNC_DEVICE_TOKEN);
+        AppStorage.remove(StorageKeys.SYNC_DEVICE_ID);
+        AppStorage.setBoolean(StorageKeys.SYNC_IS_ENABLED, false);
+        this.client.setDeviceToken(undefined);
+        this.isSyncing = false;
+        this.lastError = syncRes.error;
+        this.notify();
+        return { ok: false, message: syncRes.error };
+      }
+
+      this.isSyncing = false;
+      this.notify();
+      return { ok: true };
+    } catch (err: any) {
+      this.ensureClientConfigured();
+      this.isSyncing = false;
+      this.lastError = err?.message || 'Finalizzazione connessione fallita';
+      this.notify();
+      return { ok: false, message: this.lastError || undefined };
+    }
+  }
+
   async connectFromDeepLink(deepLink: string): Promise<{ ok: boolean; isExpiredQr?: boolean; message?: string }> {
     const parsed = parseKuroSyncDeepLink(deepLink);
     if (!parsed || !parsed.token) {
