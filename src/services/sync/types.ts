@@ -111,8 +111,8 @@ export interface SharedSettings {
 export interface ProfileItem {
   id: string;
   name: string;
+  avatarColor: string;
   avatar_color?: string;
-  avatarColor?: string;
   created_at?: number;
   updated_at?: number;
 }
@@ -181,6 +181,31 @@ export interface PairingApproveRequest {
 export interface PairingApproveResponse {
   ok: boolean;
   deviceId: string;
+}
+
+export interface TokenExchangeRequest {
+  token: string;
+  deviceName?: string;
+  deviceType?: string;
+  platform?: string;
+}
+
+export interface TokenExchangeResponse {
+  ok: boolean;
+  deviceToken: string;
+  deviceId: string;
+  profileId: string;
+}
+
+export interface LogoutResponse {
+  ok: boolean;
+  message: string;
+}
+
+export interface SwitchProfileResponse {
+  ok: boolean;
+  profileId: string;
+  profile: ProfileItem;
 }
 
 export interface TombstoneItem {

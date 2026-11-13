@@ -75,6 +75,8 @@ import {
   parseKuroSyncDeepLink,
   KuroSyncClient,
   mergeLocalAndRemote,
+  getDeviceName,
+  getDeviceMetadata,
 } from '../src/services/sync/index';
 import {
   SyncSettingsCard,
@@ -3667,6 +3669,270 @@ for (const f of syncFiles) {
 }
 
 console.log('✓ Sincronizzazione Self-Hosted KuroSync, MMKV Storage Bridge, Debounce & TV Pairing verificati con successo.');
+
+// -----------------------------------------------------------------------------
+// [26/26] Verifica Integrazione Avanzata KuroSync (Nomi Dispositivo Dinamici, Netflix Profile Selector, In-App Switcher, QR 410 Gone & Revoca Token)
+// -----------------------------------------------------------------------------
+console.log('\n[26/26] Verifica Integrazione Avanzata KuroSync (Nomi Dispositivo Dinamici, Netflix Profile Selector, In-App Switcher, QR 410 Gone & Revoca Token)...');
+
+// 1. Dynamic Device Name detection
+const detectedDeviceName = getDeviceName();
+assert(typeof detectedDeviceName === 'string' && detectedDeviceName.length > 0, 'getDeviceName deve restituire una stringa non vuota');
+assert(detectedDeviceName.includes('Pixel') || detectedDeviceName.includes('Google') || detectedDeviceName.includes('Android'), 'getDeviceName deve rilevare il modello reale');
+assert.strictEqual(detectedDeviceName, 'Google Pixel 8 Pro', 'getDeviceName deve combinare Manufacturer e Model Android');
+
+const metadata = getDeviceMetadata();
+assert.strictEqual(metadata.deviceType, 'mobile', 'deviceType deve essere mobile');
+assert.strictEqual(metadata.platform, 'android', 'platform deve essere android');
+assert.strictEqual(metadata.deviceName, detectedDeviceName);
+
+// 1.2 Deep-Link and QR parsing flexibility (kurosync:// and kurotv:// with url= or endpoint=)
+const deepLinkWithEndpoint = parseKuroSyncDeepLink('kurotv://sync?token=qr_ephemeral123&endpoint=https%3A%2F%2Fcustom.workers.dev');
+assert(deepLinkWithEndpoint, 'parseKuroSyncDeepLink deve supportare kurotv:// con endpoint=');
+assert.strictEqual(deepLinkWithEndpoint.url, 'https://custom.workers.dev');
+assert.strictEqual(deepLinkWithEndpoint.token, 'qr_ephemeral123');
+
+// 2. Mock Fetch environment for advanced KuroSync flows
+let recordedRequests: { url: string; method: string; body?: any; headers?: any }[] = [];
+
+const advancedMockClient = new KuroSyncClient({
+  baseUrl: 'https://test-sync.workers.dev',
+});
+
+const restoreGlobalFetch = globalThis.fetch;
+(globalThis as any).fetch = async (url: string, options: any) => {
+  const reqMethod = options?.method || 'GET';
+  const reqHeaders = options?.headers || {};
+  const reqBody = options?.body ? JSON.parse(options.body) : null;
+  recordedRequests.push({ url, method: reqMethod, headers: reqHeaders, body: reqBody });
+
+  // 2.1 POST /api/auth/profiles (Master password pre-login profile list)
+  if (url.includes('/api/auth/profiles')) {
+    if (reqBody?.password === 'wrong-pass') {
+      return {
+        ok: false,
+        status: 401,
+        json: async () => ({ ok: false, error: 'Password non corretta' }),
+      } as any;
+    }
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        ok: true,
+        profiles: [
+          { id: 'prof-net-1', name: 'Marco', avatarColor: '#E50914' },
+          { id: 'prof-net-2', name: 'Sara', avatarColor: '#00E5FF' },
+        ],
+      }),
+    } as any;
+  }
+
+  // 2.2 POST /api/auth/device-login (Device login with selected profile)
+  if (url.includes('/api/auth/device-login')) {
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        ok: true,
+        deviceToken: 'device-token-abc-999',
+        deviceId: 'device-id-uuid-123',
+        profile: {
+          id: reqBody?.profileId || 'prof-net-1',
+          name: reqBody?.profileId === 'prof-net-2' ? 'Sara' : 'Marco',
+        },
+      }),
+    } as any;
+  }
+
+  // 2.3 POST /api/auth/switch-profile (In-app dynamic profile switcher)
+  if (url.includes('/api/auth/switch-profile')) {
+    const pId = reqBody?.profileId;
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        ok: true,
+        profileId: pId,
+        profile: {
+          id: pId,
+          name: pId === 'prof-net-2' ? 'Sara' : 'Marco',
+          avatarColor: pId === 'prof-net-2' ? '#00E5FF' : '#E50914',
+        },
+      }),
+    } as any;
+  }
+
+  // 2.4 POST /api/auth/exchange (QR single-use token exchange)
+  if (url.includes('/api/auth/exchange')) {
+    if (reqBody?.token === 'expired-qr-token') {
+      return {
+        ok: false,
+        status: 410,
+        json: async () => ({ ok: false, error: 'QR code expired or already consumed' }),
+      } as any;
+    }
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        ok: true,
+        deviceToken: 'exchanged-token-xyz',
+        deviceId: 'dev-qr-123',
+        profileId: 'prof-net-1',
+      }),
+    } as any;
+  }
+
+  // 2.5 POST /api/auth/logout (Revoke device session)
+  if (url.includes('/api/auth/logout')) {
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true, message: 'Dispositivo disconnesso con successo' }),
+    } as any;
+  }
+
+  // 2.6 GET /api/sync/pull (Delta pull)
+  if (url.includes('/api/sync/pull')) {
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        serverTime: 999999999,
+        deltas: {
+          favorites: [],
+          continueWatching: [],
+          watchHistory: [],
+          watchProgress: [],
+          sharedSettings: {},
+          searchHistory: [],
+        },
+        tombstones: [],
+      }),
+    } as any;
+  }
+
+  // Fallback
+  return {
+    ok: true,
+    status: 200,
+    json: async () => ({ ok: true }),
+  } as any;
+};
+
+// Test 2.1: listProfilesWithPassword
+const preLoginProfiles = await advancedMockClient.listProfilesWithPassword('correct-pass');
+assert.strictEqual(preLoginProfiles.length, 2, 'listProfilesWithPassword deve restituire i profili');
+assert.strictEqual(preLoginProfiles[0].avatarColor, '#E50914');
+assert.strictEqual(preLoginProfiles[1].name, 'Sara');
+const profilesReq = recordedRequests.find((r) => r.url.endsWith('/api/auth/profiles'));
+assert(profilesReq, 'Deve invocare /api/auth/profiles');
+assert.strictEqual(profilesReq.body.password, 'correct-pass');
+
+// Test 2.2: Master Password Login with Profile
+const loginRes = await SyncManager.loginDeviceWithProfile({
+  serverUrl: 'https://test-sync.workers.dev',
+  password: 'correct-pass',
+  profileId: 'prof-net-2',
+  profileName: 'Sara',
+});
+assert.strictEqual(loginRes.ok, true, 'loginDeviceWithProfile deve riuscire');
+const loginReq = recordedRequests.find((r) => r.url.endsWith('/api/auth/device-login'));
+assert(loginReq, 'loginDeviceWithProfile deve invocare POST /api/auth/device-login');
+assert.strictEqual(loginReq.body.profileId, 'prof-net-2');
+assert.strictEqual(loginReq.body.deviceName, detectedDeviceName, 'loginDevice deve inviare il modello reale del dispositivo');
+assert.strictEqual(loginReq.body.deviceType, 'mobile', 'deviceType deve essere mobile');
+assert.strictEqual(loginReq.body.platform, 'android', 'platform deve essere android');
+assert.strictEqual(AppStorage.getString(StorageKeys.SYNC_DEVICE_TOKEN), 'device-token-abc-999');
+assert.strictEqual(AppStorage.getString(StorageKeys.SYNC_DEVICE_ID), 'device-id-uuid-123', 'deviceId deve essere salvato in MMKV');
+assert.strictEqual(AppStorage.getString(StorageKeys.SYNC_PROFILE_ID), 'prof-net-2');
+assert.strictEqual(AppStorage.getString(StorageKeys.SYNC_PROFILE_NAME), 'Sara');
+
+// Test 3: In-App Profile Switcher
+const switchSuccess = await SyncManager.switchProfile('prof-net-1', 'Marco');
+assert.strictEqual(switchSuccess, true, 'switchProfile deve riuscire');
+const switchReq = recordedRequests.find((r) => r.url.endsWith('/api/auth/switch-profile'));
+assert(switchReq, 'Deve invocare endpoint POST /api/auth/switch-profile');
+assert.strictEqual(switchReq.body.profileId, 'prof-net-1');
+assert(recordedRequests.some((r) => r.url.includes('/api/sync/pull?since=0')), 'switchProfile deve eseguire pullDelta(0) per il nuovo profilo');
+assert.strictEqual(AppStorage.getString(StorageKeys.SYNC_PROFILE_ID), 'prof-net-1');
+assert.strictEqual(AppStorage.getString(StorageKeys.SYNC_PROFILE_NAME), 'Marco');
+
+// Test 3.1: Switch Profile Failure Anti-Corruption Rollback
+let failNextPull = true;
+const previousFetch = globalThis.fetch;
+(globalThis as any).fetch = async (url: string, options: any) => {
+  if (url.includes('/api/sync/pull') && failNextPull) {
+    failNextPull = false;
+    return {
+      ok: false,
+      status: 500,
+      json: async () => ({ ok: false, error: 'Internal Server Error' }),
+    } as any;
+  }
+  return previousFetch(url, options);
+};
+
+const switchFailResult = await SyncManager.switchProfile('prof-corrupt', 'NonValido');
+assert.strictEqual(switchFailResult, false, 'switchProfile deve restituire false in caso di fallimento pull');
+assert.strictEqual(AppStorage.getString(StorageKeys.SYNC_PROFILE_ID), 'prof-net-1', 'MMKV non deve essere corrotto in caso di errore pull');
+globalThis.fetch = previousFetch;
+
+// Test 4: Ephemeral QR Token Exchange & 410 Gone Handling
+const expiredQrResult = await SyncManager.connectWithToken('https://test-sync.workers.dev', 'expired-qr-token');
+assert.strictEqual(expiredQrResult.ok, false, 'QR scaduto deve restituire ok=false');
+assert.strictEqual(expiredQrResult.isExpiredQr, true, 'Deve segnalare isExpiredQr=true');
+assert.strictEqual(
+  expiredQrResult.message,
+  'Il codice QR è scaduto o è già stato utilizzato. Generane uno nuovo dalla console Web.',
+  'Messaggio per HTTP 410 deve corrispondere alle specifiche di AGENTS.md e CLIENT_INTEGRATION.md'
+);
+
+// Valid QR token exchange
+const validQrResult = await SyncManager.connectWithToken('https://test-sync.workers.dev', 'valid-qr-token');
+assert.strictEqual(validQrResult.ok, true, 'QR valido deve riuscire');
+const exchangeReq = recordedRequests.find((r) => r.url.endsWith('/api/auth/exchange') && r.body?.token === 'valid-qr-token');
+assert(exchangeReq, 'exchangeToken deve essere invocato');
+assert.strictEqual(exchangeReq.body.deviceName, detectedDeviceName, 'exchangeToken deve inviare il modello reale del dispositivo');
+assert.strictEqual(exchangeReq.body.deviceType, 'mobile', 'deviceType mobile su exchange');
+assert.strictEqual(exchangeReq.body.platform, 'android', 'platform android su exchange');
+assert.strictEqual(AppStorage.getString(StorageKeys.SYNC_DEVICE_TOKEN), 'exchanged-token-xyz');
+assert.strictEqual(AppStorage.getString(StorageKeys.SYNC_DEVICE_ID), 'dev-qr-123', 'deviceId deve essere salvato su token exchange');
+
+// Test 5: Clean Logout & Session Revocation
+await SyncManager.disconnect();
+const logoutReq = recordedRequests.find((r) => r.url.endsWith('/api/auth/logout'));
+assert(logoutReq, 'disconnect deve invocare POST /api/auth/logout');
+assert(!AppStorage.getString(StorageKeys.SYNC_DEVICE_TOKEN), 'device_token deve essere rimosso da MMKV');
+assert(!AppStorage.getString(StorageKeys.SYNC_PROFILE_ID), 'profile_id deve essere rimosso da MMKV');
+assert(!AppStorage.getNumber(StorageKeys.SYNC_LAST_TIMESTAMP), 'last_timestamp deve essere rimosso da MMKV');
+assert.strictEqual(SyncManager.isConnected(), false, 'SyncManager non deve più risultare connesso');
+
+// Restore original fetch
+globalThis.fetch = restoreGlobalFetch;
+
+// Test 6: Verify UI Source Code Alignment
+const connectModalCode = fs.readFileSync(path.resolve(process.cwd(), 'src/components/settings/SyncConnectModal.tsx'), 'utf-8');
+assert(connectModalCode.includes('listProfilesWithPassword'), 'SyncConnectModal deve usare listProfilesWithPassword');
+assert(connectModalCode.includes('loginDeviceWithProfile'), 'SyncConnectModal deve usare loginDeviceWithProfile');
+assert(connectModalCode.includes('CHI STA GUARDANDO?'), 'SyncConnectModal deve mostrare il selettore Netflix CHI STA GUARDANDO?');
+assert(connectModalCode.includes('avatarColor'), 'SyncConnectModal deve supportare avatarColor');
+assert(connectModalCode.includes('Il codice QR è scaduto o è già stato utilizzato'), 'SyncConnectModal deve mostrare messaggio esplicativo per 410');
+
+const profileModalCode = fs.readFileSync(path.resolve(process.cwd(), 'src/components/settings/SyncProfileModal.tsx'), 'utf-8');
+assert(profileModalCode.includes('switchProfile'), 'SyncProfileModal deve supportare switchProfile');
+assert(profileModalCode.includes('activeProfileId'), 'SyncProfileModal deve evidenziare il profilo attivo');
+
+const syncCardCode = fs.readFileSync(path.resolve(process.cwd(), 'src/components/settings/SyncSettingsCard.tsx'), 'utf-8');
+assert(syncCardCode.includes('setIsProfileModalOpen(true)'), 'SyncSettingsCard deve permettere di aprire il modal di cambio profilo');
+assert(syncCardCode.includes('CAMBIA'), 'SyncSettingsCard deve includere pulsante CAMBIA per il profilo');
+
+const layoutCode = fs.readFileSync(path.resolve(process.cwd(), 'app/_layout.tsx'), 'utf-8');
+assert(layoutCode.includes('Il codice QR è scaduto o è già stato utilizzato'), '_layout.tsx deve mostrare alert per QR scaduto');
+assert(!layoutCode.includes('Alert.alert'), 'Divieto Alert.alert rispettato in _layout.tsx');
+
+console.log('✓ Integrazione Avanzata KuroSync (Nomi Dinamici, Netflix Selector, Switcher, 410 Gone & Logout) verificata con successo.');
 
 // -----------------------------------------------------------------------------
 // Fine Test

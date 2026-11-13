@@ -3,6 +3,9 @@ export const Platform = {
   select: (obj) => obj.android || obj.default,
   constants: {
     supportedAbis: ['arm64-v8a', 'armeabi-v7a'],
+    Model: 'Pixel 8 Pro',
+    Manufacturer: 'Google',
+    Brand: 'google',
   },
 };
 

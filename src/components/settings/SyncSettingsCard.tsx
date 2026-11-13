@@ -72,9 +72,9 @@ export const SyncSettingsCard: React.FC<SyncSettingsCardProps> = React.memo(({ t
     }
   };
 
-  const handleDisconnectConfirm = () => {
-    SyncManager.disconnect();
+  const handleDisconnectConfirm = async () => {
     setIsDisconnectConfirmOpen(false);
+    await SyncManager.disconnect();
     setSyncFeedback(null);
   };
 
@@ -151,12 +151,51 @@ export const SyncSettingsCard: React.FC<SyncSettingsCardProps> = React.memo(({ t
             </Text>
           </View>
 
-          <View style={[styles.syncRow, { borderBottomColor: theme.colors.border }]}>
-            <Text style={[styles.syncRowLabel, { color: theme.colors.textMuted }]}>PROFILO</Text>
-            <Text style={[styles.syncRowValue, { color: theme.colors.primary }]}>
-              {syncStatus.profileName}
-            </Text>
-          </View>
+          {/* Interactive Profile Row with Switch Action */}
+          <Pressable
+            style={[styles.syncRow, { borderBottomColor: theme.colors.border, minHeight: 48 }]}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+              setIsProfileModalOpen(true);
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={`CAMBIA PROFILO. ATTUALE: ${syncStatus.profileName}`}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Text style={[styles.syncRowLabel, { color: theme.colors.textMuted }]}>PROFILO</Text>
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Text style={[styles.syncRowValue, { color: theme.colors.primary }]}>
+                {syncStatus.profileName}
+              </Text>
+              <View
+                style={{
+                  backgroundColor: `${theme.colors.primary}20`,
+                  paddingHorizontal: 8,
+                  paddingVertical: 3,
+                  borderRadius: 6,
+                  borderWidth: 1,
+                  borderColor: `${theme.colors.primary}40`,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 4,
+                }}
+              >
+                <Ionicons name="swap-horizontal" size={12} color={theme.colors.primary} />
+                <Text
+                  style={{
+                    color: theme.colors.primary,
+                    fontFamily: 'monospace',
+                    fontSize: 10,
+                    fontWeight: '800',
+                    letterSpacing: 0.5,
+                  }}
+                >
+                  CAMBIA
+                </Text>
+              </View>
+            </View>
+          </Pressable>
 
           <View style={[styles.syncRow, { borderBottomColor: theme.colors.border }]}>
             <Text style={[styles.syncRowLabel, { color: theme.colors.textMuted }]}>
@@ -422,7 +461,10 @@ export const SyncSettingsCard: React.FC<SyncSettingsCardProps> = React.memo(({ t
         activeProfileId={syncStatus.profileId}
         theme={theme}
         onClose={() => setIsProfileModalOpen(false)}
-        onProfileSelected={() => {}}
+        onProfileSelected={(p) => {
+          setSyncFeedback(`PROFILO ATTIVO: ${p.name.toUpperCase()}`);
+          setTimeout(() => setSyncFeedback(null), 3500);
+        }}
       />
     </View>
   );

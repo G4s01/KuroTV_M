@@ -1,6 +1,7 @@
 import { AppStorage, StorageKeys } from '../storage/app-storage';
 import { KuroSyncClient } from './client';
 import { mergeLocalAndRemote } from './merge';
+import { getDeviceName } from './device-info';
 import type {
   DeltaPushRequest,
   LocalStorageState,
@@ -55,7 +56,11 @@ export function parseKuroSyncDeepLink(deepLink: string): {
   const isCustomScheme = cleanLink.startsWith('kurosync://') || cleanLink.startsWith('kurotv://');
   const hasKnownParams =
     cleanLink.includes('url=') ||
+    cleanLink.includes('endpoint=') ||
+    cleanLink.includes('server=') ||
     cleanLink.includes('token=') ||
+    cleanLink.includes('qrToken=') ||
+    cleanLink.includes('exchangeToken=') ||
     cleanLink.includes('code=') ||
     cleanLink.includes('/pair') ||
     cleanLink.includes('/connect');
@@ -73,6 +78,10 @@ export function parseKuroSyncDeepLink(deepLink: string): {
     const parsed = new URL(urlToParse);
     let url = parsed.searchParams.get('url')
       ? decodeURIComponent(parsed.searchParams.get('url')!)
+      : parsed.searchParams.get('endpoint')
+      ? decodeURIComponent(parsed.searchParams.get('endpoint')!)
+      : parsed.searchParams.get('server')
+      ? decodeURIComponent(parsed.searchParams.get('server')!)
       : undefined;
 
     // Infer server URL from origin if standard HTTP/HTTPS URL and no explicit url param was given
@@ -82,19 +91,24 @@ export function parseKuroSyncDeepLink(deepLink: string): {
 
     const token = parsed.searchParams.get('token')
       ? decodeURIComponent(parsed.searchParams.get('token')!)
+      : parsed.searchParams.get('qrToken')
+      ? decodeURIComponent(parsed.searchParams.get('qrToken')!)
+      : parsed.searchParams.get('exchangeToken')
+      ? decodeURIComponent(parsed.searchParams.get('exchangeToken')!)
       : undefined;
     const profile = parsed.searchParams.get('profile')
       ? decodeURIComponent(parsed.searchParams.get('profile')!)
+      : parsed.searchParams.get('profileId')
+      ? decodeURIComponent(parsed.searchParams.get('profileId')!)
       : undefined;
-    const code = parsed.searchParams.get('code')
-      ? decodeURIComponent(parsed.searchParams.get('code')!).toUpperCase()
-      : undefined;
+    const rawCode = parsed.searchParams.get('code') || parsed.searchParams.get('pairCode');
+    const code = rawCode ? decodeURIComponent(rawCode).toUpperCase() : undefined;
 
     return { url, token, profile, code };
   } catch {
     // Fallback regex parsing
     let url: string | undefined;
-    const urlMatch = cleanLink.match(/[?&]url=([^&]+)/);
+    const urlMatch = cleanLink.match(/[?&](?:url|endpoint|server|baseUrl|serverUrl)=([^&]+)/i);
     if (urlMatch) {
       url = decodeURIComponent(urlMatch[1]);
     } else if (cleanLink.startsWith('http://') || cleanLink.startsWith('https://')) {
@@ -102,9 +116,9 @@ export function parseKuroSyncDeepLink(deepLink: string): {
       if (originMatch) url = originMatch[1];
     }
 
-    const tokenMatch = cleanLink.match(/[?&]token=([^&]+)/);
-    const profileMatch = cleanLink.match(/[?&]profile=([^&]+)/);
-    const codeMatch = cleanLink.match(/[?&]code=([^&]+)/i);
+    const tokenMatch = cleanLink.match(/[?&](?:token|qrToken|exchangeToken)=([^&]+)/i);
+    const profileMatch = cleanLink.match(/[?&](?:profile|profileId)=([^&]+)/i);
+    const codeMatch = cleanLink.match(/[?&](?:code|pairCode)=([^&]+)/i);
 
     return {
       url,
@@ -221,7 +235,7 @@ class SyncManagerClass {
   // Connection Methods
   // --------------------------------------------------------------------------
 
-  async connectFromDeepLink(deepLink: string): Promise<{ ok: boolean; message?: string }> {
+  async connectFromDeepLink(deepLink: string): Promise<{ ok: boolean; isExpiredQr?: boolean; message?: string }> {
     const parsed = parseKuroSyncDeepLink(deepLink);
     if (!parsed || !parsed.token) {
       return { ok: false, message: 'URL o token non validi nel deep-link di KuroSync' };
@@ -242,7 +256,7 @@ class SyncManagerClass {
     token: string,
     profileId?: string,
     profileName?: string
-  ): Promise<{ ok: boolean; message?: string }> {
+  ): Promise<{ ok: boolean; isExpiredQr?: boolean; message?: string }> {
     if (!token || !token.trim()) {
       return { ok: false, message: 'Token non valido o vuoto' };
     }
@@ -261,25 +275,62 @@ class SyncManagerClass {
 
       // Attempt token exchange to register as a separate mobile device
       let finalToken = token.trim();
+      let activeDeviceId: string | undefined;
       let activeProfileId = profileId;
       let activeProfileName = profileName;
+
+      const isExplicitQr = finalToken.startsWith('qr_');
 
       try {
         const exchangeRes = await this.client.exchangeToken({
           token: finalToken,
-          deviceName: 'KuroTV Mobile',
+          deviceName: getDeviceName(),
           deviceType: 'mobile',
           platform: 'android',
         });
         if (exchangeRes.ok && exchangeRes.deviceToken) {
           finalToken = exchangeRes.deviceToken;
+          activeDeviceId = exchangeRes.deviceId;
           this.client.setDeviceToken(finalToken);
           if (exchangeRes.profileId) {
             activeProfileId = exchangeRes.profileId;
           }
         }
-      } catch {
-        // If exchange fails, the token may already be a direct deviceToken. Keep it.
+      } catch (err: any) {
+        const status = err?.status;
+        const msg = String(err?.message || '').toLowerCase();
+        const isExpiredOrConsumed =
+          status === 410 ||
+          msg.includes('410') ||
+          msg.includes('scaduto') ||
+          msg.includes('expired') ||
+          msg.includes('già utilizzato') ||
+          msg.includes('already consumed') ||
+          (status === 404 && isExplicitQr);
+
+        if (isExpiredOrConsumed) {
+          this.isSyncing = false;
+          this.lastError =
+            'Il codice QR è scaduto o è già stato utilizzato. Generane uno nuovo dalla console Web.';
+          this.notify();
+          return {
+            ok: false,
+            isExpiredQr: true,
+            message: this.lastError,
+          };
+        }
+
+        // If this was an explicit QR token and exchange failed, do not proceed as direct device token
+        if (isExplicitQr) {
+          this.isSyncing = false;
+          this.lastError = err?.message || 'Scambio token QR fallito';
+          this.notify();
+          return {
+            ok: false,
+            message: this.lastError || undefined,
+          };
+        }
+        // If exchange fails for other reasons and not a qr_ token, it may already be a direct deviceToken. Keep it.
       }
 
       // Fetch profile list to verify and retrieve profile name
@@ -302,12 +353,24 @@ class SyncManagerClass {
 
       AppStorage.setString(StorageKeys.SYNC_SERVER_URL, cleanUrl);
       AppStorage.setString(StorageKeys.SYNC_DEVICE_TOKEN, finalToken);
+      if (activeDeviceId) AppStorage.setString(StorageKeys.SYNC_DEVICE_ID, activeDeviceId);
       if (activeProfileId) AppStorage.setString(StorageKeys.SYNC_PROFILE_ID, activeProfileId);
       if (activeProfileName) AppStorage.setString(StorageKeys.SYNC_PROFILE_NAME, activeProfileName);
       AppStorage.setBoolean(StorageKeys.SYNC_IS_ENABLED, true);
+      AppStorage.setNumber(StorageKeys.SYNC_LAST_TIMESTAMP, 0);
 
       // Trigger initial full sync
-      await this.performFullSync();
+      const syncRes = await this.performFullSync(0);
+      if (!syncRes.ok && syncRes.error && (syncRes.error.includes('401') || syncRes.error.toLowerCase().includes('unauthorized'))) {
+        AppStorage.remove(StorageKeys.SYNC_DEVICE_TOKEN);
+        AppStorage.remove(StorageKeys.SYNC_DEVICE_ID);
+        AppStorage.setBoolean(StorageKeys.SYNC_IS_ENABLED, false);
+        this.client.setDeviceToken(undefined);
+        this.isSyncing = false;
+        this.lastError = syncRes.error;
+        this.notify();
+        return { ok: false, message: syncRes.error };
+      }
 
       this.isSyncing = false;
       this.notify();
@@ -315,6 +378,103 @@ class SyncManagerClass {
     } catch (err: any) {
       this.isSyncing = false;
       this.lastError = err?.message || 'Connessione al server fallita';
+      this.notify();
+      return { ok: false, message: this.lastError || undefined };
+    }
+  }
+
+  /**
+   * Retrieves profiles for Netflix-style profile selector prior to login
+   */
+  async listProfilesWithPassword(serverUrl: string, password: string): Promise<ProfileItem[]> {
+    const cleanUrl = serverUrl.trim().replace(/\/+$/, '');
+    if (!cleanUrl) {
+      throw new Error("L'URL del server KuroSync è richiesto");
+    }
+    if (!password || !password.trim()) {
+      throw new Error('La master password è richiesta');
+    }
+    this.client.setBaseUrl(cleanUrl);
+    return this.client.listProfilesWithPassword(password.trim());
+  }
+
+  /**
+   * Performs direct device login with a selected profile ID (Netflix-style flow)
+   */
+  async loginDeviceWithProfile(params: {
+    serverUrl: string;
+    password: string;
+    profileId: string;
+    profileName?: string;
+  }): Promise<{ ok: boolean; message?: string }> {
+    const { serverUrl, password, profileId, profileName } = params;
+    const cleanUrl = serverUrl.trim().replace(/\/+$/, '');
+    if (!cleanUrl) {
+      return { ok: false, message: "L'URL del server KuroSync è richiesto" };
+    }
+    if (!password || !password.trim()) {
+      return { ok: false, message: 'La master password è richiesta' };
+    }
+    if (!profileId) {
+      return { ok: false, message: 'Il profilo è richiesto' };
+    }
+
+    this.client.setBaseUrl(cleanUrl);
+    this.client.setDeviceToken(undefined);
+
+    try {
+      this.isSyncing = true;
+      this.lastError = null;
+      this.notify();
+
+      const loginRes = await this.client.loginDevice({
+        password: password.trim(),
+        profileId,
+        deviceName: getDeviceName(),
+        deviceType: 'mobile',
+        platform: 'android',
+      });
+
+      const token = loginRes.deviceToken;
+      if (!token) {
+        throw new Error('Nessun token restituito dal server');
+      }
+
+      const activeProfileId = loginRes.profile?.id || profileId;
+      const activeProfileName = loginRes.profile?.name || profileName || 'Principale';
+
+      AppStorage.setString(StorageKeys.SYNC_SERVER_URL, cleanUrl);
+      AppStorage.setString(StorageKeys.SYNC_DEVICE_TOKEN, token);
+      if (loginRes.deviceId) {
+        AppStorage.setString(StorageKeys.SYNC_DEVICE_ID, loginRes.deviceId);
+      }
+      AppStorage.setString(StorageKeys.SYNC_MASTER_PASSWORD, password.trim());
+      AppStorage.setString(StorageKeys.SYNC_PROFILE_ID, activeProfileId);
+      AppStorage.setString(StorageKeys.SYNC_PROFILE_NAME, activeProfileName);
+      AppStorage.setBoolean(StorageKeys.SYNC_IS_ENABLED, true);
+      AppStorage.setNumber(StorageKeys.SYNC_LAST_TIMESTAMP, 0);
+
+      this.client.setDeviceToken(token);
+
+      // Initial full sync with pullDelta(0)
+      const syncRes = await this.performFullSync(0);
+      if (!syncRes.ok && syncRes.error && (syncRes.error.includes('401') || syncRes.error.toLowerCase().includes('unauthorized'))) {
+        AppStorage.remove(StorageKeys.SYNC_DEVICE_TOKEN);
+        AppStorage.remove(StorageKeys.SYNC_DEVICE_ID);
+        AppStorage.setBoolean(StorageKeys.SYNC_IS_ENABLED, false);
+        this.client.setDeviceToken(undefined);
+        this.isSyncing = false;
+        this.lastError = syncRes.error;
+        this.notify();
+        return { ok: false, message: syncRes.error };
+      }
+
+      this.isSyncing = false;
+      this.notify();
+      return { ok: true };
+    } catch (err: any) {
+      this.isSyncing = false;
+      this.lastError = err?.message || 'Autenticazione fallita';
       this.notify();
       return { ok: false, message: this.lastError || undefined };
     }
@@ -341,12 +501,28 @@ class SyncManagerClass {
       this.lastError = null;
       this.notify();
 
+      let targetProfileId = profileId;
+      let targetProfileName = 'Principale';
+
+      // If no profileId was specified, fetch profiles first
+      if (!targetProfileId) {
+        try {
+          const profiles = await this.client.listProfilesWithPassword(password.trim());
+          if (profiles && profiles.length > 0) {
+            targetProfileId = profiles[0].id;
+            targetProfileName = profiles[0].name;
+          }
+        } catch {
+          // Fallback if endpoint not supported
+        }
+      }
+
       let loginRes: any;
-      if (profileId) {
+      if (targetProfileId) {
         loginRes = await this.client.loginDevice({
           password: password.trim(),
-          profileId,
-          deviceName: 'KuroTV Mobile',
+          profileId: targetProfileId,
+          deviceName: getDeviceName(),
           deviceType: 'mobile',
           platform: 'android',
         });
@@ -359,8 +535,8 @@ class SyncManagerClass {
         throw new Error('Nessun token restituito dal server');
       }
 
-      const activeProfileId = loginRes.profile?.id || loginRes.profileId || profileId;
-      const activeProfileName = loginRes.profile?.name || 'Principale';
+      const activeProfileId = loginRes.profile?.id || loginRes.profileId || targetProfileId;
+      const activeProfileName = loginRes.profile?.name || targetProfileName;
 
       AppStorage.setString(StorageKeys.SYNC_SERVER_URL, cleanUrl);
       AppStorage.setString(StorageKeys.SYNC_DEVICE_TOKEN, token);
@@ -368,11 +544,12 @@ class SyncManagerClass {
       if (activeProfileId) AppStorage.setString(StorageKeys.SYNC_PROFILE_ID, activeProfileId);
       if (activeProfileName) AppStorage.setString(StorageKeys.SYNC_PROFILE_NAME, activeProfileName);
       AppStorage.setBoolean(StorageKeys.SYNC_IS_ENABLED, true);
+      AppStorage.setNumber(StorageKeys.SYNC_LAST_TIMESTAMP, 0);
 
       this.client.setDeviceToken(token);
 
       // Initial full sync
-      await this.performFullSync();
+      await this.performFullSync(0);
 
       this.isSyncing = false;
       this.notify();
@@ -385,20 +562,31 @@ class SyncManagerClass {
     }
   }
 
-  disconnect(): void {
-    AppStorage.remove(StorageKeys.SYNC_DEVICE_TOKEN);
-    AppStorage.remove(StorageKeys.SYNC_DEVICE_ID);
-    AppStorage.remove(StorageKeys.SYNC_PROFILE_ID);
-    AppStorage.remove(StorageKeys.SYNC_PROFILE_NAME);
-    AppStorage.remove(StorageKeys.SYNC_LAST_TIMESTAMP);
-    AppStorage.remove(StorageKeys.SYNC_LAST_TIME);
-    AppStorage.remove(StorageKeys.SYNC_IS_ENABLED);
-    AppStorage.remove(StorageKeys.SYNC_MASTER_PASSWORD);
+  async disconnect(): Promise<void> {
+    try {
+      this.ensureClientConfigured();
+      if (this.client.getDeviceToken()) {
+        await this.client.logout();
+      }
+    } catch {
+      // Invalida credenziali locali anche se offline o token già revocato
+    } finally {
+      AppStorage.remove(StorageKeys.SYNC_DEVICE_TOKEN);
+      AppStorage.remove(StorageKeys.SYNC_DEVICE_ID);
+      AppStorage.remove(StorageKeys.SYNC_PROFILE_ID);
+      AppStorage.remove(StorageKeys.SYNC_PROFILE_NAME);
+      AppStorage.remove(StorageKeys.SYNC_LAST_TIMESTAMP);
+      AppStorage.remove(StorageKeys.SYNC_LAST_TIME);
+      AppStorage.remove(StorageKeys.SYNC_IS_ENABLED);
+      AppStorage.remove(StorageKeys.SYNC_MASTER_PASSWORD);
+      AppStorage.clearPendingSyncMutations();
+      AppStorage.clearPendingSyncDeletions();
 
-    this.client.setDeviceToken(undefined);
-    this.lastError = null;
-    this.isSyncing = false;
-    this.notify();
+      this.client.setDeviceToken(undefined);
+      this.lastError = null;
+      this.isSyncing = false;
+      this.notify();
+    }
   }
 
   // --------------------------------------------------------------------------
@@ -407,42 +595,79 @@ class SyncManagerClass {
 
   async listProfiles(): Promise<ProfileItem[]> {
     if (!this.isConnected()) return [];
+    this.ensureClientConfigured();
     return this.client.listProfiles();
   }
 
   async switchProfile(profileId: string, profileName?: string): Promise<boolean> {
     if (!this.isConnected() || !profileId) return false;
 
-    const savedPassword = AppStorage.getString(StorageKeys.SYNC_MASTER_PASSWORD);
-    if (savedPassword) {
-      try {
-        const loginRes = await this.client.loginDevice({
-          password: savedPassword,
-          profileId,
-          deviceName: 'KuroTV Mobile',
-          deviceType: 'mobile',
-          platform: 'android',
-        });
-        if (loginRes.deviceToken) {
-          this.client.setDeviceToken(loginRes.deviceToken);
-          AppStorage.setString(StorageKeys.SYNC_DEVICE_TOKEN, loginRes.deviceToken);
-        }
-      } catch {
-        // Fallback
+    this.ensureClientConfigured();
+
+    try {
+      this.isSyncing = true;
+      this.lastError = null;
+      this.notify();
+
+      // 1. Switch device binding on backend (POST /api/auth/switch-profile)
+      const switchRes = await this.client.switchProfile(profileId);
+      const activeName = profileName || switchRes.profile?.name || 'Profilo';
+
+      // 2. Perform complete pull (since = 0) to load fresh state for the new profile
+      // Safe order: pull BEFORE clearing/mutating local MMKV state so that network failures do not corrupt data
+      const pullRes = await this.client.pullDelta(0);
+
+      // 3. Clear pending mutations and deletions from previous profile
+      AppStorage.clearPendingSyncMutations();
+      AppStorage.clearPendingSyncDeletions();
+
+      // 4. Update local MMKV storage profile binding
+      AppStorage.setString(StorageKeys.SYNC_PROFILE_ID, profileId);
+      AppStorage.setString(StorageKeys.SYNC_PROFILE_NAME, activeName);
+
+      // 5. Merge into an empty local state so only the new profile's items exist
+      const emptyLocalState: LocalStorageState = {
+        favorites: [],
+        continueWatching: [],
+        watchHistory: [],
+        watchProgress: [],
+        sharedSettings: {},
+        searchHistory: [],
+      };
+      const { state: mergedState } = mergeLocalAndRemote(emptyLocalState, pullRes);
+
+      // 6. Save newly active profile's library to MMKV
+      AppStorage.setObject(StorageKeys.FAVORITES, mergedState.favorites);
+      AppStorage.setObject(StorageKeys.CONTINUE_WATCHING, mergedState.continueWatching);
+      AppStorage.setObject(StorageKeys.WATCH_HISTORY, mergedState.watchHistory.slice(0, 100));
+
+      // Clear previous watch progress entries and save new ones
+      const oldProgress = AppStorage.getAllWatchProgress();
+      for (const op of oldProgress) {
+        AppStorage.remove(`${StorageKeys.WATCH_PROGRESS_PREFIX}${op.animeId}.${op.episodeNumber}`);
       }
-    }
+      for (const p of mergedState.watchProgress) {
+        AppStorage.setObject(`${StorageKeys.WATCH_PROGRESS_PREFIX}${p.animeId}.${p.episodeNumber}`, p);
+      }
 
-    AppStorage.clearPendingSyncMutations();
-    AppStorage.clearPendingSyncDeletions();
-    AppStorage.setString(StorageKeys.SYNC_PROFILE_ID, profileId);
-    if (profileName) {
-      AppStorage.setString(StorageKeys.SYNC_PROFILE_NAME, profileName);
-    }
-    // Reset last timestamp to pull all deltas for the target profile
-    AppStorage.setNumber(StorageKeys.SYNC_LAST_TIMESTAMP, 0);
+      AppStorage.setObject(StorageKeys.SEARCH_HISTORY, mergedState.searchHistory.slice(0, 50));
+      if (mergedState.sharedSettings && Object.keys(mergedState.sharedSettings).length > 0) {
+        AppStorage.saveSettings(mergedState.sharedSettings);
+      }
 
-    const res = await this.performFullSync();
-    return res.ok;
+      AppStorage.setNumber(StorageKeys.SYNC_LAST_TIMESTAMP, pullRes.serverTime);
+      AppStorage.setNumber(StorageKeys.SYNC_LAST_TIME, Date.now());
+      AppStorage.notifyStorageChanged();
+
+      this.isSyncing = false;
+      this.notify();
+      return true;
+    } catch (err: any) {
+      this.isSyncing = false;
+      this.lastError = err?.message || 'Cambio profilo fallito';
+      this.notify();
+      return false;
+    }
   }
 
   // --------------------------------------------------------------------------
@@ -510,7 +735,7 @@ class SyncManagerClass {
   // Synchronization Core (Pull + Merge + Push)
   // --------------------------------------------------------------------------
 
-  async performFullSync(): Promise<{
+  async performFullSync(forcedSince?: number): Promise<{
     ok: boolean;
     upserts: number;
     deletions: number;
@@ -531,7 +756,10 @@ class SyncManagerClass {
       this.lastError = null;
       this.notify();
 
-      const since = AppStorage.getNumber(StorageKeys.SYNC_LAST_TIMESTAMP) || 0;
+      const since =
+        forcedSince !== undefined
+          ? forcedSince
+          : AppStorage.getNumber(StorageKeys.SYNC_LAST_TIMESTAMP) || 0;
 
       // 1. Pull deltas from server
       const remotePull = await this.client.pullDelta(since);

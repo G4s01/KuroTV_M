@@ -19,8 +19,9 @@ export interface ConfirmModalProps {
   confirmText?: string;
   confirmColor?: string;
   cancelText?: string;
+  singleAction?: boolean;
   onConfirm: () => void;
-  onCancel: () => void;
+  onCancel?: () => void;
 }
 
 export const ConfirmModal: React.FC<ConfirmModalProps> = React.memo(({
@@ -32,6 +33,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = React.memo(({
   confirmText = 'CONFERMA',
   confirmColor,
   cancelText = 'ANNULLA',
+  singleAction = false,
   onConfirm,
   onCancel,
 }) => {
@@ -43,7 +45,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = React.memo(({
 
   const handleCancel = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    onCancel();
+    onCancel?.();
   };
 
   const handleConfirm = () => {
@@ -99,28 +101,34 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = React.memo(({
 
           {/* Action Buttons */}
           <View style={styles.modalActions}>
-            <Pressable
-              style={[
-                styles.modalCancelBtn,
-                {
-                  borderColor: theme.colors.border,
-                  backgroundColor: theme.colors.card,
-                },
-              ]}
-              onPress={handleCancel}
-              hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-              accessibilityRole="button"
-              accessibilityLabel={cancelText}
-            >
-              <Text style={[styles.modalCancelBtnText, { color: theme.colors.text }]}>
-                {cancelText}
-              </Text>
-            </Pressable>
+            {!singleAction && (
+              <Pressable
+                style={[
+                  styles.modalCancelBtn,
+                  {
+                    borderColor: theme.colors.border,
+                    backgroundColor: theme.colors.card,
+                  },
+                ]}
+                onPress={handleCancel}
+                hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                accessibilityRole="button"
+                accessibilityLabel={cancelText}
+              >
+                <Text style={[styles.modalCancelBtnText, { color: theme.colors.text }]}>
+                  {cancelText}
+                </Text>
+              </Pressable>
+            )}
 
             <Pressable
               style={[
                 styles.modalConfirmBtn,
-                { backgroundColor: effectiveConfirmColor },
+                {
+                  backgroundColor: effectiveConfirmColor,
+                  flex: singleAction ? 1 : undefined,
+                  minWidth: singleAction ? '100%' : 120,
+                },
               ]}
               onPress={handleConfirm}
               hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}

@@ -49,6 +49,8 @@ Kuro Mobile è un'applicazione concepita **esclusivamente per smartphone Android
 - **Gestione Sistema Android & Navbar**: `expo-navigation-bar` con modalità immersiva auto-hide (`BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE`) per nascondere la barra di sistema ad app aperta e richiamarla con swipe dal basso, e `react-native-safe-area-context` per l'adattamento dinamico con la navbar a 3 pulsanti.
 - **Data Fetching & Cache Remota**: `@tanstack/react-query` v5 con stale-time ottimizzato.
 - **Storage Locale ad Alte Prestazioni & Sincronizzazione Ibrida Smart**: `react-native-mmkv` v3 (zero-latency key-value store sincrono in `src/services/storage/app-storage.ts` per preferiti, cronologia, configurazioni e preferenze AniSkip/Navbar) con modulo dedicato `continue-watching-sync.ts` per il monitoraggio a basso consumo delle serie in pari e l'avanzamento automatico alle nuove uscite, esposti tramite barrel privo di cicli `src/services/storage/index.ts`.
+- **Sincronizzazione Self-Hosted KuroSync & Bridge MMKV**: Modulo client TypeScript puro (`src/services/sync/`) compilabile al 100% su Hermes senza moduli `node:*`, per la sincronizzazione delta multi-dispositivo con backend Cloudflare Workers + D1 (`KuroTV_S`), unione deterministica con dominanza dei tombstones, debounce del playback a 45-60s per rispetto quote D1 ed accoppiamento touch con Android TV.
+- **Scansione QR Code & Fotocamera Touch-Native**: `expo-camera` (v17 / SDK 58, componente `CameraView`) configurato con `recordAudioAndroid: false` in `app.json` per escludere il permesso `RECORD_AUDIO` dal manifest, con gestione granulare dei permessi a runtime, fallback verso `Linking.openSettings()` e montaggio disaccoppiato a frammento React per azzerare conflitti nativi di finestre `Dialog` su Fabric.
 - **Video & Multimedialità**: `expo-video` v58 con controlli touch personalizzati, OSD immersivo, HUD luminosità/volume, AniSkip (intro, outro, recap con durata configurabile 5s-60s/∞, rewind safe e passaggio intelligente a `'PROSSIMO'` su ending/post-ending), Picture-in-Picture nativo e controlli rapidi in notifica (`MediaSession`/`MediaStyle`).
 - **Styling & Temi**: Sistema dinamico reattivo ispirato a `react-native-unistyles` con `ThemeProvider` a clonazione di riferimento per aggiornamento istantaneo al click e `getContrastTextColor` per contrasto dinamico YIQ.
 - **Animazioni Skeleton & UX Loading**: Primitive e layout skeleton dedicati in `src/components/skeleton` (`Skeleton`, `AnimeCardSkeleton`, `HomeScreenSkeleton`, `ExploreScreenSkeleton`, `ScheduleScreenSkeleton`, `AnimeDetailScreenSkeleton`, `EpisodeItemSkeleton`, `PlayerSkeleton`) con animazione pulsing via driver nativo a 60/120 FPS, sfondo OLED surface (`#161616`) e zero Cumulative Layout Shift (CLS). Cleanup automatico dei loop nativi in unmount e allo scaricamento immagini (`onLoad`) per prevenire battery drain e resource leak.
@@ -286,7 +288,7 @@ Kuro Mobile è un'applicazione concepita **esclusivamente per smartphone Android
 ## 🧪 7. Standard di Test & Verifica Qualità
 
 Prima di ogni commit o push è obbligatorio verificare la conformità tramite:
-1. `npm test`: Suite di test automatizzata a 24 stadi:
+1. `npm test`: Suite di test automatizzata a 26 stadi:
    - SemVer e Updater Service.
    - Regole di Stile Mobile & conformità OLED.
    - Storage MMKV (preferiti, cronologia visione).
@@ -311,6 +313,8 @@ Prima di ogni commit o push è obbligatorio verificare la conformità tramite:
    - Selezione Multipla Preferiti & Cronologia (long-press con `useMultiSelection`, `SelectionAppBar` in alto a destra, conferma rimozione tramite `ConfirmModal` e cuore diretto rimovibile su `AnimeCard` nei Preferiti).
    - `Tabs.Protected` dinamico sulla tab Cronologia sincronizzato via `AppStorage.addSettingsListener`.
    - AniSkip Ending `'PROSSIMO'` (sostituzione automatica sulla ending coincidente con la fine entro 5s, flusso sequenziale senza coesistenza con `'SALTA'` durante la sigla e pulsante `'PROSSIMO'` dedicato all'inizio della parte post-ending in modalità manuale e auto, durata configurabile `5s-60s / ∞` e salvataggio completamento puntata).
+   - Sincronizzazione Self-Hosted KuroSync (KuroTV_S, bridge MMKV, riconciliazione code mutazioni/delezioni, dominanza tombstones, persistenza stato "IN PARI", debounce del playback a 45-60s per rispetto quote Cloudflare D1, flushes istantanei su pausa/uscita/completamento, parsing universale QR deep-link/HTTPS/JSON, autorizzazione Android TV, scansione QR con `expo-camera`, nessun URL privato esposto e link repository GitHub ufficiale).
+   - Integrazione Avanzata KuroSync & Nuove Feature KuroTV_S (Rilevamento modello hardware dinamico `getDeviceName()`, Selettore profili in stile Netflix pre-login su Master Password con avatarColor e nomi, Switcher profili in-app senza logout con `POST /api/auth/switch-profile` e `pullDelta(0)` completo, Gestione single-use QR con HTTP 410 Gone esplicativo in-app, Logout e revoca sessione lato backend con `POST /api/auth/logout` e pulizia atomica storage MMKV).
 2. `npx expo export --platform android`: Verifica dell'assenza di errori di bundle e corretta generazione del bytecode Hermes.
 
 ---
@@ -352,3 +356,48 @@ Prima di ogni commit o push è obbligatorio verificare la conformità tramite:
    - Gestione cartella SAF (*"CAMBIA"* e *"PREDEFINITA"*).
    - Toggle *"SOLO WI-FI"*.
    - Monitoraggio spazio totale e pulsante *"SVUOTA"* protetto da `ConfirmModal`.
+
+---
+
+## ☁️ 9. Sincronizzazione Self-Hosted KuroSync (KuroTV_S), MMKV Bridge & Android TV Pairing
+
+Kuro Mobile integra il client nativo **KuroSync** per la sincronizzazione del catalogo, dei progressi di visione e delle impostazioni con il backend serverless self-hosted **KuroTV_S** (distribuito su Cloudflare Workers + database SQLite serverless D1).
+
+### 1. Filosofia & Efficienza Cloudflare Free-Tier
+- **Zero Dipendenze Node nel Client**: L'SDK in `src/services/sync/` (`types.ts`, `client.ts`, `merge.ts`, `sync-manager.ts`) è scritto in TypeScript puro ed opera esclusivamente tramite API `fetch` e `URL` standard, garantendo compatibilità al 100% con il motore JavaScript Hermes.
+- **Strategia di Debounce Playback a 45-60s**: Durante la riproduzione video in `app/player/[id].tsx`, il salvataggio locale dei progressi in MMKV avviene a ogni tick, ma l'invio remoto a KuroTV_S (`SyncManager.recordPlaybackProgress`) viene regolato da un debounce di **45-60 secondi** (`>= 45000ms`), azzerando scritture continue e rimanendo ampiamente entro i limiti gratuiti giornalieri di Cloudflare D1.
+- **Flush Immediato**: Lo scarico del progresso in sospeso verso il server avviene all'istante (`immediate: true`) alla messa in pausa del video, al raggiungimento della soglia di fine episodio ($\ge 90\%$ o soglia ending), al cambio episodio o alla chiusura del player/applicazione.
+- **Pull on Focus & Push on Blur**:
+  - Al rientro in primo piano dell'applicazione (`AppState: 'active'`), `_layout.tsx` esegue automaticamente un pull incrementale dei soli delta modificati (`since = lastSyncTimestamp`);
+  - All'uscita dell'app o passaggio in background (`AppState: 'background' | 'inactive'`), viene eseguito il push delle mutazioni e dei tombstones pendenti.
+
+### 2. Bridge con lo Storage Locale MMKV (`app-storage.ts`) & Riconciliazione Code
+- **Entità Sincronizzate**:
+  - `favorites`: Lista degli anime preferiti (con timestamp `updatedAt`);
+  - `continueWatching`: Visioni in corso con progressione temporale e preservazione dello stato *IN PARI* (`isCaughtUp`);
+  - `watchHistory`: Cronologia globale con limite a 100 elementi, preservando l'ordinamento cronologico decrescente;
+  - `watchProgress`: Mappe di avanzamento discrete per ciascuna puntata sotto `user.progress.<animeId>.<episodeNumber>`;
+  - `sharedSettings`: Impostazioni cross-device (AniSkip, server di default, soglie ending, retention policy);
+  - `searchHistory`: Cronologia ricerche Google-style (con limite a 50 voci e ordinamento discendente).
+- **Riconciliazione Bidirezionale delle Code**:
+  - Se un elemento cancellato viene ri-aggiunto prima del push (`recordSyncMutation`), il relativo tombstone in coda di cancellazione viene automaticamente rimosso;
+  - Se un elemento modificato viene eliminato (`recordSyncDeletion` / `recordSyncDeletions`), la relativa mutazione pendente viene rimossa dalla coda di push;
+  - La rimozione wildcard dell'intera serie dalla cronologia (`removeWatchHistoryTargets` senza numero episodio) genera tombstones `watch_progress` dedicati per tutte le chiavi discrete corrispondenti su MMKV, impedendo che dispositivi remoti resuscitino puntate già eliminate.
+- **Dominanza dei Tombstones**: La funzione pura `mergeLocalAndRemote()` rispetta la regola tombstone dominance: se una cancellazione remota o locale ha un timestamp superiore o uguale all'ultimo aggiornamento dell'entità, la cancellazione prevale tassativamente.
+
+### 3. UI Impostazioni, Scanner QR con Fotocamera & Accoppiamento Android TV
+- **Card Impostazioni Minimale (`SyncSettingsCard.tsx`)**:
+  - Posizionata nella schermata Impostazioni con pill di stato OLED (`CONNESSO` in verde `#10B981` / `NON ATTIVO` in grigio), URL del server e profilo attivo;
+  - Pulsanti d'azione touch-native ($\ge 44 \times 44$dp): *SINCRONIZZA ORA*, *AUTORIZZA TV*, *PROFILO* e *ESCI* (con conferma protetta da `ConfirmModal`);
+  - Pulsante con logo GitHub e collegamento alla repository ufficiale del backend self-hosted [https://github.com/G4s01/KuroTV_S](https://github.com/G4s01/KuroTV_S).
+- **Modale Scanner QR Fotocamera (`QrScannerModal.tsx`)**:
+  - Basato su `CameraView` di `expo-camera` (v17 / SDK 58), mirino centrale OLED, torcia interattiva e feedback aptico;
+  - Esclusione del permesso `RECORD_AUDIO` da `app.json` (`recordAudioAndroid: false`), gestione permessi runtime con fallback verso `Linking.openSettings()` se negati permanentemente;
+  - **Disaccoppiamento dei Dialoghi Nativi**: Montato a livello di frammento React separato (`<> <Modal ... /> <QrScannerModal ... /> </>`) sia in `SyncConnectModal` che in `AuthorizeTvModal`, scongiurando conflitti di `ReactModalHostView` o eccezioni native su Android Fabric.
+- **Connessione Istanza (`SyncConnectModal.tsx`)**:
+  - Modalità **QR o Link**: Scansione con fotocamera o inserimento manuale di deep-link `kurosync://connect?url=...&token=...`, link HTTPS della web console o payload QR JSON;
+  - Modalità **Manuale**: Campo URL server senza alcun indirizzo privato hardcoded (placeholder generico `https://tuo-kurotv-s.tuonome.workers.dev`), Master Password / Token e profilo opzionale.
+- **Autorizzazione Android TV (`AuthorizeTvModal.tsx`)**:
+  - Permette di scansionare con la fotocamera il QR visualizzato sullo schermo della TV oppure inserire il codice a 6 caratteri (es. `K7X9P2`) per autorizzare l'accesso della TV al profilo attivo con `SyncManager.approveTvPairing(code)`.
+- **Gestione Profili Multi-Utente (`SyncProfileModal.tsx`)**:
+  - Cambio rapido del profilo attivo con svuotamento isolato delle code pendenti e riesecuzione automatica del bootstrap delta per il profilo target.

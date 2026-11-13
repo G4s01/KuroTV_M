@@ -29,6 +29,7 @@ export const SyncProfileModal: React.FC<SyncProfileModalProps> = React.memo(({
 }) => {
   const [profiles, setProfiles] = useState<ProfileItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [switchingProfileId, setSwitchingProfileId] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
@@ -51,10 +52,32 @@ export const SyncProfileModal: React.FC<SyncProfileModalProps> = React.memo(({
   };
 
   const handleSelect = async (profile: ProfileItem) => {
+    if (switchingProfileId) return;
+    if (profile.id === activeProfileId) {
+      onClose();
+      return;
+    }
+
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    await SyncManager.switchProfile(profile.id, profile.name);
-    onProfileSelected(profile);
-    onClose();
+    setSwitchingProfileId(profile.id);
+    setErrorMsg(null);
+
+    try {
+      const success = await SyncManager.switchProfile(profile.id, profile.name);
+      if (success) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        onProfileSelected(profile);
+        onClose();
+      } else {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+        setErrorMsg(SyncManager.getStatus().lastError || 'Passaggio al profilo fallito');
+      }
+    } catch (err: any) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+      setErrorMsg(err?.message || 'Errore durante il cambio profilo');
+    } finally {
+      setSwitchingProfileId(null);
+    }
   };
 
   return (
@@ -82,12 +105,13 @@ export const SyncProfileModal: React.FC<SyncProfileModalProps> = React.memo(({
             <View style={styles.syncModalTitleRow}>
               <Ionicons name="people-outline" size={18} color={theme.colors.primary} />
               <Text style={[styles.syncModalTitle, { color: theme.colors.text }]}>
-                SELEZIONA PROFILO
+                CAMBIA PROFILO
               </Text>
             </View>
             <Pressable
               style={styles.syncModalCloseBtn}
               onPress={onClose}
+              disabled={Boolean(switchingProfileId)}
               accessibilityRole="button"
               accessibilityLabel="CHIUDI"
             >
@@ -123,7 +147,9 @@ export const SyncProfileModal: React.FC<SyncProfileModalProps> = React.memo(({
               <View style={{ gap: 8 }}>
                 {profiles.map((p) => {
                   const isSelected = p.id === activeProfileId;
+                  const isSwitchingThis = switchingProfileId === p.id;
                   const color = p.avatarColor || p.avatar_color || theme.colors.primary;
+
                   return (
                     <Pressable
                       key={p.id}
@@ -137,16 +163,46 @@ export const SyncProfileModal: React.FC<SyncProfileModalProps> = React.memo(({
                         },
                       ]}
                       onPress={() => handleSelect(p)}
+                      disabled={Boolean(switchingProfileId)}
                       accessibilityRole="button"
+                      accessibilityLabel={`PROFILO ${p.name}`}
                     >
                       <View style={styles.syncProfileItemLeft}>
-                        <View style={[styles.syncProfileDot, { backgroundColor: color }]} />
-                        <Text style={[styles.syncProfileItemText, { color: theme.colors.text }]}>
-                          {p.name}
-                        </Text>
+                        <View
+                          style={{
+                            width: 34,
+                            height: 34,
+                            borderRadius: 8,
+                            backgroundColor: color,
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <Ionicons name="person" size={18} color="#FFFFFF" />
+                        </View>
+                        <View>
+                          <Text style={[styles.syncProfileItemText, { color: theme.colors.text }]}>
+                            {p.name}
+                          </Text>
+                          {isSelected ? (
+                            <Text
+                              style={{
+                                color: theme.colors.primary,
+                                fontFamily: 'monospace',
+                                fontSize: 9,
+                                fontWeight: '800',
+                              }}
+                            >
+                              ATTIVO SU QUESTO DISPOSITIVO
+                            </Text>
+                          ) : null}
+                        </View>
                       </View>
-                      {isSelected ? (
-                        <Ionicons name="checkmark-circle" size={18} color={theme.colors.primary} />
+
+                      {isSwitchingThis ? (
+                        <ActivityIndicator size="small" color={theme.colors.primary} />
+                      ) : isSelected ? (
+                        <Ionicons name="checkmark-circle" size={20} color={theme.colors.primary} />
                       ) : null}
                     </Pressable>
                   );

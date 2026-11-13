@@ -24,6 +24,7 @@
 ┌────────────────────────────────────────────────────────────────────────┐
 │  🎬 LIVE FRAME SCRUBBING  │  ⏭️ ANISKIP PROGRESS  │  🖤 OLED PURE BLACK │
 │  ⚡ MMKV ZERO LATENCY     │  📑 FLASHLIST CAROUSEL│  📥 OFFLINE & SAF   │
+│  ☁️ KUROSYNC CLOUD & D1   │  📺 TV PAIRING & QR   │  📷 CAMERA SCANNER  │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -92,6 +93,15 @@
 - **🔔 Badge Notifica Download Attivi in Home**: Icona dedicata nell'header della Home con badge numerico dei download in corso e navigazione diretta a `/downloads`.
 - **⚙️ Card Impostazioni Minimale (`DownloadSettingsCard`)**: Testi essenziali e compatti (*`SCARICATI`*, *`PERCORSO`*, *`RETE`*, *`MEMORIA`*), selettore cartella SAF, toggle Wi-Fi e cancellazione rapida protetta da `ConfirmModal`.
 
+### ☁️ Sincronizzazione Self-Hosted KuroSync (KuroTV_S & Android TV)
+- **⚡ Client TypeScript Puro Hermes-Safe**: Sincronizzazione multi-dispositivo basata su `@kurosync/sync-client` integrato in `src/services/sync/`, privo di moduli pesanti `node:*` e compilabile al 100% su Hermes.
+- **🔄 Bridge MMKV ad Alte Prestazioni**: Sincronizza preferiti (`favorites`), continuazione visioni (`continueWatching` con preservazione dello stato *IN PARI* `isCaughtUp`), cronologia (`watchHistory`), progressi episodio discreti (`watchProgress`), cronologia ricerche e impostazioni condivise (`sharedSettings`).
+- **🛡️ Riconciliazione Code & Dominanza Tombstones**: Algoritmo `mergeLocalAndRemote()` con dominanza dei tombstones di eliminazione, pulizia automatica delle mutazioni pendenti in caso di rimozione e cancellazione dei tombstones se un elemento viene ri-aggiunto.
+- **⏱️ Rispetto Limiti Cloudflare D1 (Free Tier)**: Debouncing dei progressi video a 45-60s durante la riproduzione continua, con flush immediato all'uscita, alla pausa, al cambio puntata o al completamento ($\ge 90\%$). Pull automatico dei soli delta modificati (`since`) al focus e push al passaggio in background.
+- **📷 Scanner QR Fotocamera Integrato (`expo-camera`)**: Scansione touch-native dei codici QR generati dalla web console o da Android TV con `CameraView`, torcia, gestione permessi e fallback automatico.
+- **📺 Accoppiamento Android TV Istantaneo**: Schermata dedicata nelle Impostazioni per autorizzare dispositivi Android TV in 1 secondo tramite scansione QR o inserimento del codice numerico a 6 caratteri (`approveTvPairing`).
+- **🔒 Zero URL Privati Esposti**: Connessione flessibile a qualsiasi istanza personale Cloudflare Workers + D1 con campo manuale neutro e pulsante di collegamento alla [repository GitHub ufficiale di KuroTV_S](https://github.com/G4s01/KuroTV_S).
+
 ### 🖤 Design System & Esperienza Touch
 - **Nero Assoluto OLED (`#000000`)**: Spegnimento fisico dei pixel sui display AMOLED per azzerare i consumi energetici e massimizzare il contrasto.
 - **Tipografia Monospace & CAPS LOCK**: Identità coerente su tutta l'app con font monospace di sistema e testi in maiuscolo.
@@ -126,6 +136,8 @@
 | **Data Fetching** | **@tanstack/react-query v5** | Caching, deduplicazione e reattività |
 | **Local Storage** | **react-native-mmkv v3** | Key-value store sincrono C++ ad alta velocità |
 | **Download & Storage** | **expo-file-system** & **expo-network** | Download resumable, Storage Access Framework (SAF) e vincolo Wi-Fi |
+| **Sincronizzazione Self-Hosted** | **@kurosync/sync-client** & **KuroSync** | Delta sync deterministico con Cloudflare Workers + D1 e TV pairing |
+| **Scansione QR Fotocamera** | **expo-camera** | CameraView touch-native senza permessi audio per QR e link |
 
 ---
 
@@ -138,11 +150,11 @@ cd KuroM
 npm install
 ```
 
-### 2. Test di Qualità (24 Stadi)
+### 2. Test di Qualità (26 Stadi)
 ```bash
 npm test
 ```
-*Valida SemVer, regole OLED, storage MMKV, batch puntate, intervalli AniSkip (inclusa sostituzione `'PROSSIMO'` a fine episodio e `'PROSSIMO'` sequenziale post-ending), skeleton animation, export delle rotte, touch sheets, updater, compatibilità navbar, gesture verticali, PiP no-pause, dimensioni sheets, AniSkipSlider, loader integrato, media notification, slider hero sincronizzato, parser upcoming, anti-corruzione titoli, palinsesto/schedule, affidabilità aggiornamenti manuali, cronologia ricerche Google-style, filtri multi-genere, audio, isolamento scraper, sincronizzazione focus raccomandati, simmetria filtri, swipe-down dismiss a doppia zona, stato IN PARI & sincronizzazione ibrida smart, supporto schermi larghi/tablet (sw600dp), left navigation rail, master-detail, `Tabs.Protected` su Cronologia e sistema di download episodi con storage SAF & visione offline.*
+*Valida SemVer, regole OLED, storage MMKV, batch puntate, intervalli AniSkip (inclusa sostituzione `'PROSSIMO'` a fine episodio e `'PROSSIMO'` sequenziale post-ending), skeleton animation, export delle rotte, touch sheets, updater, compatibilità navbar, gesture verticali, PiP no-pause, dimensioni sheets, AniSkipSlider, loader integrato, media notification, slider hero sincronizzato, parser upcoming, anti-corruzione titoli, palinsesto/schedule, affidabilità aggiornamenti manuali, cronologia ricerche Google-style, filtri multi-genere, audio, isolamento scraper, sincronizzazione focus raccomandati, simmetria filtri, swipe-down dismiss a doppia zona, stato IN PARI & sincronizzazione ibrida smart, supporto schermi larghi/tablet (sw600dp), left navigation rail, master-detail, `Tabs.Protected` su Cronologia, sistema di download episodi con storage SAF & visione offline, sincronizzazione self-hosted KuroSync con KuroTV_S, bridge MMKV, debounce 45-60s, scanner QR ed autorizzazione Android TV, e integrazione avanzata KuroSync (nomi dinamici hardware model, selettore profili stile Netflix pre-login su Master Password, switcher in-app dinamico, gestione single-use QR 410 Gone esplicativo in-app, revoca sessione e logout pulito).*
 
 ### 3. Build & Verifica Bytecode Hermes
 ```bash

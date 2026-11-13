@@ -717,6 +717,63 @@ export const settingsStyles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
+  netflixProfileGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 16,
+    paddingVertical: 12,
+  },
+  netflixProfileCard: {
+    alignItems: 'center',
+    gap: 8,
+    minWidth: 84,
+  },
+  netflixAvatarBox: {
+    width: 80,
+    height: 80,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+    position: 'relative',
+  },
+  netflixAvatarBoxLarge: {
+    width: 100,
+    height: 100,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2.5,
+    position: 'relative',
+  },
+  netflixProfileName: {
+    fontSize: 12,
+    fontWeight: '800',
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
+    textAlign: 'center',
+    letterSpacing: 0.5,
+  },
+  netflixProfileHeader: {
+    alignItems: 'center',
+    gap: 4,
+    marginVertical: 6,
+  },
+  netflixProfileHeaderTitle: {
+    fontSize: 16,
+    fontWeight: '900',
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
+    letterSpacing: 1.5,
+  },
+  netflixProfileHeaderSubtitle: {
+    fontSize: 11,
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
 
   // ----------------------------------------------------
   // QR Camera Scanner

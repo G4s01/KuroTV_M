@@ -11,7 +11,7 @@ import { AppStorage, type NavBarMode } from '@/services/storage';
 import { UpdaterService, UpdateStore } from '@/services/updater';
 import { SyncManager, parseKuroSyncDeepLink } from '@/services/sync';
 import * as Linking from 'expo-linking';
-import { UpdateModal } from '@/components';
+import { UpdateModal, ConfirmModal } from '@/components';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -64,13 +64,46 @@ function RootNavigation() {
     };
   }, [navBarMode]);
 
+  const [syncAlert, setSyncAlert] = React.useState<{
+    visible: boolean;
+    title: string;
+    message: string;
+  } | null>(null);
+
   // KuroSync deep-link handling (e.g. kurosync://connect?url=...&token=...&profile=... or kurosync://pair?code=...)
   React.useEffect(() => {
-    const processDeepLink = (url: string) => {
+    const processDeepLink = async (url: string) => {
       if (!url) return;
       const parsed = parseKuroSyncDeepLink(url);
       if (parsed?.token) {
-        SyncManager.connectFromDeepLink(url).catch(() => {});
+        try {
+          const res = await SyncManager.connectFromDeepLink(url);
+          if (!res.ok) {
+            const isExpired =
+              res.isExpiredQr ||
+              res.message?.includes('410') ||
+              res.message?.toLowerCase().includes('scaduto');
+            setSyncAlert({
+              visible: true,
+              title: isExpired ? 'CODICE QR SCADUTO' : 'CONNESSIONE FALLITA',
+              message: isExpired
+                ? 'Il codice QR è scaduto o è già stato utilizzato. Generane uno nuovo dalla console Web.'
+                : res.message || 'Connessione fallita',
+            });
+          }
+        } catch (err: any) {
+          const isExpired =
+            err?.status === 410 ||
+            String(err?.message).includes('410') ||
+            String(err?.message).toLowerCase().includes('scaduto');
+          setSyncAlert({
+            visible: true,
+            title: isExpired ? 'CODICE QR SCADUTO' : 'ERRORE DI RETE',
+            message: isExpired
+              ? 'Il codice QR è scaduto o è già stato utilizzato. Generane uno nuovo dalla console Web.'
+              : err?.message || 'Errore di connessione',
+          });
+        }
       } else if (parsed?.code) {
         if (SyncManager.isConnected()) {
           SyncManager.approveTvPairing(parsed.code).catch(() => {});
@@ -80,7 +113,34 @@ function RootNavigation() {
         url.includes('token=') ||
         url.includes('kurosync')
       ) {
-        SyncManager.connectFromDeepLink(url).catch(() => {});
+        try {
+          const res = await SyncManager.connectFromDeepLink(url);
+          if (!res.ok) {
+            const isExpired =
+              res.isExpiredQr ||
+              res.message?.includes('410') ||
+              res.message?.toLowerCase().includes('scaduto');
+            setSyncAlert({
+              visible: true,
+              title: isExpired ? 'CODICE QR SCADUTO' : 'CONNESSIONE FALLITA',
+              message: isExpired
+                ? 'Il codice QR è scaduto o è già stato utilizzato. Generane uno nuovo dalla console Web.'
+                : res.message || 'Connessione fallita',
+            });
+          }
+        } catch (err: any) {
+          const isExpired =
+            err?.status === 410 ||
+            String(err?.message).includes('410') ||
+            String(err?.message).toLowerCase().includes('scaduto');
+          setSyncAlert({
+            visible: true,
+            title: isExpired ? 'CODICE QR SCADUTO' : 'ERRORE DI RETE',
+            message: isExpired
+              ? 'Il codice QR è scaduto o è già stato utilizzato. Generane uno nuovo dalla console Web.'
+              : err?.message || 'Errore di connessione',
+          });
+        }
       }
     };
 
@@ -144,6 +204,20 @@ function RootNavigation() {
         />
       </Stack>
       <UpdateModal />
+      {syncAlert?.visible && (
+        <ConfirmModal
+          visible={syncAlert.visible}
+          title={syncAlert.title}
+          message={syncAlert.message}
+          icon="alert-circle-outline"
+          iconColor={theme.colors.error || '#EF4444'}
+          confirmText="HO CAPITO"
+          confirmColor={theme.colors.primary}
+          singleAction={true}
+          onConfirm={() => setSyncAlert(null)}
+          onCancel={() => setSyncAlert(null)}
+        />
+      )}
     </GestureHandlerRootView>
   );
 }

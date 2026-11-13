@@ -13,7 +13,11 @@ import type {
   RemotePullResponse,
   BackupExportData,
   BackupImportResponse,
+  TokenExchangeRequest,
+  TokenExchangeResponse,
+  LogoutResponse,
   ProfileItem,
+  SwitchProfileResponse,
 } from './types';
 
 /**
@@ -78,7 +82,9 @@ export class KuroSyncClient {
     } catch {
       // Body not JSON or already consumed
     }
-    throw new Error(errorMessage);
+    const err = new Error(errorMessage);
+    (err as any).status = res.status;
+    throw err;
   }
 
   // --------------------------------------------------------------------------
@@ -149,12 +155,7 @@ export class KuroSyncClient {
     return data;
   }
 
-  async exchangeToken(req: {
-    token: string;
-    deviceName?: string;
-    deviceType?: string;
-    platform?: string;
-  }): Promise<{ ok: boolean; deviceToken: string; deviceId: string; profileId: string }> {
+  async exchangeToken(req: TokenExchangeRequest): Promise<TokenExchangeResponse> {
     const res = await fetch(this.getUrl('/api/auth/exchange'), {
       method: 'POST',
       headers: this.getHeaders({ 'Content-Type': 'application/json' }),
@@ -165,13 +166,49 @@ export class KuroSyncClient {
       await this.handleErrorResponse(res, 'Token exchange');
     }
 
-    const data = (await res.json()) as any;
+    const data = (await res.json()) as TokenExchangeResponse;
     if (data.deviceToken) {
       this.deviceToken = data.deviceToken;
     }
     return data;
   }
 
+  async logout(): Promise<LogoutResponse> {
+    const res = await fetch(this.getUrl('/api/auth/logout'), {
+      method: 'POST',
+      headers: this.getHeaders({ 'Content-Type': 'application/json' }),
+    });
+
+    if (!res.ok) {
+      await this.handleErrorResponse(res, 'Logout');
+    }
+
+    const data = (await res.json()) as LogoutResponse;
+    this.deviceToken = undefined;
+    return data;
+  }
+
+  /**
+   * List profiles using master password (for Netflix-style profile selector before login)
+   */
+  async listProfilesWithPassword(password: string): Promise<ProfileItem[]> {
+    const res = await fetch(this.getUrl('/api/auth/profiles'), {
+      method: 'POST',
+      headers: this.getHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ password }),
+    });
+
+    if (!res.ok) {
+      await this.handleErrorResponse(res, 'List profiles with password');
+    }
+
+    const data = (await res.json()) as { ok: boolean; profiles: ProfileItem[] };
+    return data.profiles || [];
+  }
+
+  /**
+   * List profiles using current authenticated deviceToken
+   */
   async listProfiles(): Promise<ProfileItem[]> {
     const res = await fetch(this.getUrl('/api/profiles'), {
       method: 'GET',
@@ -184,6 +221,23 @@ export class KuroSyncClient {
 
     const data = (await res.json()) as { ok: boolean; profiles: ProfileItem[] };
     return data.profiles || [];
+  }
+
+  /**
+   * Switch the active profile for the currently connected device session
+   */
+  async switchProfile(profileId: string): Promise<SwitchProfileResponse> {
+    const res = await fetch(this.getUrl('/api/auth/switch-profile'), {
+      method: 'POST',
+      headers: this.getHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ profileId }),
+    });
+
+    if (!res.ok) {
+      await this.handleErrorResponse(res, 'Switch profile');
+    }
+
+    return (await res.json()) as SwitchProfileResponse;
   }
 
   // --------------------------------------------------------------------------
