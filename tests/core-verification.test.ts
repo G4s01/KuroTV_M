@@ -1228,6 +1228,7 @@ const requiredRoutes = [
   'app/(tabs)/favorites.tsx',
   'app/(tabs)/history.tsx',
   'app/(tabs)/index.tsx',
+  'app/(tabs)/profile.tsx',
   'app/(tabs)/settings.tsx',
   'app/anime/[id].tsx',
   'app/player/[id].tsx',
@@ -1988,7 +1989,7 @@ assert(exploreSource.includes('heroBanner'), 'explore.tsx deve supportare il ban
 const scheduleTabLayoutSource = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/_layout.tsx'), 'utf-8');
 assert(scheduleTabLayoutSource.includes('name="explore"'), 'TabLayout deve contenere lo screen explore');
 assert(scheduleTabLayoutSource.includes('calendar'), 'TabLayout deve usare l icona calendar per explore');
-assert(!scheduleTabLayoutSource.includes('name="explore"\n        options={{\n          href: null'), 'explore non deve essere nascosto con href: null');
+assert(scheduleTabLayoutSource.includes('name="explore"') && scheduleTabLayoutSource.includes('href: null'), 'explore deve avere href: null nel TabLayout poichè il pulsante è stato spostato in Home');
 
 // 7. Verifica Fix Aggiornamenti Manuali in settings.tsx
 const settingsFixedSource = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/settings.tsx'), 'utf-8');
@@ -3986,6 +3987,133 @@ assert(layoutCode.includes('Il codice QR è scaduto o è già stato utilizzato')
 assert(!layoutCode.includes('Alert.alert'), 'Divieto Alert.alert rispettato in _layout.tsx');
 
 console.log('✓ Integrazione Avanzata KuroSync (Nomi Dinamici, Netflix Selector, Switcher, 410 Gone & Logout) verificata con successo.');
+
+// -----------------------------------------------------------------------------
+// [27/27] Verifica Riorganizzazione Palinsesto in Home, Profilo Rapido Tab Bar & Persistenza Indistruttibile SYNC_SERVER_URL
+// -----------------------------------------------------------------------------
+console.log('\n[27/27] Verifica Riorganizzazione Palinsesto in Home, Profilo Rapido Tab Bar & Persistenza Indistruttibile SYNC_SERVER_URL...');
+
+// 1. HomeAppBar Palinsesto Button
+const homeHeaderCode = fs.readFileSync(path.resolve(process.cwd(), 'src/components/home/HomeSearchHeader.tsx'), 'utf-8');
+assert(homeHeaderCode.includes('onSchedulePress'), 'HomeAppBar deve accettare la prop onSchedulePress');
+assert(homeHeaderCode.includes('calendar-outline'), 'HomeAppBar deve mostrare l icona calendar-outline per il palinsesto');
+assert(homeHeaderCode.includes('scheduleButton'), 'HomeAppBar deve usare la classe scheduleButton');
+assert(homeHeaderCode.includes('accessibilityLabel="PALINSESTO"'), 'HomeAppBar deve avere accessibilityLabel PALINSESTO');
+
+// Check order: scheduleButton placed in between downloads and search
+const schedulePos = homeHeaderCode.indexOf('scheduleButton');
+const downloadPos = homeHeaderCode.indexOf('downloadButton');
+const searchPos = homeHeaderCode.indexOf('searchButton');
+assert(downloadPos !== -1 && schedulePos !== -1 && searchPos !== -1, 'Tutti e tre i pulsanti devono essere presenti');
+assert(
+  (downloadPos < schedulePos && schedulePos < searchPos) || (searchPos < schedulePos && schedulePos < downloadPos),
+  'Il pulsante palinsesto deve trovarsi in mezzo tra download e ricerca'
+);
+
+// 2. Home index binds onSchedulePress to navigate to /explore
+const homeScreenCode = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/index.tsx'), 'utf-8');
+assert(homeScreenCode.includes('onSchedulePress'), 'app/(tabs)/index.tsx deve passare onSchedulePress a HomeAppBar');
+assert(homeScreenCode.includes("router.push('/explore'"), 'onSchedulePress deve navigare a /explore');
+
+// 3. Tab Bar Layout: explore hidden with href: null, profile tab between history and settings
+const tabLayoutNew = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/_layout.tsx'), 'utf-8');
+assert(tabLayoutNew.includes('name="profile"'), 'app/(tabs)/_layout.tsx deve dichiarare la tab profile');
+assert(tabLayoutNew.includes('person-circle'), 'tab profile deve usare l icona person-circle / person-outline');
+assert(tabLayoutNew.includes('SyncConnectModal'), 'app/(tabs)/_layout.tsx deve integrare SyncConnectModal');
+assert(tabLayoutNew.includes('SyncProfileModal'), 'app/(tabs)/_layout.tsx deve integrare SyncProfileModal');
+
+// Check tab ordering: profile is between history and settings
+const historyTabPos = tabLayoutNew.indexOf('name="history"');
+const profileTabPos = tabLayoutNew.indexOf('name="profile"');
+const settingsTabPos = tabLayoutNew.indexOf('name="settings"');
+assert(historyTabPos !== -1 && profileTabPos !== -1 && settingsTabPos !== -1, 'History, Profile e Settings devono essere presenti');
+assert(historyTabPos < profileTabPos && profileTabPos < settingsTabPos, 'Il tab Profilo deve trovarsi tra Cronologia e Impostazioni');
+
+// 4. Persistence of SYNC_SERVER_URL without deletion of g4s01.workers.dev
+const syncManagerSourceCode = fs.readFileSync(path.resolve(process.cwd(), 'src/services/sync/sync-manager.ts'), 'utf-8');
+assert(!syncManagerSourceCode.includes("savedUrl.includes('g4s01.workers.dev')"), 'sync-manager.ts non deve contenere rimozioni automatiche di g4s01.workers.dev');
+assert(!syncManagerSourceCode.includes("AppStorage.remove(StorageKeys.SYNC_SERVER_URL)"), 'sync-manager.ts non deve rimuovere SYNC_SERVER_URL nel costruttore');
+
+// 5. Test real storage persistence with g4s01.workers.dev
+const testPersonalUrl = 'https://kurotv-s.g4s01.workers.dev';
+AppStorage.setString(StorageKeys.SYNC_SERVER_URL, testPersonalUrl);
+assert.strictEqual(AppStorage.getString(StorageKeys.SYNC_SERVER_URL), testPersonalUrl, 'L URL deve essere salvato in MMKV');
+
+// Instantiate a new SyncManagerClass: it must NOT wipe the stored URL
+const FreshSyncManagerClass = (SyncManager.constructor as any);
+const freshInstance = new FreshSyncManagerClass();
+assert.strictEqual(
+  AppStorage.getString(StorageKeys.SYNC_SERVER_URL),
+  testPersonalUrl,
+  'Il costruttore di SyncManager NON deve cancellare l URL del server KuroSync anche se contiene g4s01.workers.dev'
+);
+assert.strictEqual(
+  freshInstance.getClient().getBaseUrl(),
+  testPersonalUrl,
+  'KuroSyncClient deve ricevere l URL persistito dallo storage'
+);
+
+// 6. Test prepareQrConnection saves URL immediately into MMKV
+AppStorage.remove(StorageKeys.SYNC_SERVER_URL);
+AppStorage.remove('sync.server_url_backup');
+const qrResult = await SyncManager.prepareQrConnection('kurotv://sync?endpoint=https%3A%2F%2Fpersisted-server.workers.dev&token=some-token');
+assert.strictEqual(
+  AppStorage.getString(StorageKeys.SYNC_SERVER_URL),
+  'https://persisted-server.workers.dev',
+  'prepareQrConnection deve persistere immediatamente l URL del server in MMKV'
+);
+
+// 7. Test indestructible persistence & self-healing from backup key
+AppStorage.remove(StorageKeys.SYNC_SERVER_URL);
+assert.strictEqual(AppStorage.getString(StorageKeys.SYNC_SERVER_URL), undefined);
+// getStatus triggers self-healing
+const healedStatus = SyncManager.getStatus();
+assert.strictEqual(
+  healedStatus.serverUrl,
+  'https://persisted-server.workers.dev',
+  'getStatus deve auto-ripristinare l URL del server dalla chiave di backup o dalla memoria'
+);
+assert.strictEqual(
+  AppStorage.getString(StorageKeys.SYNC_SERVER_URL),
+  'https://persisted-server.workers.dev',
+  'La chiave MMKV deve essere auto-ripristinata dal self-healing'
+);
+
+// 8. Test isConnected requires BOTH token AND serverUrl
+AppStorage.setString(StorageKeys.SYNC_DEVICE_TOKEN, 'test-token');
+assert.strictEqual(SyncManager.isConnected(), true, 'Con token e URL validi isConnected deve essere true');
+
+// If both primary and backup URL are removed and client is reset
+AppStorage.remove(StorageKeys.SYNC_SERVER_URL);
+AppStorage.remove('sync.server_url_backup');
+const emptyUrlInstance = new FreshSyncManagerClass();
+assert.strictEqual(
+  emptyUrlInstance.isConnected(),
+  false,
+  'isConnected NON deve essere true se l URL del server è mancante, prevenendo il crash URL non configurato'
+);
+
+// 9. Test parseKuroSyncDeepLink with serverUrl and baseUrl query parameters
+const deepLinkWithServerUrl = parseKuroSyncDeepLink('kurosync://connect?serverUrl=https%3A%2F%2Fmy-custom-server.com&token=tok-123');
+assert(deepLinkWithServerUrl !== null && deepLinkWithServerUrl.url === 'https://my-custom-server.com', 'parseKuroSyncDeepLink deve supportare serverUrl');
+const deepLinkWithBaseUrl = parseKuroSyncDeepLink('kurosync://connect?baseUrl=https%3A%2F%2Fbase-server.com&token=tok-456');
+assert(deepLinkWithBaseUrl !== null && deepLinkWithBaseUrl.url === 'https://base-server.com', 'parseKuroSyncDeepLink deve supportare baseUrl');
+
+// 10. Test ProfileScreen graceful redirect source code
+const profileScreenSource = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/profile.tsx'), 'utf-8');
+assert(profileScreenSource.includes("router.replace('/(tabs)')"), 'ProfileScreen deve reindirizzare alla home tab se montata direttamente');
+
+// 11. Test SyncConnectModal source code reloads stored URL on visible: true
+const syncModalSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/settings/SyncConnectModal.tsx'), 'utf-8');
+assert(syncModalSource.includes('AppStorage.getString(StorageKeys.SYNC_SERVER_URL)'), 'SyncConnectModal deve ripristinare il serverUrl memorizzato');
+assert(syncModalSource.includes('setServerUrl(saved)'), 'SyncConnectModal deve aggiornare lo stato serverUrl all apertura');
+
+// Clean up test keys
+AppStorage.remove(StorageKeys.SYNC_SERVER_URL);
+AppStorage.remove('sync.server_url_backup');
+AppStorage.remove(StorageKeys.SYNC_DEVICE_TOKEN);
+
+console.log('✓ Riorganizzazione Palinsesto in Home, Profilo Rapido Tab Bar & Persistenza Indistruttibile SYNC_SERVER_URL verificati con successo.');
 
 // -----------------------------------------------------------------------------
 // Fine Test

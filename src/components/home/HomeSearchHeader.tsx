@@ -91,12 +91,14 @@ export function HomeSearchHeader({
 
 export interface HomeAppBarProps {
   onSearchPress: () => void;
+  onSchedulePress?: () => void;
   activeDownloadsCount?: number;
   onDownloadsPress?: () => void;
 }
 
 export function HomeAppBar({
   onSearchPress,
+  onSchedulePress,
   activeDownloadsCount = 0,
   onDownloadsPress,
 }: HomeAppBarProps) {
@@ -150,6 +152,25 @@ export function HomeAppBar({
                 </Text>
               </View>
             )}
+          </Pressable>
+        )}
+
+        {onSchedulePress && (
+          <Pressable
+            style={[
+              styles.scheduleButton,
+              {
+                backgroundColor: theme.colors.card,
+                borderColor: theme.colors.border,
+                borderWidth: 1,
+              },
+            ]}
+            onPress={onSchedulePress}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="PALINSESTO"
+          >
+            <Ionicons name="calendar-outline" size={20} color={theme.colors.text} />
           </Pressable>
         )}
 

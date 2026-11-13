@@ -70,6 +70,13 @@ export const SyncConnectModal: React.FC<SyncConnectModalProps> = React.memo(({
       setErrorMsg(null);
       qrSessionData.current = null;
       setIsScannerOpen(initialTab === 'qr');
+      const saved =
+        AppStorage.getString(StorageKeys.SYNC_SERVER_URL) ||
+        SyncManager.getStatus().serverUrl ||
+        '';
+      if (saved) {
+        setServerUrl(saved);
+      }
     } else {
       setIsScannerOpen(false);
       setIsLoading(false);

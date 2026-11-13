@@ -65,6 +65,14 @@ export const homeStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  scheduleButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#141414',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   appBarActions: {
     flexDirection: 'row',
     alignItems: 'center',

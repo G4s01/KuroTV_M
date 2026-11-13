@@ -66,8 +66,9 @@ Kuro Mobile è un'applicazione concepita **esclusivamente per smartphone Android
 2. **Safe Area, Edge-to-Edge & Adattamento Navbar**:
    - Gestire sempre notch, fotocamere punch-hole e barra di navigazione Android tramite `react-native-safe-area-context` e `react-native-edge-to-edge`.
    - Adattamento dinamico della barra inferiore delle tab (`androidBottomInset = Math.max(16, insets.bottom + 8)`): garantisce zero sovrapposizione visiva con la navbar di sistema a 3 pulsanti fissi in-app, sollevando il router dell'app e preservando l'altezza utile dei touch target $\ge 44$dp. In modalità video player, la barra di sistema torna invece automaticamente a scomparsa totale.
-3. **Navigazione a Bottom Tabs & Ricerca Unificata in Home**:
-   - La navigazione principale usa schede con sole icone vettoriali (`tabBarShowLabel: false`): **Home** (`home`), **Palinsesto** (`calendar`), **Preferiti** (`heart`), **Cronologia** (`time`), **Impostazioni** (`settings`).
+3. **Navigazione a Bottom Tabs, Accesso Palinsesto & Ricerca Unificata in Home**:
+   - La navigazione principale usa schede con sole icone vettoriali (`tabBarShowLabel: false`): **Home** (`home`), **Preferiti** (`heart`), **Cronologia** (`time`), **Profilo** (`person-circle` se connesso / `person` se disconnesso, per il cambio rapido profilo o accoppiamento KuroSync istantaneo al tocco), **Impostazioni** (`settings`).
+   - L'accesso al **Palinsesto** (`app/(tabs)/explore.tsx`) è integrato direttamente nell'header della **Home** (`HomeAppBar`), posizionato al centro tra il pulsante **Download** (`cloud-download-outline`) e la **Ricerca** (`search`), accessibile al tocco con touch target $\ge 44$dp e dotato di freccia Indietro dedicata (`ExploreScreen` con `router.canGoBack() ? router.back() : router.replace('/(tabs)')`).
    - La ricerca del catalogo con filtri avanzati è integrata direttamente nell'header della **Home** (icona lente di ingrandimento, debouncing 450ms, griglia FlashList a 2 colonne e supporto al tasto fisico Indietro di Android per chiudere la ricerca senza uscire dall'app).
    - **Gestione Lifecycle `useFocusEffect` del Tasto Indietro (Zero Reset Ricerca al Ritorno dai Dettagli)**:
      - Il listener Android `hardwareBackPress` in `app/(tabs)/index.tsx` è agganciato rigorosamente tramite `useFocusEffect` di `expo-router` anziché `useEffect` standard: quando l'utente apre i dettagli di un anime (`app/anime/[id].tsx`), la Home perde il focus e il listener viene istantaneamente rimosso.
@@ -85,13 +86,19 @@ Kuro Mobile è un'applicazione concepita **esclusivamente per smartphone Android
        - **Ordinamenti**: Mappatura corretta con ordinamento per data reale di uscita delle serie (`5` Più recenti, `1` Ultime aggiunte, `6` Più visti, `7` Meglio valutati, `2` A-Z, `3` Z-A).
        - **Isolamento Risultati nello Scraper**: Selettore in `search.parser.ts` vincolato rigorosamente al contenitore principale (`#main .film-list > .item, .content .film-list > .item`), con esclusione tassativa dei widget di raccomandazione laterale (`.simple-film-list`, `.ranking`, aside), garantendo l'assenza di titoli incoerenti a 6 elementi in caso di risultati vuoti.
    - Colore attivo delle tab agganciato dinamicamente a `theme.colors.primary`.
-   - **Nuova Sezione Palinsesto / Programmazione Settimanale (`app/(tabs)/explore.tsx`)**:
+   - **Sezione Palinsesto / Programmazione Settimanale (`app/(tabs)/explore.tsx`)**:
+     - Raggiungibile direttamente dal pulsante `PALINSESTO` posizionato nell'header della Home (`HomeAppBar`) tra Download e Ricerca (con rotta tab nascosta tramite `href: null`).
+     - Dotata di freccia Indietro touch-native (`arrow-back`, $44 \times 44$dp) per un ritorno immediato e fluido alla Home.
      - Integra le uscite settimanali con gli orari previsti da `animeworld.ac/schedule` (`AnimeWorldScraper.getSchedule()` e `parseSchedulePage`).
      - Header dedicato con titolo `PALINSESTO` e sottotitolo della settimana corrente (`SETTIMANA D MESE – D MESE`).
      - Hero card opzionale per la *Prossima Uscita* in evidenza con badge fiammella `PROSSIMA USCITA`, orario programmato / countdown, titolo anime, puntata e locandina (tap diretto a scheda dettaglio).
      - Selettore orizzontale a scorrimento per i giorni della settimana con etichetta compatta e pulita nel formato giorno + numero (es. `SAB 14`, `LUN 9`) senza contatore di uscite, indicatore `OGGI` per auto-selezionare il giorno odierno e touch target $\ge 44$dp.
      - Timeline orizzontale/verticale virtualizzata con `@shopify/flash-list`: pill orario dedicato (`15:00`), locandina ad alta risoluzione con cache, titolo serie (monospace, uppercase), titolo alternativo, badge puntata (`EPISODIO X`) e badge di stato dinamico con codifica cromatica OLED (`USCITO` in verde success, `IN PAUSA` in ambra warning, programmato `ALLE HH:MM` in colore primario).
      - Supporto pull-to-refresh nativo con tint color coordinato e layout skeleton dedicato `ScheduleScreenSkeleton` a zero CLS.
+   - **Pulsante Profilo Rapido nella Tab Bar (`app/(tabs)/_layout.tsx`)**:
+     - Posizionato nella barra inferiore delle schede tra **Cronologia** e **Impostazioni**, con icona reattiva allo stato di connessione (`person-circle` quando connesso / `person` quando non attivo) e feedback di pressione a opacità dinamica (`opacity: 0.7`) + aptica.
+     - **Azione al Tap**: Se l'istanza KuroSync è connessa, apre istantaneamente il selettore profili touch-native `SyncProfileModal` per cambiare profilo al volo senza aprire le Impostazioni; se non connessa, apre direttamente `SyncConnectModal` in modalità QR Code con avvio immediato della fotocamera.
+     - Include una route di sicurezza `app/(tabs)/profile.tsx` con redirect automatico alla Home in caso di deep link o routing accidentale.
    - **Struttura Sezioni Schermata Home**:
      1. **Banner Hero in Evidenza**: Espone in testa l'anime raccomandato selezionato (di default il primo della top 8 dei raccomandati). Implementato come slider orizzontale a tutta larghezza con `pagingEnabled={true}` e sincronizzazione bi-direzionale protetta da `activeScrollSourceRef`. Mostra banner/artwork, badge `#1 RACCOMANDATO`, titolo (monospace, uppercase), sinossi pulita e pulsanti d'azione dedicati:
         - `RIPRODUCI` (icona `play`, avvio diretto dell'episodio salvato in cronologia/continua a guardare o fetch dell'episodio 1 con feedback visivo di caricamento e fallback sicuro a scheda dettagli);
@@ -385,19 +392,30 @@ Kuro Mobile integra il client nativo **KuroSync** per la sincronizzazione del ca
   - La rimozione wildcard dell'intera serie dalla cronologia (`removeWatchHistoryTargets` senza numero episodio) genera tombstones `watch_progress` dedicati per tutte le chiavi discrete corrispondenti su MMKV, impedendo che dispositivi remoti resuscitino puntate già eliminate.
 - **Dominanza dei Tombstones**: La funzione pura `mergeLocalAndRemote()` rispetta la regola tombstone dominance: se una cancellazione remota o locale ha un timestamp superiore o uguale all'ultimo aggiornamento dell'entità, la cancellazione prevale tassativamente.
 
-### 3. UI Impostazioni, Scanner QR con Fotocamera & Accoppiamento Android TV
-- **Card Impostazioni Minimale (`SyncSettingsCard.tsx`)**:
-  - Posizionata nella schermata Impostazioni con pill di stato OLED (`CONNESSO` in verde `#10B981` / `NON ATTIVO` in grigio), URL del server e profilo attivo;
-  - Pulsanti d'azione touch-native ($\ge 44 \times 44$dp): *SINCRONIZZA ORA*, *AUTORIZZA TV*, *PROFILO* e *ESCI* (con conferma protetta da `ConfirmModal`);
-  - Pulsante con logo GitHub e collegamento alla repository ufficiale del backend self-hosted [https://github.com/G4s01/KuroTV_S](https://github.com/G4s01/KuroTV_S).
+### 3. UI Impostazioni, Selettore Profili Netflix, Persistenza Indistruttibile & Switcher Rapido
+- **Nomi Dispositivo Dinamici & Riconoscibili (`device-info.ts`)**:
+  - `getDeviceName()` e `getDeviceMetadata()` interrogano preventivamente le costanti native Android (`Platform.constants.Manufacturer` e `Platform.constants.Model`), filtrando rigorosamente termini generici (`"Android"`, `"generic"`, `"sdk_gphone"`).
+  - Risoluzione accurata del modello reale (es. `"Google Pixel 8 Pro"`, `"Samsung SM-S928B"`, `"Xiaomi 13T"`), garantendo che `deviceType: 'mobile'` e `platform: 'android'` siano sempre popolati in tutte le chiamate di autenticazione (`loginDevice` ed `exchangeToken`).
+- **Persistenza Indistruttibile dell'URL Server & Self-Healing Multi-Livello**:
+  - Il metodo centralizzato `persistServerUrl(cleanUrl)` scrive simultaneamente su `StorageKeys.SYNC_SERVER_URL`, sulla chiave di backup persistente MMKV `sync.server_url_backup`, sulla cache volatile `lastKnownServerUrl` e sull'istanza `this.client`.
+  - `ensureClientConfigured()` adotta una catena di fallback a 4 livelli (MMKV primario -> backup key MMKV -> memoria volatile -> `client.getBaseUrl()`), azzerando qualsiasi perdita dell'endpoint dopo il login o durante il debouncing del playback in background.
+  - `isConnected()` è vincolato alla coesistenza valida di token dispositivo e URL del server, prevenendo chiamate di rete orfane.
+- **Selettore Profili Stile Netflix Unificato (Flusso Master Password & Scansione QR)**:
+  - Interfaccia "CHI STA GUARDANDO?" con griglia pulita ad avatar quadrati colorati (`profile.avatarColor`), icona centrale, nome in maiuscolo e centratura adattiva.
+  - **Flusso QR a Due Fasi**: La scansione QR tramite `prepareQrConnection` effettua lo scambio del token e recupera i profili dell'istanza; l'utente seleziona il profilo desiderato e `completeQrConnection` finalizza il bootstrap delta, unificando l'esperienza utente tra accesso manuale e QR.
+- **Card Impostazioni Snellita & Simmetrica (`SyncSettingsCard.tsx`)**:
+  - Posizionata nella schermata Impostazioni con pill di stato OLED (`CONNESSO` in verde `#10B981` / `NON ATTIVO` in grigio), URL del server e riga interattiva `PROFILO` con badge `CAMBIA` (touch target $\ge 44$dp) che apre direttamente `SyncProfileModal`.
+  - **Riga d'azione simmetrica a dispositivo connesso**: `SINCRONIZZA` (flex: 1), `AUTORIZZA TV` (flex: 1) e pulsante compatto touch-safe di disconnessione con sola icona `log-out-outline` ($44 \times 44$dp) protetto da `ConfirmModal`.
+  - **Dispositivo non connesso**: Due pulsanti simmetrici 50% / 50% (`QR CODE` e `MANUALE`). La selezione di `QR CODE` avvia istantaneamente la fotocamera senza schermate o input testuali intermedi; la modalità `MANUALE` richiede solo URL e Master Password.
 - **Modale Scanner QR Fotocamera (`QrScannerModal.tsx`)**:
   - Basato su `CameraView` di `expo-camera` (v17 / SDK 58), mirino centrale OLED, torcia interattiva e feedback aptico;
   - Esclusione del permesso `RECORD_AUDIO` da `app.json` (`recordAudioAndroid: false`), gestione permessi runtime con fallback verso `Linking.openSettings()` se negati permanentemente;
   - **Disaccoppiamento dei Dialoghi Nativi**: Montato a livello di frammento React separato (`<> <Modal ... /> <QrScannerModal ... /> </>`) sia in `SyncConnectModal` che in `AuthorizeTvModal`, scongiurando conflitti di `ReactModalHostView` o eccezioni native su Android Fabric.
-- **Connessione Istanza (`SyncConnectModal.tsx`)**:
-  - Modalità **QR o Link**: Scansione con fotocamera o inserimento manuale di deep-link `kurosync://connect?url=...&token=...`, link HTTPS della web console o payload QR JSON;
-  - Modalità **Manuale**: Campo URL server senza alcun indirizzo privato hardcoded (placeholder generico `https://tuo-kurotv-s.tuonome.workers.dev`), Master Password / Token e profilo opzionale.
+- **Gestione Errori QR 410 Gone / 404 & Revoca Token al Logout**:
+  - In presenza di codici QR scaduti o già utilizzati, l'app intercetta HTTP 410/404 e mostra un messaggio esplicativo in-app con `ConfirmModal`: *"Il codice QR è scaduto o è già stato utilizzato. Generane uno nuovo dalla console Web."*.
+  - Al logout (`disconnect()`), viene invocato `client.logout()` per revocare la sessione su Cloudflare D1 e vengono eliminate integralmente tutte le credenziali e mutazioni dallo storage locale MMKV.
 - **Autorizzazione Android TV (`AuthorizeTvModal.tsx`)**:
   - Permette di scansionare con la fotocamera il QR visualizzato sullo schermo della TV oppure inserire il codice a 6 caratteri (es. `K7X9P2`) per autorizzare l'accesso della TV al profilo attivo con `SyncManager.approveTvPairing(code)`.
-- **Gestione Profili Multi-Utente (`SyncProfileModal.tsx`)**:
-  - Cambio rapido del profilo attivo con svuotamento isolato delle code pendenti e riesecuzione automatica del bootstrap delta per il profilo target.
+- **Gestione Profili Multi-Utente & Switcher In-App (`SyncProfileModal.tsx`)**:
+  - Cambio rapido del profilo attivo con transizione atomica protetta: il pull delta dei nuovi dati avviene prima della mutazione dello storage locale MMKV per prevenire corruzioni in caso di errore di rete (HTTP 500/timeout).
+  - Accessibile sia dalla card Impostazioni sia dal pulsante rapido `PROFILO` nella Tab Bar principale.

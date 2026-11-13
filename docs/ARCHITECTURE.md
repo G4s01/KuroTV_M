@@ -11,11 +11,12 @@ KuroM/
 ├── app/                         # Routing File-Based (Expo Router v58)
 │   ├── _layout.tsx              # Root Layout: ThemeProvider, QueryClient, GestureHandler
 │   ├── (tabs)/                  # Navigazione a schede inferiori
-│   │   ├── _layout.tsx          # Configurazione TabBar con tinte reattive
-│   │   ├── index.tsx            # Home: Hero Spotlight, Continua a guardare, Ultime uscite, ricerca unificata & filtri
-│   │   ├── explore.tsx          # Palinsesto: Programmazione uscite settimanali con orari previsti, selettore giorni & serie senza data
+│   │   ├── _layout.tsx          # Configurazione TabBar con tinte reattive & pulsante Profilo rapido
+│   │   ├── index.tsx            # Home: Hero Spotlight, Continua a guardare, Ultime uscite, ricerca unificata & pulsante Palinsesto
+│   │   ├── explore.tsx          # Palinsesto: Programmazione uscite settimanali con orari previsti, selettore giorni & freccia indietro (href: null)
 │   │   ├── favorites.tsx        # Preferiti: Griglia anime salvati in locale
 │   │   ├── history.tsx          # Cronologia: Storico di visione e ripresa episodio
+│   │   ├── profile.tsx          # Profilo: Route di sicurezza con redirect automatico (gestita tramite tabPress / custom button)
 │   │   └── settings.tsx         # Impostazioni: Temi SVG, AniSkip, Navbar Android, sorgente (.ac, .so, .tv), info & updater
 │   ├── anime/
 │   │   └── [id].tsx             # Scheda Dettaglio Anime (Header, Trama, Server, Griglia Puntate)
@@ -163,7 +164,7 @@ La ricerca catalogo è integrata direttamente nell'header della schermata Home:
 
 ## 📅 Palinsesto & Programmazione Settimanale (`app/(tabs)/explore.tsx`)
 
-La schermata Palinsesto visualizza la programmazione delle uscite anime settimanali con gli orari previsti da AnimeWorld (`animeworld.ac/schedule`):
+La schermata Palinsesto visualizza la programmazione delle uscite anime settimanali con gli orari previsti da AnimeWorld (`animeworld.ac/schedule`). È accessibile direttamente dall'header della Home (`HomeAppBar`, posizionato tra il pulsante Download e la Ricerca) con rotta tab dedicata (`href: null`) e integra una freccia Indietro touch-native (`arrow-back`, $44 \times 44$dp) per un ritorno fluido alla schermata principale:
 
 ### 1. Scraper & Parsing Dati (`schedule.parser.ts`)
 - **Estrazione Strutturata con `cheerio/slim` & `htmlparser2`**:
@@ -355,17 +356,19 @@ Il sottosistema di download e visione offline (`src/services/downloads/` e `app/
 Kuro Mobile integra un'architettura completa di sincronizzazione self-hosted multi-dispositivo (**KuroSync**), progettata per dialogare con il backend serverless **KuroTV_S** (eseguito su Cloudflare Workers con database relazionale SQLite D1):
 
 ### 1. Architettura Modulare Client (`src/services/sync/`)
+- **`device-info.ts`**: Rilevamento dinamico e non generico del modello reale del dispositivo hardware (`getDeviceName()`, `getDeviceMetadata()`), interrogando le costanti native Android (`Manufacturer` e `Model`), scartando identificativi generici e popolando `deviceType: 'mobile'` e `platform: 'android'`.
 - **`types.ts`**: Modelli di dati condivisi per record di sincronizzazione, mutazioni, tombstones (`DeltaTombstoneItem`), profili utente (`ProfileItem`), richieste delta pull/push e stati locali (`LocalStorageState`).
-- **`client.ts` (`KuroSyncClient`)**: Client HTTP leggero in TypeScript puro basato su API `fetch` e `URL` standard (zero librerie esterne o moduli `node:*`, totale conformità con Hermes). Espone metodi per health check (`checkHealth`), login con master password (`loginWithPassword` / `loginDevice`), scambio token (`exchangeToken`), recupero profili (`listProfiles`), sincronizzazione delta (`pullDelta`, `pushDelta`) e approvazione accoppiamento TV (`approveTvPairing`).
+- **`client.ts` (`KuroSyncClient`)**: Client HTTP leggero in TypeScript puro basato su API `fetch` e `URL` standard (zero librerie esterne o moduli `node:*`, totale conformità con Hermes). Espone metodi per health check (`checkHealth`), login con master password (`loginWithPassword` / `loginDevice`), scambio token (`exchangeToken`), recupero profili (`listProfiles`), sincronizzazione delta (`pullDelta`, `pushDelta`), cambio profilo (`switchProfile`), revoca sessione (`logout`) e approvazione accoppiamento TV (`approveTvPairing`).
 - **`merge.ts` (`mergeLocalAndRemote`)**: Motore di riconciliazione deterministico puro:
   - *Dominanza dei Tombstones*: Se un'entità è stata cancellata (timestamp tombstone $\ge$ timestamp aggiornamento locale/remoto), la rimozione prevale sempre.
   - *Preservazione Stato "IN PARI"*: Quando l'utente ha completato una serie in corso (`isCaughtUp: true`), il merge remoto non retrocede lo stato dell'anime.
   - *Progressione Temporale*: L'avanzamento dei minuti e delle percentuali di visione (`watchProgress`, `continueWatching`) accetta solo progressioni temporali coerenti.
   - *Ordinamento Cronologico Decrescente*: Tutte le collezioni (`favorites`, `continueWatching`, `watchHistory`, `searchHistory`) vengono tassativamente ordinate per `updatedAt` o `timestamp` decrescente, rispettando i contratti di visualizzazione e troncamento dell'app.
 - **`sync-manager.ts` (`SyncManager`)**: Orchestratore singleton dello stato di sincronizzazione:
-  - Gestione credenziali e token su MMKV (`SYNC_DEVICE_TOKEN`, `SYNC_SERVER_URL`, `SYNC_PROFILE_ID`, `SYNC_PROFILE_NAME`, `SYNC_LAST_TIMESTAMP`).
-  - Parsing universale dei deep-link e QR code tramite `parseKuroSyncDeepLink()`: supporta schemi `kurosync://`, link HTTPS della web console, percorsi `/connect` e `/pair`, e payload JSON grezzi.
-  - Rimozione e sanitizzazione automatica di qualsiasi URL privato persistito in precedenza.
+  - **Persistenza Indistruttibile con Self-Healing**: Metodo centralizzato `persistServerUrl` che scrive simultaneamente su `SYNC_SERVER_URL`, sulla chiave di backup persistente MMKV `sync.server_url_backup`, sulla cache volatile `lastKnownServerUrl` e sull'istanza `client`. Catena di fallback a 4 livelli in `ensureClientConfigured()` e vincolo di `isConnected()` a token + serverUrl validi.
+  - Gestione credenziali e token su MMKV (`SYNC_DEVICE_TOKEN`, `SYNC_DEVICE_ID`, `SYNC_SERVER_URL`, `SYNC_PROFILE_ID`, `SYNC_PROFILE_NAME`, `SYNC_LAST_TIMESTAMP`).
+  - Parsing universale dei deep-link e QR code tramite `parseKuroSyncDeepLink()`: supporta schemi `kurosync://`, link HTTPS della web console, percorsi `/connect` e `/pair`, parametri alternativi (`endpoint=`, `server=`, `serverUrl=`, `baseUrl=`), e payload JSON grezzi.
+  - Gestione errori QR con rilevamento HTTP 410 Gone / 404 e messaggio chiaro tramite `ConfirmModal`.
 
 ### 2. Strategia di Efficienza per Cloudflare Free-Tier
 - **Debounce Playback a 45-60s**: Durante la visione video in `app/player/[id].tsx`, i progressi vengono salvati localmente a ogni secondo, ma l'aggiornamento remoto verso Cloudflare D1 viene accorpato da `recordPlaybackProgress` e inviato solo dopo **almeno 45 secondi** di riproduzione continuativa o a rilevante scostamento di minutaggio.
@@ -386,9 +389,10 @@ Kuro Mobile integra un'architettura completa di sincronizzazione self-hosted mul
   - La rimozione wildcard dell'intera cronologia di una serie genera tombstones `watch_progress` dedicati per ciascuna puntata memorizzata su MMKV (`user.progress.<animeId>.<ep>`).
 - Al completamento del merge delta, `AppStorage.notifyStorageChanged()` risveglia in tempo reale i listener registrati nelle schermate attive (es. Preferiti) senza ricaricamenti manuali.
 
-### 4. UI Nelle Impostazioni, Scanner QR Fotocamera & Accoppiamento TV
-- **`SyncSettingsCard.tsx`**: Card principale nelle Impostazioni con stato connessione OLED, URL server, profilo attivo, timestamp ultimo sync, tasto *Sincronizza Ora*, *Autorizza TV*, *Profilo*, *Esci* e link diretto alla repository GitHub ufficiale di KuroTV_S.
+### 4. UI Impostazioni, Selettore Profili Netflix & Tab Profilo Rapido
+- **`SyncSettingsCard.tsx`**: Card principale nelle Impostazioni con pill di stato OLED, URL server, riga interattiva `PROFILO` con pulsante `CAMBIA` (touch target $\ge 44$dp), riga simmetrica su singola riga con *SINCRONIZZA*, *AUTORIZZA TV* e pulsante compatto di disconnessione touch-safe con sola icona `log-out-outline` ($44 \times 44$dp) protetto da `ConfirmModal`.
+- **`SyncConnectModal.tsx`**: Modale di connessione snellito con sole due modalità: `QR CODE` (apre istantaneamente la fotocamera a schermo intero) e `MANUALE` (URL + Master Password). Entrambe le modalità conducono alla schermata/selettore profili stile Netflix per finalizzare il bootstrap.
+- **`SyncProfileModal.tsx`**: Selettore profili touch-native con transizione atomica protetta (pull delta remoto prima della mutazione MMKV locale).
+- **Pulsante Profilo Rapido nella Tab Bar (`app/(tabs)/_layout.tsx`)**: Pulsante dedicato posizionato tra Cronologia e Impostazioni con icona contestuale (`person-circle` / `person`) che permette di cambiare profilo o avviare l'accoppiamento con un solo tap da qualsiasi schermata.
 - **`QrScannerModal.tsx`**: Scanner fotocamera basato su `CameraView` di `expo-camera` (v17 / SDK 58, `recordAudioAndroid: false`), mirino centrale OLED, torcia e gestione permessi con redirect a `Linking.openSettings()` se bloccati. Montato come frammento disaccoppiato per azzerare crash di finestre modali annidate su Android Fabric.
-- **`SyncConnectModal.tsx`**: Modale a doppia scheda: *QR o Link* (scansione fotocamera o copia/incolla token/deep-link) e *Manuale* (con campo URL privo di indirizzi privati di default e placeholder generico `https://tuo-kurotv-s.tuonome.workers.dev`).
 - **`AuthorizeTvModal.tsx`**: Modale per autorizzare un dispositivo Android TV inquadrando il QR mostrato sul televisore o digitando il codice a 6 cifre (es. `K7X9P2`) tramite `client.approveTvPairing`.
-- **`SyncProfileModal.tsx`**: Modale per la selezione e il cambio rapido di profilo utente con isolamento immediato delle code di mutazione.

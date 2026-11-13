@@ -678,6 +678,10 @@ export default function HomeScreen() {
             Haptics.selectionAsync().catch(() => {});
             setIsSearchActive(true);
           }}
+          onSchedulePress={() => {
+            Haptics.selectionAsync().catch(() => {});
+            router.push('/explore' as any);
+          }}
           activeDownloadsCount={activeDownloadsCount}
           onDownloadsPress={() => {
             Haptics.selectionAsync().catch(() => {});

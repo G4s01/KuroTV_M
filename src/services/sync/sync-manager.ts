@@ -58,6 +58,8 @@ export function parseKuroSyncDeepLink(deepLink: string): {
     cleanLink.includes('url=') ||
     cleanLink.includes('endpoint=') ||
     cleanLink.includes('server=') ||
+    cleanLink.includes('serverUrl=') ||
+    cleanLink.includes('baseUrl=') ||
     cleanLink.includes('token=') ||
     cleanLink.includes('qrToken=') ||
     cleanLink.includes('exchangeToken=') ||
@@ -82,6 +84,10 @@ export function parseKuroSyncDeepLink(deepLink: string): {
       ? decodeURIComponent(parsed.searchParams.get('endpoint')!)
       : parsed.searchParams.get('server')
       ? decodeURIComponent(parsed.searchParams.get('server')!)
+      : parsed.searchParams.get('serverUrl')
+      ? decodeURIComponent(parsed.searchParams.get('serverUrl')!)
+      : parsed.searchParams.get('baseUrl')
+      ? decodeURIComponent(parsed.searchParams.get('baseUrl')!)
       : undefined;
 
     // Infer server URL from origin if standard HTTP/HTTPS URL and no explicit url param was given
@@ -134,6 +140,7 @@ class SyncManagerClass {
   private isSyncing = false;
   private lastError: string | null = null;
   private listeners = new Set<(status: SyncStatus) => void>();
+  private lastKnownServerUrl = '';
 
   // Playback debounce tracking (45-60s)
   private lastPlaybackPushTime = 0;
@@ -145,13 +152,19 @@ class SyncManagerClass {
   }) | null = null;
 
   constructor() {
-    const savedUrl = AppStorage.getString(StorageKeys.SYNC_SERVER_URL);
-    if (savedUrl && savedUrl.includes('g4s01.workers.dev')) {
-      AppStorage.remove(StorageKeys.SYNC_SERVER_URL);
+    let serverUrl = (AppStorage.getString(StorageKeys.SYNC_SERVER_URL) || '').trim();
+    if (!serverUrl) {
+      serverUrl = (AppStorage.getString('sync.server_url_backup') || DEFAULT_SYNC_SERVER_URL).trim();
+      if (serverUrl) {
+        AppStorage.setString(StorageKeys.SYNC_SERVER_URL, serverUrl);
+      }
     }
-
-    const serverUrl = AppStorage.getString(StorageKeys.SYNC_SERVER_URL) || DEFAULT_SYNC_SERVER_URL;
     const deviceToken = AppStorage.getString(StorageKeys.SYNC_DEVICE_TOKEN);
+
+    if (serverUrl) {
+      this.lastKnownServerUrl = serverUrl;
+      AppStorage.setString('sync.server_url_backup', serverUrl);
+    }
 
     this.client = new KuroSyncClient({
       baseUrl: serverUrl,
@@ -159,12 +172,42 @@ class SyncManagerClass {
     });
   }
 
+  private persistServerUrl(url: string): void {
+    const cleanUrl = url.trim().replace(/\/+$/, '');
+    if (!cleanUrl) return;
+    this.lastKnownServerUrl = cleanUrl;
+    this.client.setBaseUrl(cleanUrl);
+    AppStorage.setString(StorageKeys.SYNC_SERVER_URL, cleanUrl);
+    AppStorage.setString('sync.server_url_backup', cleanUrl);
+  }
+
   private ensureClientConfigured(): void {
-    const serverUrl = AppStorage.getString(StorageKeys.SYNC_SERVER_URL);
-    if (serverUrl && this.client.getBaseUrl() !== serverUrl) {
-      this.client.setBaseUrl(serverUrl);
+    let serverUrl = (AppStorage.getString(StorageKeys.SYNC_SERVER_URL) || '').trim();
+    if (!serverUrl) {
+      serverUrl = (AppStorage.getString('sync.server_url_backup') || '').trim();
+      if (serverUrl) {
+        AppStorage.setString(StorageKeys.SYNC_SERVER_URL, serverUrl);
+      }
     }
-    const token = AppStorage.getString(StorageKeys.SYNC_DEVICE_TOKEN);
+    if (!serverUrl && this.lastKnownServerUrl) {
+      serverUrl = this.lastKnownServerUrl;
+      AppStorage.setString(StorageKeys.SYNC_SERVER_URL, serverUrl);
+      AppStorage.setString('sync.server_url_backup', serverUrl);
+    }
+    if (!serverUrl && this.client.getBaseUrl()) {
+      serverUrl = this.client.getBaseUrl();
+      AppStorage.setString(StorageKeys.SYNC_SERVER_URL, serverUrl);
+      AppStorage.setString('sync.server_url_backup', serverUrl);
+    }
+
+    if (serverUrl) {
+      this.lastKnownServerUrl = serverUrl;
+      if (this.client.getBaseUrl() !== serverUrl) {
+        this.client.setBaseUrl(serverUrl);
+      }
+    }
+
+    const token = AppStorage.getString(StorageKeys.SYNC_DEVICE_TOKEN)?.trim();
     if (token && this.client.getDeviceToken() !== token) {
       this.client.setDeviceToken(token);
     }
@@ -195,8 +238,13 @@ class SyncManagerClass {
   }
 
   getStatus(): SyncStatus {
+    this.ensureClientConfigured();
     const deviceToken = AppStorage.getString(StorageKeys.SYNC_DEVICE_TOKEN);
-    const serverUrl = AppStorage.getString(StorageKeys.SYNC_SERVER_URL) || DEFAULT_SYNC_SERVER_URL;
+    const serverUrl =
+      (AppStorage.getString(StorageKeys.SYNC_SERVER_URL) ||
+      this.lastKnownServerUrl ||
+      this.client.getBaseUrl() ||
+      DEFAULT_SYNC_SERVER_URL).trim();
     const profileName = AppStorage.getString(StorageKeys.SYNC_PROFILE_NAME) || 'Principale';
     const profileId = AppStorage.getString(StorageKeys.SYNC_PROFILE_ID) || '';
     const lastSyncTime = AppStorage.getNumber(StorageKeys.SYNC_LAST_TIME) || null;
@@ -210,8 +258,15 @@ class SyncManagerClass {
       else if (val && typeof val === 'object') pendingCount += 1;
     }
 
+    const isConnected = Boolean(
+      deviceToken &&
+      deviceToken.trim().length > 0 &&
+      serverUrl &&
+      serverUrl.length > 0
+    );
+
     return {
-      isConnected: Boolean(deviceToken && deviceToken.trim().length > 0),
+      isConnected,
       isSyncing: this.isSyncing,
       serverUrl,
       profileName,
@@ -223,11 +278,22 @@ class SyncManagerClass {
   }
 
   isConnected(): boolean {
+    this.ensureClientConfigured();
     const token = AppStorage.getString(StorageKeys.SYNC_DEVICE_TOKEN);
-    return Boolean(token && token.trim().length > 0);
+    const serverUrl =
+      AppStorage.getString(StorageKeys.SYNC_SERVER_URL) ||
+      this.lastKnownServerUrl ||
+      this.client.getBaseUrl();
+    return Boolean(
+      token &&
+      token.trim().length > 0 &&
+      serverUrl &&
+      serverUrl.trim().length > 0
+    );
   }
 
   getClient(): KuroSyncClient {
+    this.ensureClientConfigured();
     return this.client;
   }
 
@@ -261,11 +327,20 @@ class SyncManagerClass {
     let explicitProfileId: string | undefined;
 
     if (parsed && (parsed.token || parsed.url)) {
-      serverUrl = parsed.url || AppStorage.getString(StorageKeys.SYNC_SERVER_URL) || DEFAULT_SYNC_SERVER_URL;
+      serverUrl =
+        parsed.url ||
+        AppStorage.getString(StorageKeys.SYNC_SERVER_URL) ||
+        this.lastKnownServerUrl ||
+        this.client.getBaseUrl() ||
+        DEFAULT_SYNC_SERVER_URL;
       rawToken = parsed.token;
       explicitProfileId = parsed.profile;
     } else {
-      serverUrl = AppStorage.getString(StorageKeys.SYNC_SERVER_URL) || DEFAULT_SYNC_SERVER_URL;
+      serverUrl =
+        AppStorage.getString(StorageKeys.SYNC_SERVER_URL) ||
+        this.lastKnownServerUrl ||
+        this.client.getBaseUrl() ||
+        DEFAULT_SYNC_SERVER_URL;
       rawToken = raw;
     }
 
@@ -277,7 +352,7 @@ class SyncManagerClass {
     }
 
     const cleanUrl = serverUrl.trim().replace(/\/+$/, '');
-    this.client.setBaseUrl(cleanUrl);
+    this.persistServerUrl(cleanUrl);
 
     const isExplicitQr = rawToken.trim().startsWith('qr_');
 
@@ -390,7 +465,7 @@ class SyncManagerClass {
       return { ok: false, message: 'Parametri di connessione non validi' };
     }
 
-    this.client.setBaseUrl(cleanUrl);
+    this.persistServerUrl(cleanUrl);
     this.client.setDeviceToken(deviceToken);
 
     try {
@@ -449,7 +524,12 @@ class SyncManagerClass {
       return { ok: false, message: 'URL o token non validi nel deep-link di KuroSync' };
     }
 
-    const serverUrl = parsed.url || AppStorage.getString(StorageKeys.SYNC_SERVER_URL) || DEFAULT_SYNC_SERVER_URL;
+    const serverUrl =
+      parsed.url ||
+      AppStorage.getString(StorageKeys.SYNC_SERVER_URL) ||
+      this.lastKnownServerUrl ||
+      this.client.getBaseUrl() ||
+      DEFAULT_SYNC_SERVER_URL;
     if (!serverUrl || !serverUrl.trim()) {
       return { ok: false, message: 'URL del server KuroSync mancante nel link o QR' };
     }
@@ -473,7 +553,7 @@ class SyncManagerClass {
     if (!cleanUrl) {
       return { ok: false, message: 'URL del server KuroSync non specificato' };
     }
-    this.client.setBaseUrl(cleanUrl);
+    this.persistServerUrl(cleanUrl);
     this.client.setDeviceToken(token.trim());
 
     try {
@@ -602,7 +682,7 @@ class SyncManagerClass {
     if (!password || !password.trim()) {
       throw new Error('La master password è richiesta');
     }
-    this.client.setBaseUrl(cleanUrl);
+    this.persistServerUrl(cleanUrl);
     return this.client.listProfilesWithPassword(password.trim());
   }
 
@@ -627,7 +707,7 @@ class SyncManagerClass {
       return { ok: false, message: 'Il profilo è richiesto' };
     }
 
-    this.client.setBaseUrl(cleanUrl);
+    this.persistServerUrl(cleanUrl);
     this.client.setDeviceToken(undefined);
 
     try {
@@ -701,7 +781,7 @@ class SyncManagerClass {
     if (!cleanUrl) {
       return { ok: false, message: "L'URL del server KuroSync è richiesto" };
     }
-    this.client.setBaseUrl(cleanUrl);
+    this.persistServerUrl(cleanUrl);
     this.client.setDeviceToken(undefined);
 
     try {
@@ -899,7 +979,7 @@ class SyncManagerClass {
       try {
         const parsed = new URL(code);
         if (parsed.origin && !this.client.getBaseUrl()) {
-          this.client.setBaseUrl(parsed.origin);
+          this.persistServerUrl(parsed.origin);
         }
       } catch {
         // ignore
@@ -1117,6 +1197,7 @@ class SyncManagerClass {
   }
 
   async pushPending(force = false): Promise<{ ok: boolean; error?: string }> {
+    this.ensureClientConfigured();
     if (!this.isConnected()) return { ok: false, error: 'Non collegato' };
 
     // Atomically commit any pending playback progress into pending mutations

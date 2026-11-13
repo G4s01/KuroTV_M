@@ -99,6 +99,20 @@ export default function ExploreScreen() {
       <View style={[styles.appBar, { borderBottomColor: theme.colors.border }]}>
         <View style={styles.appBarHeader}>
           <View style={styles.titleRow}>
+            {router.canGoBack() && (
+              <Pressable
+                onPress={() => {
+                  Haptics.selectionAsync().catch(() => {});
+                  router.back();
+                }}
+                hitSlop={12}
+                style={styles.backButton}
+                accessibilityRole="button"
+                accessibilityLabel="TORNA INDIETRO"
+              >
+                <Ionicons name="arrow-back" size={22} color={theme.colors.text} />
+              </Pressable>
+            )}
             <Ionicons name="calendar" size={18} color={theme.colors.primary} />
             <Text style={[styles.appBarTitle, { color: theme.colors.text }]}>PALINSESTO</Text>
           </View>
@@ -439,6 +453,13 @@ const styles = StyleSheet.create({
   titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  backButton: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 4,
   },
   appBarTitle: {
     fontSize: 16,
