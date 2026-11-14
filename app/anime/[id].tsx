@@ -38,7 +38,14 @@ export default function AnimeDetailScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
-  const { isMasterDetail, leftMasterWidth, rightDetailWidth, episodeColumns } = useResponsiveLayout();
+  const {
+    isMasterDetail,
+    leftMasterWidth,
+    rightDetailWidth,
+    episodeColumns,
+    portraitEpisodeColumns,
+    isTablet,
+  } = useResponsiveLayout();
   const queryClient = useQueryClient();
   const { theme } = useTheme();
   const { id } = useLocalSearchParams<{ id: string; title?: string }>();
@@ -348,10 +355,16 @@ export default function AnimeDetailScreen() {
   const portraitHeaderElement = React.useMemo(() => {
     if (!anime) return null;
     return (
-      <View style={[styles.headerWrapper, { backgroundColor: theme.colors.background }]}>
+      <View
+        style={[
+          styles.headerWrapper,
+          { backgroundColor: theme.colors.background },
+          isTablet && styles.tabletCenteredContainer,
+        ]}
+      >
         <AnimeHeaderBackdrop
           anime={anime}
-          windowWidth={windowWidth}
+          windowWidth={isTablet ? Math.min(windowWidth, 960) : windowWidth}
           theme={theme}
           firstUnwatched={firstUnwatched}
           hasStartedWatching={hasStartedWatching}
@@ -385,6 +398,7 @@ export default function AnimeDetailScreen() {
     anime,
     theme,
     windowWidth,
+    isTablet,
     firstUnwatched,
     hasStartedWatching,
     navigateToEpisode,
@@ -398,7 +412,7 @@ export default function AnimeDetailScreen() {
   const tabletDetailHeaderElement = React.useMemo(() => {
     if (!anime) return null;
     return (
-      <View style={[styles.rightDetailHeader, { paddingTop: Math.max(insets.top + 16, 24) }]}>
+      <View style={[styles.rightDetailHeader, { paddingTop: Math.max(insets.top + 60, 68) }]}>
         <AnimeSynopsis
           synopsis={anime.synopsis}
           description={anime.description}
@@ -554,12 +568,16 @@ export default function AnimeDetailScreen() {
         </View>
       ) : (
         <FlashList
-          key={viewMode}
+          key={`portrait-episodes-${viewMode}-${portraitEpisodeColumns}`}
           data={displayedEpisodes}
-          numColumns={viewMode === 'grid' ? 4 : 1}
+          numColumns={viewMode === 'grid' ? portraitEpisodeColumns : 1}
           keyExtractor={(item) => item.id}
           ListHeaderComponent={portraitHeaderElement}
-          contentContainerStyle={[styles.listContentContainer, { paddingBottom: 48 + Math.max(0, insets.bottom) }]}
+          contentContainerStyle={[
+            styles.listContentContainer,
+            isTablet && styles.tabletCenteredContainer,
+            { paddingBottom: 48 + Math.max(0, insets.bottom) },
+          ]}
           maintainVisibleContentPosition={{ disabled: true }}
           renderItem={({ item }) => {
             const prog = progressMap.get(item.number);
@@ -704,5 +722,10 @@ const styles = StyleSheet.create({
   },
   rightDetailListContent: {
     paddingHorizontal: 12,
+  },
+  tabletCenteredContainer: {
+    maxWidth: 960,
+    width: '100%',
+    alignSelf: 'center',
   },
 });

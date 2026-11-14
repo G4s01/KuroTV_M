@@ -21,6 +21,7 @@ export interface ResponsiveLayout {
   leftMasterWidth: number;
   rightDetailWidth: number;
   episodeColumns: number;
+  portraitEpisodeColumns: number;
   getCardDimensions: (options?: CardDimensionsOptions) => {
     numColumns: number;
     cardWidth: number;
@@ -44,7 +45,7 @@ export function computeResponsiveLayout(width: number, height: number): Responsi
     const padding = options?.paddingHorizontal ?? 16;
     const gap = options?.gap ?? 12;
     const minWidth = options?.minCardWidth ?? 165;
-    const maxCols = options?.maxColumns ?? (isTablet ? 6 : 2);
+    const maxCols = options?.maxColumns ?? (isTablet ? (isLandscape ? 6 : 4) : 2);
 
     let cols = 2;
     if (isTablet) {
@@ -65,17 +66,29 @@ export function computeResponsiveLayout(width: number, height: number): Responsi
 
   const defaultCards = getCardDimensions();
 
-  // Master-Detail sizing for AnimeDetailScreen on tablets
-  const isMasterDetail = isTablet;
-  const leftMasterWidth = isTablet
-    ? Math.min(380, Math.max(300, Math.floor(contentWidth * 0.36)))
-    : contentWidth;
-  const rightDetailWidth = isTablet
-    ? Math.max(0, contentWidth - leftMasterWidth - 24)
-    : contentWidth;
+  // Master-Detail sizing for AnimeDetailScreen on tablets:
+  // Active ONLY when tablet is in landscape orientation.
+  // In portrait on tablet, AnimeDetailScreen remains unified (single-column)
+  // as requested ("Con schermo verticale la scheda dettagli della serie si divide a metà (preferibile di no)").
+  const isMasterDetail = isTablet && isLandscape;
 
-  const episodeColumns = isTablet
-    ? Math.max(4, Math.min(8, Math.floor(rightDetailWidth / 72)))
+  // Master-Detail left column (poster, title, badges, action buttons, info table)
+  // Stack screen has full width (no rail)
+  const leftMasterWidth = isMasterDetail
+    ? Math.min(420, Math.max(340, Math.floor(width * 0.35)))
+    : width;
+  const rightDetailWidth = isMasterDetail
+    ? Math.max(0, width - leftMasterWidth - 1)
+    : width;
+
+  // Master-Detail right column episode grid columns
+  const episodeColumns = isMasterDetail
+    ? Math.max(4, Math.min(8, Math.floor(rightDetailWidth / 80)))
+    : 4;
+
+  // Portrait layout episode grid columns (phone = 4, tablet portrait = 5-8 columns)
+  const portraitEpisodeColumns = isTablet
+    ? Math.max(5, Math.min(8, Math.floor((Math.min(width, 960) - 24) / 80)))
     : 4;
 
   return {
@@ -92,6 +105,7 @@ export function computeResponsiveLayout(width: number, height: number): Responsi
     leftMasterWidth,
     rightDetailWidth,
     episodeColumns,
+    portraitEpisodeColumns,
     getCardDimensions,
   };
 }

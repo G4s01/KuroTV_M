@@ -11,6 +11,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/theme';
+import { useResponsiveLayout } from '@/hooks';
 import { AppStorage } from '@/services/storage';
 import {
   DownloadService,
@@ -32,6 +33,7 @@ export default function DownloadsScreen() {
   const router = useRouter();
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
+  const { isTablet } = useResponsiveLayout();
 
   const [allDownloads, setAllDownloads] = useState<DownloadItem[]>(() =>
     DownloadService.getAllDownloads()
@@ -318,6 +320,7 @@ export default function DownloadsScreen() {
             borderBottomColor: theme.colors.border,
             backgroundColor: theme.colors.background,
           },
+          isTablet && { maxWidth: 960, width: '100%', alignSelf: 'center' },
         ]}
       >
         <View style={styles.headerLeft}>
@@ -370,6 +373,7 @@ export default function DownloadsScreen() {
       <ScrollView
         contentContainerStyle={[
           styles.listContent,
+          isTablet && { maxWidth: 960, width: '100%', alignSelf: 'center' },
           { paddingBottom: Math.max(40, insets.bottom + 24) },
         ]}
         showsVerticalScrollIndicator={false}

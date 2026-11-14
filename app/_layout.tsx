@@ -1,8 +1,9 @@
 import React from 'react';
-import { Platform, AppState } from 'react-native';
+import { Platform, AppState, Dimensions } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as NavigationBar from 'expo-navigation-bar';
+import * as ScreenOrientation from 'expo-screen-orientation';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -27,6 +28,24 @@ function RootNavigation() {
   const isLight = theme.name === 'light';
 
   const [navBarMode, setNavBarMode] = React.useState<NavBarMode>(() => AppStorage.getNavBarMode());
+
+  React.useEffect(() => {
+    const handleOrientationPolicy = () => {
+      const { width, height } = Dimensions.get('window');
+      const isTabletDevice = Math.min(width, height) >= 600;
+      if (isTabletDevice) {
+        ScreenOrientation.unlockAsync().catch(() => {});
+      } else {
+        ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
+      }
+    };
+
+    handleOrientationPolicy();
+    const dimSub = Dimensions.addEventListener('change', handleOrientationPolicy);
+    return () => {
+      dimSub.remove();
+    };
+  }, []);
 
   React.useEffect(() => {
     if (Platform.OS !== 'android') return;

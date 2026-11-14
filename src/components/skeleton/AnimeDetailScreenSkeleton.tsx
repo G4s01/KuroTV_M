@@ -1,133 +1,263 @@
 import React from 'react';
 import { StyleSheet, View, ScrollView } from 'react-native';
 import { oledTheme } from '@/theme';
+import { useResponsiveLayout } from '@/hooks';
 import { Skeleton } from './Skeleton';
 import { EpisodeItemSkeleton } from './EpisodeItemSkeleton';
 
 export const AnimeDetailScreenSkeleton: React.FC = () => {
+  const { isMasterDetail, leftMasterWidth, isTablet, portraitEpisodeColumns, episodeColumns } =
+    useResponsiveLayout();
+
+  if (isMasterDetail) {
+    const chipWidth = `${Math.floor(100 / Math.max(4, episodeColumns))}%` as any;
+    return (
+      <View style={styles.masterDetailContainer}>
+        {/* Left Master Column Skeleton */}
+        <ScrollView
+          style={[styles.leftMasterColumn, { width: leftMasterWidth }]}
+          contentContainerStyle={styles.leftMasterScroll}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.mainInfo}>
+            <View style={styles.posterAndMeta}>
+              <View style={styles.posterContainer}>
+                <Skeleton width={110} height={160} borderRadius={oledTheme.radius.md} />
+              </View>
+              <View style={styles.metaRight}>
+                <Skeleton width="90%" height={18} borderRadius={4} />
+                <Skeleton width="65%" height={18} borderRadius={4} />
+                <View style={styles.badgeRow}>
+                  <Skeleton width={50} height={20} borderRadius={oledTheme.radius.sm} />
+                  <Skeleton width={60} height={20} borderRadius={oledTheme.radius.sm} />
+                  <Skeleton width={44} height={20} borderRadius={oledTheme.radius.sm} />
+                </View>
+                <View style={styles.actionButtonsRow}>
+                  <Skeleton width={44} height={44} borderRadius={22} />
+                  <Skeleton width={44} height={44} borderRadius={22} />
+                </View>
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.tableContainer}>
+            <View style={styles.sectionHeadingRow}>
+              <Skeleton width={180} height={14} borderRadius={3} />
+            </View>
+            <View style={styles.tableCard}>
+              <View style={styles.tableRow}>
+                <View style={styles.tableCell}>
+                  <Skeleton width={45} height={10} borderRadius={2} />
+                  <Skeleton width={75} height={12} borderRadius={3} style={{ marginTop: 4 }} />
+                </View>
+                <View style={styles.cellDivider} />
+                <View style={styles.tableCell}>
+                  <Skeleton width={45} height={10} borderRadius={2} />
+                  <Skeleton width={75} height={12} borderRadius={3} style={{ marginTop: 4 }} />
+                </View>
+              </View>
+              <View style={styles.tableRow}>
+                <View style={styles.tableCell}>
+                  <Skeleton width={45} height={10} borderRadius={2} />
+                  <Skeleton width={75} height={12} borderRadius={3} style={{ marginTop: 4 }} />
+                </View>
+                <View style={styles.cellDivider} />
+                <View style={styles.tableCell}>
+                  <Skeleton width={45} height={10} borderRadius={2} />
+                  <Skeleton width={75} height={12} borderRadius={3} style={{ marginTop: 4 }} />
+                </View>
+              </View>
+              <View style={styles.tableRow}>
+                <View style={styles.tableCell}>
+                  <Skeleton width={45} height={10} borderRadius={2} />
+                  <Skeleton width={75} height={12} borderRadius={3} style={{ marginTop: 4 }} />
+                </View>
+                <View style={styles.cellDivider} />
+                <View style={styles.tableCell}>
+                  <Skeleton width={45} height={10} borderRadius={2} />
+                  <Skeleton width={75} height={12} borderRadius={3} style={{ marginTop: 4 }} />
+                </View>
+              </View>
+              <View style={[styles.tableRow, { borderBottomWidth: 0 }]}>
+                <View style={styles.tableCell}>
+                  <Skeleton width={45} height={10} borderRadius={2} />
+                  <Skeleton width={50} height={12} borderRadius={3} style={{ marginTop: 4 }} />
+                </View>
+                <View style={styles.cellDivider} />
+                <View style={styles.tableCell}>
+                  <Skeleton width={45} height={10} borderRadius={2} />
+                  <Skeleton width={90} height={12} borderRadius={3} style={{ marginTop: 4 }} />
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.linksRow}>
+              <Skeleton width="31%" height={44} borderRadius={oledTheme.radius.md} />
+              <Skeleton width="31%" height={44} borderRadius={oledTheme.radius.md} />
+              <Skeleton width="31%" height={44} borderRadius={oledTheme.radius.md} />
+            </View>
+          </View>
+        </ScrollView>
+
+        {/* Divider */}
+        <View style={styles.masterDetailDivider} />
+
+        {/* Right Detail Column Skeleton */}
+        <View style={styles.rightDetailColumn}>
+          <View style={[styles.synopsisContainer, { paddingTop: 68 }]}>
+            <Skeleton width={60} height={14} borderRadius={3} style={{ marginBottom: 6 }} />
+            <Skeleton width="100%" height={12} borderRadius={3} style={{ marginBottom: 6 }} />
+            <Skeleton width="95%" height={12} borderRadius={3} style={{ marginBottom: 6 }} />
+            <Skeleton width="60%" height={12} borderRadius={3} style={{ marginBottom: 6 }} />
+          </View>
+
+          <View style={styles.controlsRow}>
+            <View style={styles.controlsLeft}>
+              <Skeleton width={120} height={18} borderRadius={4} />
+              <Skeleton width={100} height={28} borderRadius={14} />
+            </View>
+            <Skeleton width={32} height={32} borderRadius={6} />
+          </View>
+
+          <View style={styles.episodesGrid}>
+            {Array.from({ length: 18 }).map((_, i) => (
+              <View key={`ep-skel-landscape-${i}`} style={{ width: chipWidth }}>
+                <EpisodeItemSkeleton variant="grid" />
+              </View>
+            ))}
+          </View>
+        </View>
+      </View>
+    );
+  }
+
+  const portraitChipWidth = `${Math.floor(100 / Math.max(4, portraitEpisodeColumns))}%` as any;
+
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-      {/* 1. Main Header Info (Poster, Metadata & Circular Action Buttons - Clean Header without backdrop) */}
-      <View style={styles.mainInfo}>
-        <View style={styles.posterAndMeta}>
-          {/* Poster */}
-          <View style={styles.posterContainer}>
-            <Skeleton width={110} height={160} borderRadius={oledTheme.radius.md} />
-          </View>
-
-          {/* Meta Right */}
-          <View style={styles.metaRight}>
-            <Skeleton width="90%" height={18} borderRadius={4} />
-            <Skeleton width="65%" height={18} borderRadius={4} />
-
-            <View style={styles.badgeRow}>
-              <Skeleton width={50} height={20} borderRadius={oledTheme.radius.sm} />
-              <Skeleton width={60} height={20} borderRadius={oledTheme.radius.sm} />
-              <Skeleton width={44} height={20} borderRadius={oledTheme.radius.sm} />
+      <View style={[isTablet && styles.tabletCenteredContainer]}>
+        {/* 1. Main Header Info (Poster, Metadata & Circular Action Buttons - Clean Header without backdrop) */}
+        <View style={styles.mainInfo}>
+          <View style={styles.posterAndMeta}>
+            {/* Poster */}
+            <View style={styles.posterContainer}>
+              <Skeleton width={110} height={160} borderRadius={oledTheme.radius.md} />
             </View>
 
-            {/* Action Buttons Row (Play & Reload - Circles >= 44dp) */}
-            <View style={styles.actionButtonsRow}>
-              <Skeleton width={44} height={44} borderRadius={22} />
-              <Skeleton width={44} height={44} borderRadius={22} />
-            </View>
-          </View>
-        </View>
-      </View>
+            {/* Meta Right */}
+            <View style={styles.metaRight}>
+              <Skeleton width="90%" height={18} borderRadius={4} />
+              <Skeleton width="65%" height={18} borderRadius={4} />
 
-      {/* 2. Synopsis Skeleton */}
-      <View style={styles.synopsisContainer}>
-        <Skeleton width={60} height={14} borderRadius={3} style={{ marginBottom: 6 }} />
-        <Skeleton width="100%" height={12} borderRadius={3} style={{ marginBottom: 6 }} />
-        <Skeleton width="95%" height={12} borderRadius={3} style={{ marginBottom: 6 }} />
-        <Skeleton width="60%" height={12} borderRadius={3} style={{ marginBottom: 6 }} />
-        <Skeleton width={80} height={12} borderRadius={3} style={{ marginTop: 4 }} />
-      </View>
+              <View style={styles.badgeRow}>
+                <Skeleton width={50} height={20} borderRadius={oledTheme.radius.sm} />
+                <Skeleton width={60} height={20} borderRadius={oledTheme.radius.sm} />
+                <Skeleton width={44} height={20} borderRadius={oledTheme.radius.sm} />
+              </View>
 
-      {/* 3. Technical Metadata Table (AnimeInfoTable Skeleton) */}
-      <View style={styles.tableContainer}>
-        <View style={styles.sectionHeadingRow}>
-          <Skeleton width={180} height={14} borderRadius={3} />
-        </View>
-
-        <View style={styles.tableCard}>
-          {/* Row 1: Audio & Stato */}
-          <View style={styles.tableRow}>
-            <View style={styles.tableCell}>
-              <Skeleton width={45} height={10} borderRadius={2} />
-              <Skeleton width={75} height={12} borderRadius={3} style={{ marginTop: 4 }} />
-            </View>
-            <View style={styles.cellDivider} />
-            <View style={styles.tableCell}>
-              <Skeleton width={45} height={10} borderRadius={2} />
-              <Skeleton width={75} height={12} borderRadius={3} style={{ marginTop: 4 }} />
-            </View>
-          </View>
-
-          {/* Row 2: Uscita & Durata */}
-          <View style={styles.tableRow}>
-            <View style={styles.tableCell}>
-              <Skeleton width={45} height={10} borderRadius={2} />
-              <Skeleton width={75} height={12} borderRadius={3} style={{ marginTop: 4 }} />
-            </View>
-            <View style={styles.cellDivider} />
-            <View style={styles.tableCell}>
-              <Skeleton width={45} height={10} borderRadius={2} />
-              <Skeleton width={75} height={12} borderRadius={3} style={{ marginTop: 4 }} />
-            </View>
-          </View>
-
-          {/* Row 3: Studio & Episodi */}
-          <View style={styles.tableRow}>
-            <View style={styles.tableCell}>
-              <Skeleton width={45} height={10} borderRadius={2} />
-              <Skeleton width={75} height={12} borderRadius={3} style={{ marginTop: 4 }} />
-            </View>
-            <View style={styles.cellDivider} />
-            <View style={styles.tableCell}>
-              <Skeleton width={45} height={10} borderRadius={2} />
-              <Skeleton width={75} height={12} borderRadius={3} style={{ marginTop: 4 }} />
-            </View>
-          </View>
-
-          {/* Row 4: Voto & Genere */}
-          <View style={[styles.tableRow, { borderBottomWidth: 0 }]}>
-            <View style={styles.tableCell}>
-              <Skeleton width={45} height={10} borderRadius={2} />
-              <Skeleton width={50} height={12} borderRadius={3} style={{ marginTop: 4 }} />
-            </View>
-            <View style={styles.cellDivider} />
-            <View style={styles.tableCell}>
-              <Skeleton width={45} height={10} borderRadius={2} />
-              <Skeleton width={90} height={12} borderRadius={3} style={{ marginTop: 4 }} />
+              {/* Action Buttons Row (Play & Reload - Circles >= 44dp) */}
+              <View style={styles.actionButtonsRow}>
+                <Skeleton width={44} height={44} borderRadius={22} />
+                <Skeleton width={44} height={44} borderRadius={22} />
+              </View>
             </View>
           </View>
         </View>
 
-        {/* 3 Quick Links Skeleton */}
-        <View style={styles.linksRow}>
-          <Skeleton width="31%" height={44} borderRadius={oledTheme.radius.md} />
-          <Skeleton width="31%" height={44} borderRadius={oledTheme.radius.md} />
-          <Skeleton width="31%" height={44} borderRadius={oledTheme.radius.md} />
+        {/* 2. Synopsis Skeleton */}
+        <View style={styles.synopsisContainer}>
+          <Skeleton width={60} height={14} borderRadius={3} style={{ marginBottom: 6 }} />
+          <Skeleton width="100%" height={12} borderRadius={3} style={{ marginBottom: 6 }} />
+          <Skeleton width="95%" height={12} borderRadius={3} style={{ marginBottom: 6 }} />
+          <Skeleton width="60%" height={12} borderRadius={3} style={{ marginBottom: 6 }} />
+          <Skeleton width={80} height={12} borderRadius={3} style={{ marginTop: 4 }} />
         </View>
-      </View>
 
-      {/* 4. Controls Bar (Puntate + Selettore Batch & Modalità Griglia/Lista) */}
-      <View style={styles.controlsRow}>
-        <View style={styles.controlsLeft}>
-          <Skeleton width={120} height={18} borderRadius={4} />
-          <Skeleton width={100} height={28} borderRadius={14} />
-        </View>
-        <Skeleton width={32} height={32} borderRadius={6} />
-      </View>
-
-      {/* 5. Episodi Grid Skeleton (12 chip da 52dp) */}
-      <View style={styles.episodesGrid}>
-        {Array.from({ length: 12 }).map((_, i) => (
-          <View key={`ep-skel-${i}`} style={styles.gridChipWrapper}>
-            <EpisodeItemSkeleton variant="grid" />
+        {/* 3. Technical Metadata Table (AnimeInfoTable Skeleton) */}
+        <View style={styles.tableContainer}>
+          <View style={styles.sectionHeadingRow}>
+            <Skeleton width={180} height={14} borderRadius={3} />
           </View>
-        ))}
+
+          <View style={styles.tableCard}>
+            {/* Row 1: Audio & Stato */}
+            <View style={styles.tableRow}>
+              <View style={styles.tableCell}>
+                <Skeleton width={45} height={10} borderRadius={2} />
+                <Skeleton width={75} height={12} borderRadius={3} style={{ marginTop: 4 }} />
+              </View>
+              <View style={styles.cellDivider} />
+              <View style={styles.tableCell}>
+                <Skeleton width={45} height={10} borderRadius={2} />
+                <Skeleton width={75} height={12} borderRadius={3} style={{ marginTop: 4 }} />
+              </View>
+            </View>
+
+            {/* Row 2: Uscita & Durata */}
+            <View style={styles.tableRow}>
+              <View style={styles.tableCell}>
+                <Skeleton width={45} height={10} borderRadius={2} />
+                <Skeleton width={75} height={12} borderRadius={3} style={{ marginTop: 4 }} />
+              </View>
+              <View style={styles.cellDivider} />
+              <View style={styles.tableCell}>
+                <Skeleton width={45} height={10} borderRadius={2} />
+                <Skeleton width={75} height={12} borderRadius={3} style={{ marginTop: 4 }} />
+              </View>
+            </View>
+
+            {/* Row 3: Studio & Episodi */}
+            <View style={styles.tableRow}>
+              <View style={styles.tableCell}>
+                <Skeleton width={45} height={10} borderRadius={2} />
+                <Skeleton width={75} height={12} borderRadius={3} style={{ marginTop: 4 }} />
+              </View>
+              <View style={styles.cellDivider} />
+              <View style={styles.tableCell}>
+                <Skeleton width={45} height={10} borderRadius={2} />
+                <Skeleton width={75} height={12} borderRadius={3} style={{ marginTop: 4 }} />
+              </View>
+            </View>
+
+            {/* Row 4: Voto & Genere */}
+            <View style={[styles.tableRow, { borderBottomWidth: 0 }]}>
+              <View style={styles.tableCell}>
+                <Skeleton width={45} height={10} borderRadius={2} />
+                <Skeleton width={50} height={12} borderRadius={3} style={{ marginTop: 4 }} />
+              </View>
+              <View style={styles.cellDivider} />
+              <View style={styles.tableCell}>
+                <Skeleton width={45} height={10} borderRadius={2} />
+                <Skeleton width={90} height={12} borderRadius={3} style={{ marginTop: 4 }} />
+              </View>
+            </View>
+          </View>
+
+          {/* 3 Quick Links Skeleton */}
+          <View style={styles.linksRow}>
+            <Skeleton width="31%" height={44} borderRadius={oledTheme.radius.md} />
+            <Skeleton width="31%" height={44} borderRadius={oledTheme.radius.md} />
+            <Skeleton width="31%" height={44} borderRadius={oledTheme.radius.md} />
+          </View>
+        </View>
+
+        {/* 4. Controls Bar (Puntate + Selettore Batch & Modalità Griglia/Lista) */}
+        <View style={styles.controlsRow}>
+          <View style={styles.controlsLeft}>
+            <Skeleton width={120} height={18} borderRadius={4} />
+            <Skeleton width={100} height={28} borderRadius={14} />
+          </View>
+          <Skeleton width={32} height={32} borderRadius={6} />
+        </View>
+
+        {/* 5. Episodi Grid Skeleton */}
+        <View style={styles.episodesGrid}>
+          {Array.from({ length: 16 }).map((_, i) => (
+            <View key={`ep-skel-${i}`} style={{ width: portraitChipWidth }}>
+              <EpisodeItemSkeleton variant="grid" />
+            </View>
+          ))}
+        </View>
       </View>
     </ScrollView>
   );
@@ -137,6 +267,32 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#000000',
+  },
+  tabletCenteredContainer: {
+    maxWidth: 960,
+    width: '100%',
+    alignSelf: 'center',
+  },
+  masterDetailContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    backgroundColor: '#000000',
+  },
+  leftMasterColumn: {
+    height: '100%',
+  },
+  leftMasterScroll: {
+    paddingHorizontal: 16,
+    paddingBottom: 48,
+  },
+  masterDetailDivider: {
+    width: 1,
+    height: '100%',
+    backgroundColor: '#262626',
+  },
+  rightDetailColumn: {
+    flex: 1,
+    height: '100%',
   },
   mainInfo: {
     paddingHorizontal: 16,

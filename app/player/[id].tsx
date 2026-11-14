@@ -5,6 +5,7 @@ import {
   View,
   Pressable,
   useWindowDimensions,
+  Dimensions,
   Animated,
   Platform,
   AppState,
@@ -519,7 +520,13 @@ export default function VideoPlayerScreen() {
     }
 
     return () => {
-      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
+      const { width: curW, height: curH } = Dimensions.get('window');
+      const isTabletDevice = Math.min(curW, curH) >= 600;
+      if (isTabletDevice) {
+        ScreenOrientation.unlockAsync().catch(() => {});
+      } else {
+        ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
+      }
       if (Platform.OS === 'android') {
         const mode = AppStorage.getNavBarMode();
         NavigationBar.setVisibilityAsync(mode === 'auto-hide' ? 'hidden' : 'visible').catch(() => {});
