@@ -26,6 +26,21 @@ function BottomTabIcon({
   badge?: React.ReactNode;
 }) {
   const { theme } = useTheme();
+  const { isTablet } = useResponsiveLayout();
+
+  if (isTablet) {
+    return (
+      <View style={styles.tabletTabIconWrapper}>
+        <Ionicons
+          name={focused ? focusedName : name}
+          size={24}
+          color={focused ? theme.colors.primary : color}
+        />
+        {badge}
+      </View>
+    );
+  }
+
   return (
     <View
       style={[
@@ -51,6 +66,7 @@ function BottomTabIcon({
 
 function SettingsTabIcon({ color, focused }: { color: string; focused: boolean }) {
   const { theme } = useTheme();
+  const { isTablet } = useResponsiveLayout();
   const { update, isDismissed } = usePendingUpdate();
   const hasPendingUpdate = Boolean(update?.isUpdateAvailable && update?.manifest && isDismissed);
 
@@ -83,6 +99,36 @@ function SettingsTabIcon({ color, focused }: { color: string; focused: boolean }
       bounceAnim.setValue(0);
     };
   }, [hasPendingUpdate, bounceAnim]);
+
+  if (isTablet) {
+    return (
+      <View style={styles.tabletTabIconWrapper}>
+        <Ionicons
+          name={focused ? 'settings' : 'settings-outline'}
+          size={24}
+          color={focused ? theme.colors.primary : color}
+        />
+        {hasPendingUpdate && (
+          <Animated.View
+            style={[
+              styles.arrowBadge,
+              {
+                backgroundColor: theme.colors.primary,
+                borderColor: theme.colors.background,
+                transform: [{ translateY: bounceAnim }],
+              },
+            ]}
+          >
+            <Ionicons
+              name="arrow-up"
+              size={10}
+              color={getContrastTextColor(theme.colors.primary)}
+            />
+          </Animated.View>
+        )}
+      </View>
+    );
+  }
 
   return (
     <View
@@ -119,6 +165,146 @@ function SettingsTabIcon({ color, focused }: { color: string; focused: boolean }
             color={getContrastTextColor(theme.colors.primary)}
           />
         </Animated.View>
+      )}
+    </View>
+  );
+}
+
+function ProfileTabIcon({
+  focused,
+  color,
+  syncStatus,
+}: {
+  focused: boolean;
+  color: string;
+  syncStatus: SyncStatus;
+}) {
+  const { theme } = useTheme();
+  const { isTablet } = useResponsiveLayout();
+
+  const activeProfileName = syncStatus.profileName?.trim();
+  const profileInitial = activeProfileName
+    ? activeProfileName.charAt(0).toUpperCase()
+    : null;
+  const isConnected = syncStatus.isConnected;
+  const hasProfile = Boolean(isConnected && (profileInitial || syncStatus.profileId));
+
+  if (isTablet) {
+    if (isConnected && profileInitial) {
+      return (
+        <View style={styles.tabletTabIconWrapper}>
+          <View
+            style={[
+              styles.profileAvatarCircle,
+              {
+                borderColor: focused ? theme.colors.primary : theme.colors.border,
+                backgroundColor: theme.colors.surface,
+              },
+            ]}
+          >
+            <Text
+              style={[
+                styles.profileAvatarInitial,
+                { color: theme.colors.primary },
+              ]}
+              numberOfLines={1}
+            >
+              {profileInitial}
+            </Text>
+            <View
+              style={[
+                styles.profileStatusDot,
+                {
+                  backgroundColor: theme.colors.success || '#22C55E',
+                  borderColor: theme.colors.background,
+                },
+              ]}
+            />
+          </View>
+        </View>
+      );
+    }
+    if (isConnected) {
+      return (
+        <View style={styles.tabletTabIconWrapper}>
+          <Ionicons
+            name={focused ? 'person-circle' : 'person-circle-outline'}
+            size={24}
+            color={focused ? theme.colors.primary : color}
+          />
+        </View>
+      );
+    }
+    return (
+      <View style={styles.tabletTabIconWrapper}>
+        <Ionicons
+          name={focused ? 'log-in' : 'log-in-outline'}
+          size={24}
+          color={focused ? theme.colors.primary : color}
+        />
+      </View>
+    );
+  }
+
+  // Smartphone bottom tab bar item
+  return (
+    <View
+      style={[
+        styles.bottomTabItem,
+        focused && [
+          styles.bottomTabItemActive,
+          {
+            backgroundColor: theme.colors.surface,
+            borderColor: theme.colors.border,
+          },
+        ],
+      ]}
+    >
+      {isConnected ? (
+        <View style={styles.profileAvatarWrapper}>
+          {profileInitial ? (
+            <View
+              style={[
+                styles.profileAvatarCircle,
+                {
+                  borderColor: focused ? theme.colors.primary : theme.colors.border,
+                  backgroundColor: theme.colors.card || theme.colors.surface,
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.profileAvatarInitial,
+                  { color: theme.colors.primary },
+                ]}
+                numberOfLines={1}
+              >
+                {profileInitial}
+              </Text>
+            </View>
+          ) : (
+            <Ionicons
+              name={focused ? 'person-circle' : 'person-circle-outline'}
+              size={22}
+              color={focused ? theme.colors.primary : color}
+            />
+          )}
+          <View
+            style={[
+              styles.profileStatusDot,
+              {
+                backgroundColor: theme.colors.success || '#22C55E',
+                borderColor: theme.colors.background,
+              },
+            ]}
+          />
+        </View>
+      ) : (
+        <Ionicons
+          name={focused ? 'log-in' : 'log-in-outline'}
+          size={22}
+          color={focused ? theme.colors.primary : color}
+        />
       )}
     </View>
   );
@@ -200,9 +386,9 @@ export default function TabLayout() {
                 backgroundColor: theme.colors.background,
                 borderTopColor: theme.colors.border,
                 borderTopWidth: 1,
-                height: Platform.OS === 'android' ? 56 + androidBottomInset : 58 + iosBottomInset,
+                height: Platform.OS === 'android' ? 62 + androidBottomInset : 64 + iosBottomInset,
                 paddingBottom: Platform.OS === 'android' ? androidBottomInset : iosBottomInset,
-                paddingTop: 0,
+                paddingTop: 6,
               },
           tabBarItemStyle: isTablet
             ? {
@@ -216,7 +402,7 @@ export default function TabLayout() {
                 marginVertical: 4,
               }
             : {
-                height: 56,
+                height: 50,
                 justifyContent: 'center',
                 alignItems: 'center',
               },
@@ -246,8 +432,10 @@ export default function TabLayout() {
         <Tabs.Screen
           name="explore"
           options={{
-            href: null,
+            // Tab item hidden from bar (formerly had href: null; now uses tabBarItemStyle and tabBarButton to prevent v58 redirect)
             title: 'PALINSESTO',
+            tabBarItemStyle: { display: 'none' },
+            tabBarButton: () => null,
             tabBarShowLabel: false,
             tabBarLabel: () => null,
             tabBarIcon: ({ color, focused }) => (
@@ -301,30 +489,10 @@ export default function TabLayout() {
             tabBarShowLabel: false,
             tabBarLabel: () => null,
             tabBarIcon: ({ color, focused }) => (
-              <BottomTabIcon
-                name={
-                  syncStatus.isConnected
-                    ? 'person-circle-outline'
-                    : 'person-outline'
-                }
-                focusedName={
-                  syncStatus.isConnected ? 'person-circle' : 'person'
-                }
+              <ProfileTabIcon
                 focused={focused}
                 color={color as string}
-                badge={
-                  syncStatus.isConnected ? (
-                    <View
-                      style={[
-                        styles.profileStatusDot,
-                        {
-                          backgroundColor: theme.colors.success || '#22C55E',
-                          borderColor: theme.colors.background,
-                        },
-                      ]}
-                    />
-                  ) : undefined
-                }
+                syncStatus={syncStatus}
               />
             ),
             tabBarButton: ({ ref: _ref, ...props }) => (
@@ -340,9 +508,9 @@ export default function TabLayout() {
                 }}
                 accessibilityRole="button"
                 accessibilityLabel={
-                  syncStatus.isConnected
-                    ? `PROFILO: ${syncStatus.profileName || 'PRINCIPALE'}`
-                    : 'COLLEGA KUROSYNC'
+                  syncStatus.isConnected && (syncStatus.profileName?.trim() || syncStatus.profileId)
+                    ? `PROFILO: ${syncStatus.profileName?.trim() || 'PRINCIPALE'}`
+                    : 'ACCEDI / COLLEGA KUROSYNC'
                 }
               >
                 {props.children}
@@ -396,7 +564,7 @@ export default function TabLayout() {
 const styles = StyleSheet.create({
   bottomTabItem: {
     width: 50,
-    height: 40,
+    height: 38,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: 'transparent',
@@ -407,9 +575,35 @@ const styles = StyleSheet.create({
   bottomTabItemActive: {
     borderWidth: 1,
   },
+  tabletTabIconWrapper: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  profileAvatarWrapper: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  profileAvatarCircle: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileAvatarInitial: {
+    fontFamily: 'monospace',
+    fontWeight: '900',
+    fontSize: 13,
+    textTransform: 'uppercase',
+  },
   arrowBadge: {
     position: 'absolute',
-    top: 5,
+    top: 4,
     right: 10,
     width: 14,
     height: 14,
@@ -420,8 +614,8 @@ const styles = StyleSheet.create({
   },
   profileStatusDot: {
     position: 'absolute',
-    top: 7,
-    right: 12,
+    bottom: -1,
+    right: -1,
     width: 8,
     height: 8,
     borderRadius: 4,

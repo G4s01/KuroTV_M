@@ -141,21 +141,32 @@ export default function HomeScreen() {
   const isSearchActiveRef = React.useRef(isSearchActive);
   isSearchActiveRef.current = isSearchActive;
 
-  // Handle hardware back button & Android system back gesture to dismiss search mode cleanly
-  React.useEffect(() => {
-    const backSub = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (isSearchActiveRef.current) {
-        Keyboard.dismiss();
-        setIsSearchActive(false);
-        setSearchQuery('');
-        setFilterState({});
-        return true;
-      }
-      return false;
-    });
+  const isFilterSheetVisibleRef = React.useRef(isFilterSheetVisible);
+  isFilterSheetVisibleRef.current = isFilterSheetVisible;
 
-    return () => backSub.remove();
-  }, []);
+  // Handle hardware back button & Android system back gesture to dismiss search mode cleanly ONLY when actively focused
+  useFocusEffect(
+    React.useCallback(() => {
+      const backSub = BackHandler.addEventListener('hardwareBackPress', () => {
+        if (isFilterSheetVisibleRef.current) {
+          Haptics.selectionAsync().catch(() => {});
+          setIsFilterSheetVisible(false);
+          return true;
+        }
+        if (isSearchActiveRef.current) {
+          Haptics.selectionAsync().catch(() => {});
+          Keyboard.dismiss();
+          setIsSearchActive(false);
+          setSearchQuery('');
+          setFilterState({});
+          return true;
+        }
+        return false;
+      });
+
+      return () => backSub.remove();
+    }, [])
+  );
 
   // Also dismiss search when user taps the Home tab while already on Home
   useFocusEffect(

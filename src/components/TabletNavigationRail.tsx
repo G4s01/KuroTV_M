@@ -38,6 +38,13 @@ export const TabletNavigationRail = React.memo<TabletNavigationRailProps>(
     const profileInitial = activeProfileName
       ? activeProfileName.charAt(0).toUpperCase()
       : null;
+    const isConnected = syncStatus.isConnected;
+    const hasProfile = Boolean(
+      isConnected && (profileInitial || syncStatus.profileId)
+    );
+    const displayInitial =
+      profileInitial ||
+      (activeProfileName ? activeProfileName.charAt(0).toUpperCase() : 'P');
 
     return (
       <View
@@ -63,7 +70,7 @@ export const TabletNavigationRail = React.memo<TabletNavigationRailProps>(
               styles.profileBtn,
               {
                 backgroundColor: theme.colors.surface,
-                borderColor: syncStatus.isConnected
+                borderColor: hasProfile
                   ? theme.colors.primary
                   : theme.colors.border,
               },
@@ -73,30 +80,22 @@ export const TabletNavigationRail = React.memo<TabletNavigationRailProps>(
             hitSlop={8}
             accessibilityRole="button"
             accessibilityLabel={
-              syncStatus.isConnected
+              hasProfile
                 ? `PROFILO: ${activeProfileName || 'PRINCIPALE'}`
-                : 'COLLEGA KUROSYNC'
+                : 'ACCEDI / COLLEGA KUROSYNC'
             }
           >
-            {syncStatus.isConnected ? (
+            {hasProfile ? (
               <View style={styles.profileAvatarBox}>
-                {profileInitial ? (
-                  <Text
-                    style={[
-                      styles.profileInitial,
-                      { color: theme.colors.primary },
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {profileInitial}
-                  </Text>
-                ) : (
-                  <Ionicons
-                    name="person"
-                    size={20}
-                    color={theme.colors.primary}
-                  />
-                )}
+                <Text
+                  style={[
+                    styles.profileInitial,
+                    { color: theme.colors.primary },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {displayInitial}
+                </Text>
                 {/* Active Online Status Indicator */}
                 <View
                   style={[
@@ -110,8 +109,8 @@ export const TabletNavigationRail = React.memo<TabletNavigationRailProps>(
               </View>
             ) : (
               <Ionicons
-                name="person-outline"
-                size={20}
+                name="log-in-outline"
+                size={22}
                 color={theme.colors.textMuted}
               />
             )}

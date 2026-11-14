@@ -7,7 +7,7 @@ import {
   BackHandler,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -68,19 +68,29 @@ export default function DownloadsScreen() {
     onConfirm: () => {},
   });
 
-  useEffect(() => {
-    const backSub = BackHandler.addEventListener('hardwareBackPress', () => {
-      Haptics.selectionAsync().catch(() => {});
-      if (router.canGoBack()) {
-        router.back();
-      } else {
-        router.replace('/(tabs)');
-      }
-      return true;
-    });
+  const isSheetVisibleRef = React.useRef(isSheetVisible);
+  isSheetVisibleRef.current = isSheetVisible;
 
-    return () => backSub.remove();
-  }, [router]);
+  useFocusEffect(
+    useCallback(() => {
+      const backSub = BackHandler.addEventListener('hardwareBackPress', () => {
+        Haptics.selectionAsync().catch(() => {});
+        if (isSheetVisibleRef.current) {
+          setIsSheetVisible(false);
+          setSelectedGroup(null);
+          return true;
+        }
+        if (router.canGoBack()) {
+          router.back();
+        } else {
+          router.replace('/(tabs)');
+        }
+        return true;
+      });
+
+      return () => backSub.remove();
+    }, [router])
+  );
 
   useEffect(() => {
     if (isSheetVisible && !selectedGroup) {

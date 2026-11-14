@@ -8,7 +8,7 @@ import {
   RefreshControl,
   BackHandler,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { FlashList } from '@shopify/flash-list';
@@ -94,18 +94,20 @@ export default function ExploreScreen() {
 
   const heroItem = scheduleData?.hero;
 
-  React.useEffect(() => {
-    const backSub = BackHandler.addEventListener('hardwareBackPress', () => {
-      Haptics.selectionAsync().catch(() => {});
-      if (router.canGoBack()) {
-        router.back();
-      } else {
-        router.replace('/(tabs)');
-      }
-      return true;
-    });
-    return () => backSub.remove();
-  }, [router]);
+  useFocusEffect(
+    React.useCallback(() => {
+      const backSub = BackHandler.addEventListener('hardwareBackPress', () => {
+        Haptics.selectionAsync().catch(() => {});
+        if (router.canGoBack()) {
+          router.back();
+        } else {
+          router.replace('/(tabs)');
+        }
+        return true;
+      });
+      return () => backSub.remove();
+    }, [router])
+  );
 
   return (
     <View style={[styles.root, { paddingTop: insets.top, backgroundColor: theme.colors.background }]}>

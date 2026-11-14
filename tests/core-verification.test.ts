@@ -4116,6 +4116,50 @@ AppStorage.remove(StorageKeys.SYNC_DEVICE_TOKEN);
 console.log('✓ Riorganizzazione Palinsesto in Home, Profilo Rapido Tab Bar & Persistenza Indistruttibile SYNC_SERVER_URL verificati con successo.');
 
 // -----------------------------------------------------------------------------
+// [28/28] Verifica Fix Tablet Rail (Doppio Contorno & Back Gesture), Smartphone Navbar & Palinsesto
+// -----------------------------------------------------------------------------
+console.log('\n[28/28] Verifica Fix Tablet Rail (Doppio Contorno & Back Gesture), Smartphone Navbar & Palinsesto...');
+
+// 1. Tablet Rail Single Border: BottomTabIcon and SettingsTabIcon must avoid wrapping in bottomTabItem on tablet
+const tabLayoutLatestCode = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/_layout.tsx'), 'utf-8');
+assert(tabLayoutLatestCode.includes('styles.tabletTabIconWrapper'), 'TabLayout deve definire tabletTabIconWrapper per azzerare il doppio contorno');
+assert(tabLayoutLatestCode.includes('if (isTablet)'), 'BottomTabIcon deve verificare isTablet per evitare doppio bordo');
+
+// 2. Navigation bar icons wrap clearance from top line
+assert(tabLayoutLatestCode.includes('paddingTop: 6'), 'tabBarStyle su smartphone deve avere paddingTop per distanziare il wrap dalla linea superiore');
+assert(tabLayoutLatestCode.includes('height: 38'), 'bottomTabItem deve avere altezza 38dp per garantire clearance confortevole');
+
+// 3. Profile icon matches tablet style on smartphone with initial letter & login icon when disconnected or no profile selected
+assert(tabLayoutLatestCode.includes('ProfileTabIcon'), 'TabLayout deve definire il componente ProfileTabIcon');
+assert(tabLayoutLatestCode.includes('profileAvatarInitial'), 'ProfileTabIcon deve renderizzare la lettera iniziale del profilo');
+assert(tabLayoutLatestCode.includes('profileAvatarCircle'), 'ProfileTabIcon deve renderizzare l avatar circolare come su tablet');
+assert(tabLayoutLatestCode.includes('log-in'), 'ProfileTabIcon deve mostrare l icona di login quando disconnesso o senza profilo selezionato');
+assert(tabLayoutLatestCode.includes('hasProfile'), 'ProfileTabIcon deve verificare sia connessione che profilo selezionato');
+
+const tabletRailLatestCode = fs.readFileSync(path.resolve(process.cwd(), 'src/components/TabletNavigationRail.tsx'), 'utf-8');
+assert(tabletRailLatestCode.includes('log-in-outline'), 'TabletNavigationRail deve mostrare log-in-outline quando disconnesso');
+assert(tabletRailLatestCode.includes('hasProfile'), 'TabletNavigationRail deve verificare sia connessione che profilo selezionato per mostrare l avatar');
+
+// 4. Palinsesto is accessible and does not redirect away (no options.href = null runtime trigger, using display none and tabBarButton null)
+assert(tabLayoutLatestCode.includes("tabBarItemStyle: { display: 'none' }"), 'Palinsesto deve usare tabBarItemStyle display none');
+assert(tabLayoutLatestCode.includes('tabBarButton: () => null'), 'Palinsesto deve usare tabBarButton null per nascondersi dalla barra');
+assert(!tabLayoutLatestCode.match(/name="explore"[\s\S]*?href:\s*null\s*,/), 'Palinsesto non deve più passare href: null nelle options per evitare il redirect forzato v58');
+
+// 5. Back gesture lifecycle via useFocusEffect in Scaricati, Ricerca e Palinsesto
+const exploreLatestCode = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/explore.tsx'), 'utf-8');
+assert(exploreLatestCode.includes('useFocusEffect('), 'explore.tsx deve usare useFocusEffect per il tasto hardwareBackPress');
+
+const downloadsLatestCode = fs.readFileSync(path.resolve(process.cwd(), 'app/downloads/index.tsx'), 'utf-8');
+assert(downloadsLatestCode.includes('useFocusEffect('), 'downloads/index.tsx deve usare useFocusEffect per il tasto hardwareBackPress');
+assert(downloadsLatestCode.includes('isSheetVisibleRef'), 'downloads/index.tsx deve usare un ref sincrono per isSheetVisible');
+
+const indexLatestCode = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/index.tsx'), 'utf-8');
+assert(indexLatestCode.includes('useFocusEffect('), 'index.tsx deve usare useFocusEffect per hardwareBackPress');
+assert(indexLatestCode.includes('isFilterSheetVisibleRef'), 'index.tsx deve chiudere il foglio filtri prima di chiudere la ricerca');
+
+console.log('✓ Fix Tablet Rail (Doppio Contorno & Back Gesture), Smartphone Navbar & Palinsesto verificati con successo.');
+
+// -----------------------------------------------------------------------------
 // Fine Test
 // -----------------------------------------------------------------------------
 console.log('\n==============================================');
