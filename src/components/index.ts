@@ -15,3 +15,4 @@ export * from './UpdateModal';
 export * from './settings';
 export * from './home';
 export * from './skeleton';
+export * from './TabletNavigationRail';

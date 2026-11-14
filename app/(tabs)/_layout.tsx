@@ -10,6 +10,7 @@ import { SyncManager, type SyncStatus } from '@/services/sync';
 import { SyncConnectModal, SyncProfileModal } from '@/components/settings';
 import { usePendingUpdate } from '@/services/updater';
 import { useResponsiveLayout } from '@/hooks';
+import { TabletNavigationRail } from '@/components';
 
 function SettingsTabIcon({ color, focused }: { color: string; focused: boolean }) {
   const { theme } = useTheme();
@@ -118,36 +119,24 @@ export default function TabLayout() {
   return (
     <>
       <Tabs
+        tabBar={
+          isTablet
+            ? (props) => (
+                <TabletNavigationRail
+                  {...props}
+                  syncStatus={syncStatus}
+                  onProfilePress={handleProfilePress}
+                  theme={theme}
+                />
+              )
+            : undefined
+        }
         screenOptions={{
           headerShown: false,
           tabBarShowLabel: false,
           tabBarPosition: isTablet ? 'left' : 'bottom',
           tabBarActiveTintColor: theme.colors.primary,
           tabBarInactiveTintColor: theme.colors.textMuted,
-          tabBarBackground: isTablet
-            ? () => (
-                <View
-                  style={[
-                    styles.railBrandWrapper,
-                    { top: Math.max(insets.top + 8, 16) },
-                  ]}
-                >
-                  <View
-                    style={[
-                      styles.railBrandLogoBox,
-                      {
-                        backgroundColor: theme.colors.surface,
-                        borderColor: theme.colors.border,
-                      },
-                    ]}
-                  >
-                    <Text style={[styles.railBrandText, { color: theme.colors.primary }]}>
-                      K
-                    </Text>
-                  </View>
-                </View>
-              )
-            : undefined,
           tabBarStyle: isTablet
             ? {
                 backgroundColor: theme.colors.background,
@@ -155,10 +144,9 @@ export default function TabLayout() {
                 borderRightWidth: 1,
                 borderTopWidth: 0,
                 width: 76,
+                minWidth: 76,
+                maxWidth: 76,
                 height: '100%',
-                paddingTop: Math.max(insets.top + 8, 16) + 48,
-                paddingBottom: Math.max(insets.bottom + 12, 16),
-                paddingHorizontal: 0,
               }
             : {
                 backgroundColor: theme.colors.background,
@@ -171,6 +159,8 @@ export default function TabLayout() {
           tabBarItemStyle: isTablet
             ? {
                 width: 76,
+                minWidth: 76,
+                maxWidth: 76,
                 height: 56,
                 minHeight: 44,
                 justifyContent: 'center',
@@ -353,26 +343,5 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  railBrandWrapper: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  railBrandLogoBox: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
-    borderWidth: 1.5,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  railBrandText: {
-    fontFamily: 'monospace',
-    fontWeight: '900',
-    fontSize: 19,
-    letterSpacing: 0.5,
   },
 });
