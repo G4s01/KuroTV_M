@@ -169,6 +169,7 @@ export const SelectionAppBar = React.memo<SelectionAppBarProps>(
 
 const styles = StyleSheet.create({
   appBar: {
+    height: 60,
     minHeight: 60,
     paddingHorizontal: 16,
     paddingVertical: 8,

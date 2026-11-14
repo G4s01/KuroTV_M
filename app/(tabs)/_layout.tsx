@@ -12,6 +12,43 @@ import { usePendingUpdate } from '@/services/updater';
 import { useResponsiveLayout } from '@/hooks';
 import { TabletNavigationRail } from '@/components';
 
+function BottomTabIcon({
+  name,
+  focusedName,
+  focused,
+  color,
+  badge,
+}: {
+  name: any;
+  focusedName: any;
+  focused: boolean;
+  color: string;
+  badge?: React.ReactNode;
+}) {
+  const { theme } = useTheme();
+  return (
+    <View
+      style={[
+        styles.bottomTabItem,
+        focused && [
+          styles.bottomTabItemActive,
+          {
+            backgroundColor: theme.colors.surface,
+            borderColor: theme.colors.border,
+          },
+        ],
+      ]}
+    >
+      <Ionicons
+        name={focused ? focusedName : name}
+        size={22}
+        color={focused ? theme.colors.primary : color}
+      />
+      {badge}
+    </View>
+  );
+}
+
 function SettingsTabIcon({ color, focused }: { color: string; focused: boolean }) {
   const { theme } = useTheme();
   const { update, isDismissed } = usePendingUpdate();
@@ -48,11 +85,22 @@ function SettingsTabIcon({ color, focused }: { color: string; focused: boolean }
   }, [hasPendingUpdate, bounceAnim]);
 
   return (
-    <View style={styles.tabIconWrapper}>
+    <View
+      style={[
+        styles.bottomTabItem,
+        focused && [
+          styles.bottomTabItemActive,
+          {
+            backgroundColor: theme.colors.surface,
+            borderColor: theme.colors.border,
+          },
+        ],
+      ]}
+    >
       <Ionicons
         name={focused ? 'settings' : 'settings-outline'}
-        size={24}
-        color={color}
+        size={22}
+        color={focused ? theme.colors.primary : color}
       />
       {hasPendingUpdate && (
         <Animated.View
@@ -186,9 +234,10 @@ export default function TabLayout() {
             tabBarShowLabel: false,
             tabBarLabel: () => null,
             tabBarIcon: ({ color, focused }) => (
-              <Ionicons
-                name={focused ? 'home' : 'home-outline'}
-                size={24}
+              <BottomTabIcon
+                name="home-outline"
+                focusedName="home"
+                focused={focused}
                 color={color as string}
               />
             ),
@@ -202,9 +251,10 @@ export default function TabLayout() {
             tabBarShowLabel: false,
             tabBarLabel: () => null,
             tabBarIcon: ({ color, focused }) => (
-              <Ionicons
-                name={focused ? 'calendar' : 'calendar-outline'}
-                size={24}
+              <BottomTabIcon
+                name="calendar-outline"
+                focusedName="calendar"
+                focused={focused}
                 color={color as string}
               />
             ),
@@ -217,9 +267,10 @@ export default function TabLayout() {
             tabBarShowLabel: false,
             tabBarLabel: () => null,
             tabBarIcon: ({ color, focused }) => (
-              <Ionicons
-                name={focused ? 'heart' : 'heart-outline'}
-                size={24}
+              <BottomTabIcon
+                name="heart-outline"
+                focusedName="heart"
+                focused={focused}
                 color={color as string}
               />
             ),
@@ -233,9 +284,10 @@ export default function TabLayout() {
               tabBarShowLabel: false,
               tabBarLabel: () => null,
               tabBarIcon: ({ color, focused }) => (
-                <Ionicons
-                  name={focused ? 'time' : 'time-outline'}
-                  size={24}
+                <BottomTabIcon
+                  name="time-outline"
+                  focusedName="time"
+                  focused={focused}
                   color={color as string}
                 />
               ),
@@ -249,14 +301,30 @@ export default function TabLayout() {
             tabBarShowLabel: false,
             tabBarLabel: () => null,
             tabBarIcon: ({ color, focused }) => (
-              <Ionicons
+              <BottomTabIcon
                 name={
                   syncStatus.isConnected
-                    ? (focused ? 'person-circle' : 'person-circle-outline')
-                    : (focused ? 'person' : 'person-outline')
+                    ? 'person-circle-outline'
+                    : 'person-outline'
                 }
-                size={24}
+                focusedName={
+                  syncStatus.isConnected ? 'person-circle' : 'person'
+                }
+                focused={focused}
                 color={color as string}
+                badge={
+                  syncStatus.isConnected ? (
+                    <View
+                      style={[
+                        styles.profileStatusDot,
+                        {
+                          backgroundColor: theme.colors.success || '#22C55E',
+                          borderColor: theme.colors.background,
+                        },
+                      ]}
+                    />
+                  ) : undefined
+                }
               />
             ),
             tabBarButton: ({ ref: _ref, ...props }) => (
@@ -326,22 +394,37 @@ export default function TabLayout() {
 }
 
 const styles = StyleSheet.create({
-  tabIconWrapper: {
-    width: 32,
-    height: 32,
-    justifyContent: 'center',
+  bottomTabItem: {
+    width: 50,
+    height: 40,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'transparent',
     alignItems: 'center',
+    justifyContent: 'center',
     position: 'relative',
+  },
+  bottomTabItemActive: {
+    borderWidth: 1,
   },
   arrowBadge: {
     position: 'absolute',
-    top: -3,
-    right: -7,
-    width: 16,
-    height: 16,
-    borderRadius: 8,
+    top: 5,
+    right: 10,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
     borderWidth: 1.5,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  profileStatusDot: {
+    position: 'absolute',
+    top: 7,
+    right: 12,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    borderWidth: 1.5,
   },
 });

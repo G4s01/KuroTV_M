@@ -46,13 +46,18 @@ export const TabletNavigationRail = React.memo<TabletNavigationRailProps>(
           {
             backgroundColor: theme.colors.background,
             borderRightColor: theme.colors.border,
-            paddingTop: Math.max(insets.top + 8, 16),
+            paddingTop: insets.top,
             paddingBottom: Math.max(insets.bottom + 12, 16),
           },
         ]}
       >
-        {/* Top Section: Touch-Native Profile Selector (Replacing static 'K' logo) */}
-        <View style={styles.topSection}>
+        {/* Top Section: Touch-Native Profile Selector aligned with Screen Header */}
+        <View
+          style={[
+            styles.topSection,
+            { borderBottomColor: theme.colors.border },
+          ]}
+        >
           <Pressable
             style={({ pressed }) => [
               styles.profileBtn,
@@ -111,11 +116,6 @@ export const TabletNavigationRail = React.memo<TabletNavigationRailProps>(
               />
             )}
           </Pressable>
-
-          {/* Separator below Profile button */}
-          <View
-            style={[styles.separator, { backgroundColor: theme.colors.border }]}
-          />
         </View>
 
         {/* Center Section: Navigation Rail Tab Items */}
@@ -235,8 +235,10 @@ const styles = StyleSheet.create({
   },
   topSection: {
     alignItems: 'center',
+    justifyContent: 'center',
     width: '100%',
-    paddingBottom: 8,
+    height: 60,
+    borderBottomWidth: 1,
   },
   profileBtn: {
     width: 44,
@@ -269,17 +271,11 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     borderWidth: 2,
   },
-  separator: {
-    width: 32,
-    height: 1,
-    marginTop: 16,
-    marginBottom: 8,
-    opacity: 0.6,
-  },
   navItemsList: {
     flex: 1,
     width: '100%',
     alignItems: 'center',
+    paddingTop: 12,
     gap: 8,
   },
   tabItem: {

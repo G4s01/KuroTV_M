@@ -7,9 +7,11 @@ export const settingsStyles = StyleSheet.create({
     backgroundColor: '#000000',
   },
   appBar: {
-    minHeight: 48,
+    height: 60,
+    minHeight: 60,
+    justifyContent: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 8,
     borderBottomWidth: 1,
     borderBottomColor: '#141414',
   },

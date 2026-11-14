@@ -6,11 +6,13 @@ export const downloadsStyles = StyleSheet.create({
     backgroundColor: '#000000',
   },
   header: {
+    height: 60,
+    minHeight: 60,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 8,
     borderBottomWidth: 1,
   },
   headerLeft: {

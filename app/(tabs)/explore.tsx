@@ -6,6 +6,7 @@ import {
   ScrollView,
   Pressable,
   RefreshControl,
+  BackHandler,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -93,26 +94,41 @@ export default function ExploreScreen() {
 
   const heroItem = scheduleData?.hero;
 
+  React.useEffect(() => {
+    const backSub = BackHandler.addEventListener('hardwareBackPress', () => {
+      Haptics.selectionAsync().catch(() => {});
+      if (router.canGoBack()) {
+        router.back();
+      } else {
+        router.replace('/(tabs)');
+      }
+      return true;
+    });
+    return () => backSub.remove();
+  }, [router]);
+
   return (
     <View style={[styles.root, { paddingTop: insets.top, backgroundColor: theme.colors.background }]}>
       {/* App Bar */}
       <View style={[styles.appBar, { borderBottomColor: theme.colors.border }]}>
         <View style={styles.appBarHeader}>
           <View style={styles.titleRow}>
-            {router.canGoBack() && (
-              <Pressable
-                onPress={() => {
-                  Haptics.selectionAsync().catch(() => {});
+            <Pressable
+              onPress={() => {
+                Haptics.selectionAsync().catch(() => {});
+                if (router.canGoBack()) {
                   router.back();
-                }}
-                hitSlop={12}
-                style={styles.backButton}
-                accessibilityRole="button"
-                accessibilityLabel="TORNA INDIETRO"
-              >
-                <Ionicons name="arrow-back" size={22} color={theme.colors.text} />
-              </Pressable>
-            )}
+                } else {
+                  router.replace('/(tabs)');
+                }
+              }}
+              hitSlop={12}
+              style={styles.backButton}
+              accessibilityRole="button"
+              accessibilityLabel="TORNA INDIETRO"
+            >
+              <Ionicons name="arrow-back" size={22} color={theme.colors.text} />
+            </Pressable>
             <Ionicons name="calendar" size={18} color={theme.colors.primary} />
             <Text style={[styles.appBarTitle, { color: theme.colors.text }]}>PALINSESTO</Text>
           </View>
@@ -440,9 +456,11 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   appBar: {
+    height: 60,
+    minHeight: 60,
     paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 10,
+    paddingVertical: 8,
+    justifyContent: 'center',
     borderBottomWidth: 1,
   },
   appBarHeader: {

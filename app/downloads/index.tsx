@@ -4,6 +4,7 @@ import {
   Text,
   Pressable,
   ScrollView,
+  BackHandler,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useRouter } from 'expo-router';
@@ -66,6 +67,20 @@ export default function DownloadsScreen() {
     confirmText: 'CONFERMA',
     onConfirm: () => {},
   });
+
+  useEffect(() => {
+    const backSub = BackHandler.addEventListener('hardwareBackPress', () => {
+      Haptics.selectionAsync().catch(() => {});
+      if (router.canGoBack()) {
+        router.back();
+      } else {
+        router.replace('/(tabs)');
+      }
+      return true;
+    });
+
+    return () => backSub.remove();
+  }, [router]);
 
   useEffect(() => {
     if (isSheetVisible && !selectedGroup) {

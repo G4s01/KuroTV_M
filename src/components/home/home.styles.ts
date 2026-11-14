@@ -12,7 +12,8 @@ export const homeStyles = StyleSheet.create({
     backgroundColor: '#000000',
   },
   appBar: {
-    minHeight: 48,
+    height: 60,
+    minHeight: 60,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -104,7 +105,8 @@ export const homeStyles = StyleSheet.create({
     fontSize: 9,
   },
   searchHeader: {
-    minHeight: 56,
+    height: 60,
+    minHeight: 60,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,

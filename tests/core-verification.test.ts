@@ -2347,7 +2347,7 @@ assert.strictEqual(tabletPortrait.isTablet, true, 'Tablet portrait deve essere i
 assert.strictEqual(tabletPortrait.railWidth, 76, 'Tablet deve avere navigation rail di 76dp');
 assert.strictEqual(tabletPortrait.contentWidth, 800 - 76, 'contentWidth deve sottrarre la rail laterale');
 assert(tabletPortrait.numColumns >= 3, 'Tablet portrait deve avere almeno 3 o 4 colonne');
-assert.strictEqual(tabletPortrait.isMasterDetail, true, 'Tablet portrait deve supportare master-detail');
+assert.strictEqual(tabletPortrait.isMasterDetail, false, 'Tablet portrait non deve dividersi a meta (colonna singola)');
 
 // Tablet in landscape (1280 x 800): min dimension 800 >= 600 -> isTablet = true
 const tabletLandscape = computeResponsiveLayout(1280, 800);
@@ -2364,8 +2364,8 @@ assert.strictEqual(foldableOpen.isTablet, true, 'Foldable aperto deve essere ide
 // 2. Verifica sorgente TabLayout (Left Navigation Rail)
 const tabLayoutRespSource = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/_layout.tsx'), 'utf-8');
 assert(tabLayoutRespSource.includes("tabBarPosition: isTablet ? 'left' : 'bottom'"), 'TabLayout deve impostare tabBarPosition condizionale');
-assert(tabLayoutRespSource.includes('railBrandWrapper'), 'TabLayout deve includere il brand logo per la navigation rail');
-assert(tabLayoutRespSource.includes('railBrandLogoBox'), 'TabLayout deve avere il logo monogramma K');
+assert(tabLayoutRespSource.includes('TabletNavigationRail'), 'TabLayout deve utilizzare TabletNavigationRail per la navigation rail');
+assert(tabLayoutRespSource.includes('handleProfilePress'), 'TabLayout deve connettere onProfilePress');
 assert(tabLayoutRespSource.includes('width: 76'), 'Navigation rail deve avere larghezza 76dp');
 assert(tabLayoutRespSource.includes('borderRightWidth: 1'), 'Navigation rail deve avere borderRightWidth');
 
@@ -4013,7 +4013,7 @@ assert(
 // 2. Home index binds onSchedulePress to navigate to /explore
 const homeScreenCode = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/index.tsx'), 'utf-8');
 assert(homeScreenCode.includes('onSchedulePress'), 'app/(tabs)/index.tsx deve passare onSchedulePress a HomeAppBar');
-assert(homeScreenCode.includes("router.push('/explore'"), 'onSchedulePress deve navigare a /explore');
+assert(homeScreenCode.includes("navigate('/(tabs)/explore'") || homeScreenCode.includes("push('/explore'"), 'onSchedulePress deve navigare a /explore');
 
 // 3. Tab Bar Layout: explore hidden with href: null, profile tab between history and settings
 const tabLayoutNew = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/_layout.tsx'), 'utf-8');

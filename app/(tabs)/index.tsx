@@ -14,7 +14,7 @@ import {
   type NativeScrollEvent,
 } from 'react-native';
 import { Image } from 'expo-image';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter, useFocusEffect, useNavigation } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { FlashList } from '@shopify/flash-list';
@@ -62,6 +62,7 @@ const RECOMMENDED_ITEM_TOTAL = RECOMMENDED_ITEM_WIDTH + RECOMMENDED_ITEM_GAP;
 
 export default function HomeScreen() {
   const router = useRouter();
+  const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const { theme } = useTheme();
@@ -137,19 +138,38 @@ export default function HomeScreen() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Handle hardware back button to dismiss search mode cleanly ONLY when this screen is actively focused
-  useFocusEffect(
-    React.useCallback(() => {
-      if (!isSearchActive) return;
-      const backSub = BackHandler.addEventListener('hardwareBackPress', () => {
+  const isSearchActiveRef = React.useRef(isSearchActive);
+  isSearchActiveRef.current = isSearchActive;
+
+  // Handle hardware back button & Android system back gesture to dismiss search mode cleanly
+  React.useEffect(() => {
+    const backSub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (isSearchActiveRef.current) {
         Keyboard.dismiss();
         setIsSearchActive(false);
         setSearchQuery('');
         setFilterState({});
         return true;
+      }
+      return false;
+    });
+
+    return () => backSub.remove();
+  }, []);
+
+  // Also dismiss search when user taps the Home tab while already on Home
+  useFocusEffect(
+    React.useCallback(() => {
+      const unsub = navigation.addListener('tabPress' as any, () => {
+        if (isSearchActiveRef.current) {
+          Keyboard.dismiss();
+          setIsSearchActive(false);
+          setSearchQuery('');
+          setFilterState({});
+        }
       });
-      return () => backSub.remove();
-    }, [isSearchActive])
+      return unsub;
+    }, [navigation])
   );
 
   const activeGenres = filterState.genres || (filterState.genre ? [filterState.genre] : []);
@@ -680,7 +700,7 @@ export default function HomeScreen() {
           }}
           onSchedulePress={() => {
             Haptics.selectionAsync().catch(() => {});
-            router.push('/explore' as any);
+            router.navigate('/(tabs)/explore' as any);
           }}
           activeDownloadsCount={activeDownloadsCount}
           onDownloadsPress={() => {

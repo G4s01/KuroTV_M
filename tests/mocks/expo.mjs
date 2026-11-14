@@ -45,6 +45,13 @@ export const useRouter = () => ({
   push: () => {},
   replace: () => {},
   back: () => {},
+  navigate: () => {},
+});
+
+export const useNavigation = () => ({
+  addListener: () => () => {},
+  navigate: () => {},
+  dispatch: () => {},
 });
 
 export const useFocusEffect = (cb) => {
