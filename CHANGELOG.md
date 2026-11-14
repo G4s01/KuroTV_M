@@ -8,6 +8,21 @@ e questo progetto aderisce al [Semantic Versioning](https://semver.org/lang/it/)
 ## [Unreleased]
 
 ### Aggiunto
+- **Sincronizzazione Automatica Reattiva KuroSync per Preferiti, Cronologia, Ricerche Recenti & AniSkip**:
+  - `StorageMutationListener` in `AppStorage` (`src/services/storage/app-storage.ts`): notifica istantaneamente ogni mutazione o rimozione di Preferiti, Cronologia, Ricerche, Preferenze AniSkip e Impostazioni condivise.
+  - Debounce Auto-Sync (1.5s) e Polling Periodico (60s) in `SyncManager` (`src/services/sync/sync-manager.ts`): quando l'utente modifica preferiti, cronologia, ricerche o impostazioni, viene schedulato automaticamente l'invio push a KuroSync (`pushPending`) raggruppando eventuali azioni rapide multiple entro 1500ms, senza bloccare la UI e senza dipendere dall'uscita dall'app (`AppState` blur). In fase di utilizzo attivo, `startPeriodicSync(60000)` sincronizza periodicamente le novità da altri dispositivi (es. Android TV, Web).
+  - Pull-to-Refresh Sincronizzato in `FavoritesScreen` (`favorites.tsx`), `HistoryScreen` (`history.tsx`) e `HomeScreen` (`index.tsx`): lo scorrimento verso il basso forza la sincronizzazione delta completa con il server KuroSync prima di ricaricare le viste.
+- **Suite di Test Estesa a 30 Stadi**:
+  - Aggiunto lo stadio `[30/30]` in `tests/core-verification.test.ts` per validare l'auto-sync reattivo, i listener delle mutazioni di storage, l'accodamento di `sharedSettings` per AniSkip, la potatura con tombstones dei prefissi di ricerca, la protezione da resurrezione per le delezioni locali e la preservazione del watermark delta.
+
+### Risolto
+- **Risoluzione Desincronizzazione Automatica Preferiti, Cronologia, Ricerche & AniSkip**:
+  - Risolto il mancato tracciamento delle modifiche alle impostazioni AniSkip (`saveAniSkipSettings`) e impostazioni condivise (`saveSettings`): ora accodano regolarmente la mutazione in `SYNC_PENDING_MUTATIONS` sotto `sharedSettings`.
+  - Risolto il bug di sovrascrittura di AniSkip durante il merge remoto: `mergeLocalAndRemote` protegge e preserva le mutazioni locali pendenti di `sharedSettings` impedendo che i delta remoti obsoleti ripristinino i vecchi valori.
+  - Risolto il bug di distruzione/troncamento delle ricerche recenti: il push di `searchHistory` invia l'elenco completo aggiornato anziché un delta parziale a singolo elemento (rispettando lo schema D1 di KuroTV_S) e `addSearchHistory` genera tombstones dedicati per i prefissi parziali potati evitando che resuscitino al pull.
+  - Risolto il bug di resurrezione dei preferiti e della cronologia: `mergeLocalAndRemote` include i tombstones di eliminazione locali pendenti (`pendingDeletions`), impedendo che un pull delta prima del push resusciti elementi appena rimossi dall'utente.
+  - Corretto il timestamp di aggiunta ai preferiti (`Date.now()`): azzera il rischio che un timestamp obsoleto del catalogo venga respinto dal server perché inferiore a un tombstone precedente.
+  - Preservazione del watermark `SYNC_LAST_TIMESTAMP`: `pushPending` aggiorna unicamente `SYNC_LAST_TIME` lasciando intatto il watermark delta che deve avanzare unicamente al completamento di un pull remoto.
 - **Resilienza Connessione KuroSync con Retry Automatici, Feedback di Caricamento & Auto-Logout**:
   - Implementati `performFullSyncWithRetries`, `listProfilesWithRetries` e `switchProfileWithRetries` in `SyncManager` (`src/services/sync/sync-manager.ts`) che gestiscono fino a 2 tentativi di riconnessione automatica (3 tentativi totali con backoff progressivo) con callback per il feedback visivo di stato.
   - Feedback contestuale di caricamento sia all'avvio dell'app in `app/_layout.tsx` (con banner/HUD fluttuante OLED a comparsa durante la sincronizzazione) sia all'apertura o cambio profilo in `SyncProfileModal.tsx` (`"Connessione a KuroSync... (tentativo X di 2)"`).

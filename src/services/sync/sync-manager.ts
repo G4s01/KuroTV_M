@@ -142,6 +142,10 @@ class SyncManagerClass {
   private listeners = new Set<(status: SyncStatus) => void>();
   private lastKnownServerUrl = '';
 
+  // Auto-sync debouncing & periodic poll
+  private autoSyncTimer: ReturnType<typeof setTimeout> | null = null;
+  private periodicSyncTimer: ReturnType<typeof setInterval> | null = null;
+
   // Playback debounce tracking (45-60s)
   private lastPlaybackPushTime = 0;
   private lastPlaybackPos = 0;
@@ -170,6 +174,49 @@ class SyncManagerClass {
       baseUrl: serverUrl,
       deviceToken: deviceToken || undefined,
     });
+
+    // Auto-sync on local storage mutations (Favorites, History, Searches, AniSkip, Settings)
+    AppStorage.addMutationListener((type) => {
+      // Playback progress mutations are debounced 45-60s during video playback
+      if (type === 'watchProgress') return;
+      this.scheduleAutoSync(1500);
+    });
+  }
+
+  scheduleAutoSync(delayMs = 1500): void {
+    if (!this.isConnected()) return;
+    if (this.autoSyncTimer) {
+      clearTimeout(this.autoSyncTimer);
+    }
+    this.autoSyncTimer = setTimeout(() => {
+      this.autoSyncTimer = null;
+      if (this.isConnected() && !this.isSyncing) {
+        this.pushPending(false).catch(() => {});
+      }
+    }, delayMs);
+  }
+
+  cancelAutoSync(): void {
+    if (this.autoSyncTimer) {
+      clearTimeout(this.autoSyncTimer);
+      this.autoSyncTimer = null;
+    }
+  }
+
+  startPeriodicSync(intervalMs = 60000): void {
+    this.stopPeriodicSync();
+    this.periodicSyncTimer = setInterval(() => {
+      if (this.isConnected() && !this.isSyncing) {
+        this.pullDelta().catch(() => {});
+      }
+    }, intervalMs);
+  }
+
+  stopPeriodicSync(): void {
+    if (this.periodicSyncTimer) {
+      clearInterval(this.periodicSyncTimer);
+      this.periodicSyncTimer = null;
+    }
   }
 
   private persistServerUrl(url: string): void {
@@ -859,6 +906,8 @@ class SyncManagerClass {
     } catch {
       // Invalida credenziali locali anche se offline o token già revocato
     } finally {
+      this.cancelAutoSync();
+      this.stopPeriodicSync();
       AppStorage.remove(StorageKeys.SYNC_DEVICE_TOKEN);
       AppStorage.remove(StorageKeys.SYNC_DEVICE_ID);
       AppStorage.remove(StorageKeys.SYNC_PROFILE_ID);
@@ -1172,9 +1221,14 @@ class SyncManagerClass {
       };
 
       // 3. Merge local and remote
+      const pendingDeletionsBeforeMerge = AppStorage.getPendingSyncDeletions();
+      const pendingMutationsBeforeMerge = AppStorage.getPendingSyncMutations();
+
       const { state: mergedState, appliedDeletions, appliedUpserts } = mergeLocalAndRemote(
         localState,
-        remotePull
+        remotePull,
+        pendingDeletionsBeforeMerge,
+        pendingMutationsBeforeMerge
       );
 
       // 4. Save merged results atomically back to MMKV
@@ -1198,7 +1252,7 @@ class SyncManagerClass {
       AppStorage.setObject(StorageKeys.SEARCH_HISTORY, mergedState.searchHistory.slice(0, 50));
 
       if (mergedState.sharedSettings) {
-        AppStorage.saveSettings(mergedState.sharedSettings);
+        AppStorage.saveSettings(mergedState.sharedSettings, true);
       }
       AppStorage.notifyStorageChanged();
 
@@ -1222,10 +1276,17 @@ class SyncManagerClass {
           deletions: pendingDeletions,
         };
       } else if (hasPending) {
+        const hasSearchChanges =
+          Array.isArray(pendingMutations.searchHistory) ||
+          pendingDeletions.some((d) => d.type === 'search_history');
+
         pushPayload = {
           ...pendingMutations,
           deletions: pendingDeletions,
         };
+        if (hasSearchChanges) {
+          pushPayload.searchHistory = mergedState.searchHistory;
+        }
       } else {
         pushPayload = {};
       }
@@ -1348,6 +1409,7 @@ class SyncManagerClass {
   }
 
   async pushPending(force = false): Promise<{ ok: boolean; error?: string }> {
+    this.cancelAutoSync();
     this.ensureClientConfigured();
     if (!this.isConnected()) return { ok: false, error: 'Non collegato' };
 
@@ -1364,16 +1426,23 @@ class SyncManagerClass {
     }
 
     try {
-      const pushRes = await this.client.pushDelta({
+      const hasSearchChanges =
+        Array.isArray(pendingMutations.searchHistory) ||
+        pendingDeletions.some((d) => d.type === 'search_history');
+
+      const pushPayload: DeltaPushRequest = {
         ...pendingMutations,
         deletions: pendingDeletions,
-      });
+      };
+
+      if (hasSearchChanges) {
+        pushPayload.searchHistory = AppStorage.getSearchHistory();
+      }
+
+      await this.client.pushDelta(pushPayload);
 
       AppStorage.clearPendingSyncDeletions();
       AppStorage.clearPendingSyncMutations();
-      if (pushRes.serverTime) {
-        AppStorage.setNumber(StorageKeys.SYNC_LAST_TIMESTAMP, pushRes.serverTime);
-      }
       AppStorage.setNumber(StorageKeys.SYNC_LAST_TIME, Date.now());
       this.notify();
       return { ok: true };

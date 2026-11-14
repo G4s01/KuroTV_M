@@ -385,6 +385,8 @@ function removeWatchHistoryTargets(targets: WatchHistoryDeleteTarget[]): {
           serverId: latest.serverId,
           isCaughtUp: false,
         });
+      } else {
+        AppStorage.recordSyncDeletion('continue_watching', entry.animeId);
       }
     }
 
@@ -414,11 +416,31 @@ function notifySettingsListeners(settings: AppSettings): void {
   }
 }
 
+export type StorageMutationListener = (type: string, key?: string) => void;
+const mutationListeners = new Set<StorageMutationListener>();
+
+function notifyMutationListeners(type: string, key?: string): void {
+  for (const listener of mutationListeners) {
+    try {
+      listener(type, key);
+    } catch {
+      // Ignore listener errors safely
+    }
+  }
+}
+
 export const AppStorage = {
   addSettingsListener: (listener: SettingsListener): (() => void) => {
     settingsListeners.add(listener);
     return () => {
       settingsListeners.delete(listener);
+    };
+  },
+
+  addMutationListener: (listener: StorageMutationListener): (() => void) => {
+    mutationListeners.add(listener);
+    return () => {
+      mutationListeners.delete(listener);
     };
   },
 
@@ -497,7 +519,7 @@ export const AppStorage = {
     };
   },
 
-  saveSettings: (partial: Partial<AppSettings>): AppSettings => {
+  saveSettings: (partial: Partial<AppSettings>, isRemoteSync = false): AppSettings => {
     const current = AppStorage.getSettings();
     const updated: AppSettings = {
       ...current,
@@ -521,8 +543,34 @@ export const AppStorage = {
       AppStorage.cleanupExpiredSearchHistory(partial.searchHistoryRetentionDays);
     }
     if (partial.aniSkipSettings) {
-      AppStorage.saveAniSkipSettings(partial.aniSkipSettings);
+      AppStorage.saveAniSkipSettings(partial.aniSkipSettings, isRemoteSync);
     }
+
+    if (!isRemoteSync) {
+      const sharedKeys = [
+        'endingThresholdSeconds',
+        'preferredQuality',
+        'autoplayNext',
+        'defaultServer',
+        'tld',
+        'customDomain',
+        'historyRetentionDays',
+        'searchHistoryRetentionDays',
+      ] as const;
+
+      const sharedMutation: Record<string, any> = {};
+      let hasShared = false;
+      for (const k of sharedKeys) {
+        if (partial[k] !== undefined) {
+          sharedMutation[k] = partial[k];
+          hasShared = true;
+        }
+      }
+      if (hasShared) {
+        AppStorage.recordSyncMutation('sharedSettings', sharedMutation);
+      }
+    }
+
     notifySettingsListeners(updated);
     return updated;
   },
@@ -782,13 +830,17 @@ export const AppStorage = {
     };
   },
 
-  saveAniSkipSettings: (partial: Partial<AniSkipSettings>): AniSkipSettings => {
+  saveAniSkipSettings: (partial: Partial<AniSkipSettings>, isRemoteSync = false): AniSkipSettings => {
     const current = AppStorage.getAniSkipSettings();
     const updated: AniSkipSettings = {
       ...current,
       ...partial,
     };
     AppStorage.setObject(StorageKeys.ANISKIP_SETTINGS, updated);
+    if (!isRemoteSync) {
+      AppStorage.recordSyncMutation('sharedSettings', { aniSkipSettings: updated });
+    }
+    notifySettingsListeners(AppStorage.getSettings());
     return updated;
   },
 
@@ -829,15 +881,17 @@ export const AppStorage = {
       favorites.splice(existingIndex, 1);
       AppStorage.setObject(StorageKeys.FAVORITES, favorites);
       AppStorage.recordSyncDeletion('favorite', item.id);
+      notifySettingsListeners(AppStorage.getSettings());
       return false;
     } else {
       const withTimestamp: AnimeItem = {
         ...item,
-        updatedAt: item.updatedAt || Date.now(),
+        updatedAt: Date.now(),
       };
       favorites.unshift(withTimestamp);
       AppStorage.setObject(StorageKeys.FAVORITES, favorites);
       AppStorage.recordSyncMutation('favorites', withTimestamp);
+      notifySettingsListeners(AppStorage.getSettings());
       return true;
     }
   },
@@ -847,6 +901,7 @@ export const AppStorage = {
     const favorites = AppStorage.getFavorites().filter((fav) => fav.id !== animeId);
     AppStorage.setObject(StorageKeys.FAVORITES, favorites);
     AppStorage.recordSyncDeletion('favorite', animeId);
+    notifySettingsListeners(AppStorage.getSettings());
   },
 
   removeFavorites: (animeIds: string[]): number => {
@@ -863,6 +918,7 @@ export const AppStorage = {
         key: id,
       }));
       AppStorage.recordSyncDeletions(deletions);
+      notifySettingsListeners(AppStorage.getSettings());
     }
     return removed;
   },
@@ -1006,6 +1062,7 @@ export const AppStorage = {
     const current = AppStorage.getContinueWatching().filter((c) => c.animeId !== animeId);
     AppStorage.setObject(StorageKeys.CONTINUE_WATCHING, current);
     AppStorage.recordSyncDeletion('continue_watching', animeId);
+    notifySettingsListeners(AppStorage.getSettings());
   },
 
   updateContinueWatchingEpisode: (
@@ -1376,14 +1433,20 @@ export const AppStorage = {
 
     // Filter out exact matches and any incomplete prefixes of the new query
     // (e.g. if new query is "ONE PIECE", remove "ONE", "ONE P", etc.)
+    const prefixDeletions: Array<{ type: string; key: string }> = [];
     const filtered = current.filter((item) => {
       const itemLower = item.query.trim().toLowerCase();
       if (itemLower === cleanLower) return false;
       if (cleanLower.startsWith(itemLower) && cleanLower.length > itemLower.length) {
+        prefixDeletions.push({ type: 'search_history', key: item.query.trim() });
         return false;
       }
       return true;
     });
+
+    if (prefixDeletions.length > 0) {
+      AppStorage.recordSyncDeletions(prefixDeletions);
+    }
 
     const newItem: SearchHistoryItem = {
       query: clean,
@@ -1394,6 +1457,7 @@ export const AppStorage = {
     const maxItems = 50;
     AppStorage.setObject(StorageKeys.SEARCH_HISTORY, filtered.slice(0, maxItems));
     AppStorage.recordSyncMutation('searchHistory', newItem);
+    notifySettingsListeners(AppStorage.getSettings());
   },
 
   removeSearchHistoryItem: (query: string): void => {
@@ -1405,18 +1469,20 @@ export const AppStorage = {
     );
     AppStorage.setObject(StorageKeys.SEARCH_HISTORY, filtered);
     AppStorage.recordSyncDeletion('search_history', query.trim());
+    notifySettingsListeners(AppStorage.getSettings());
   },
 
   clearSearchHistory: (): void => {
     const current = AppStorage.getSearchHistory();
     const deletions = current.map((item) => ({
       type: 'search_history',
-      key: item.query,
+      key: item.query.trim(),
     }));
     if (deletions.length > 0) {
       AppStorage.recordSyncDeletions(deletions);
     }
     AppStorage.remove(StorageKeys.SEARCH_HISTORY);
+    notifySettingsListeners(AppStorage.getSettings());
   },
 
   cleanupExpiredSearchHistory: (customRetentionDays?: number): number => {
@@ -1525,6 +1591,10 @@ export const AppStorage = {
           AppStorage.setObject(StorageKeys.SYNC_PENDING_MUTATIONS, pendingMutations);
         }
       }
+
+      for (const item of items) {
+        if (item?.type) notifyMutationListeners(item.type, item.key);
+      }
     } catch {
       // Safe fallback
     }
@@ -1622,6 +1692,7 @@ export const AppStorage = {
         pending[type] = list.slice(-100);
       }
       AppStorage.setObject(StorageKeys.SYNC_PENDING_MUTATIONS, pending);
+      notifyMutationListeners(type);
     } catch {
       // Safe fallback
     }

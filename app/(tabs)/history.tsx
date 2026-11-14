@@ -16,6 +16,7 @@ import { FlashList } from '@shopify/flash-list';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { AppStorage } from '@/services/storage';
+import { SyncManager } from '@/services/sync';
 import { oledTheme, useTheme, getContrastTextColor } from '@/theme';
 import { ConfirmModal } from '@/components/ConfirmModal';
 import { SelectionAppBar } from '@/components/SelectionAppBar';
@@ -349,11 +350,18 @@ export default function HistoryScreen() {
     return unsub;
   }, [loadHistory]);
 
-  const onRefresh = React.useCallback(() => {
+  const onRefresh = React.useCallback(async () => {
     setIsRefreshing(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    if (SyncManager.isConnected()) {
+      try {
+        await SyncManager.performFullSync();
+      } catch {
+        // Safe sync error catch
+      }
+    }
     loadHistory();
-    setTimeout(() => setIsRefreshing(false), 300);
+    setIsRefreshing(false);
   }, [loadHistory]);
 
   const handleRequestClearAll = React.useCallback(() => {

@@ -4232,6 +4232,141 @@ try {
 console.log('✓ Gestures Indietro Tablet & Retry Automatici KuroSync con Auto-Logout verificati con successo.');
 
 // -----------------------------------------------------------------------------
+// 30. Verifica Auto-Sync Reattivo, Storage Mutation Listeners, AniSkip/Search Sync & Preservazione Local Deletions
+// -----------------------------------------------------------------------------
+console.log('\n[30/30] Verifica Auto-Sync Reattivo, Storage Mutation Listeners, AniSkip/Search Sync & Preservazione Local Deletions...');
+
+// 1. AppStorage.addMutationListener fires on favorites, history, search, and settings
+let notifiedMutations: string[] = [];
+const unsubMut = AppStorage.addMutationListener((type) => {
+  notifiedMutations.push(type);
+});
+
+AppStorage.saveAniSkipSettings({ mode: 'auto', buttonDuration: 25 });
+assert(notifiedMutations.includes('sharedSettings'), 'saveAniSkipSettings deve notificare i mutation listeners con sharedSettings');
+const pendingMutations1 = AppStorage.getPendingSyncMutations();
+assert(pendingMutations1.sharedSettings?.aniSkipSettings?.mode === 'auto', 'saveAniSkipSettings deve accodare aniSkipSettings in pending mutations');
+assert.strictEqual(pendingMutations1.sharedSettings?.aniSkipSettings?.buttonDuration, 25);
+
+// 2. Favorites addition sets fresh Date.now() timestamp and fires mutation listener
+notifiedMutations = [];
+const favTestItem = {
+  id: 'fav-sync-fresh',
+  title: 'Fresh Favorite',
+  thumbnail: '',
+  genres: [],
+  link: '',
+  updatedAt: 1000, // Past timestamp from scraper
+};
+AppStorage.toggleFavorite(favTestItem);
+assert(notifiedMutations.includes('favorites'), 'toggleFavorite deve notificare i mutation listeners');
+const freshFav = AppStorage.getFavorites().find((f) => f.id === 'fav-sync-fresh');
+assert(freshFav && freshFav.updatedAt && freshFav.updatedAt > 1000, 'toggleFavorite deve rinfrescare updatedAt a Date.now()');
+
+// 3. Search History pruned prefixes generate tombstones
+notifiedMutations = [];
+AppStorage.clearPendingSyncDeletions();
+AppStorage.addSearchHistory('SOLO');
+AppStorage.addSearchHistory('SOLO LEVELING');
+const searchTombstones = AppStorage.getPendingSyncDeletions();
+assert(searchTombstones.some((d) => d.type === 'search_history' && d.key === 'SOLO'), 'addSearchHistory deve creare tombstone per prefissi rimossi come SOLO');
+
+// 4. mergeLocalAndRemote preserves local pending deletions (no resurrection)
+const mergeNoResurrect = mergeLocalAndRemote(
+  {
+    favorites: [],
+    continueWatching: [],
+    watchHistory: [],
+    watchProgress: [],
+    sharedSettings: {},
+    searchHistory: [],
+  },
+  {
+    serverTime: 5000,
+    deltas: {
+      favorites: [{ id: 'deleted-fav-1', title: 'Should Not Resurrect', thumbnail: '', genres: [], link: '', updatedAt: 2000 }],
+      continueWatching: [],
+      watchHistory: [],
+      watchProgress: [],
+      sharedSettings: {},
+      searchHistory: [{ query: 'DELETED_QUERY', timestamp: 2000 }],
+    },
+    tombstones: [], // Server has not received tombstones yet!
+  },
+  [
+    { type: 'favorite', key: 'deleted-fav-1', deletedAt: 3000 },
+    { type: 'search_history', key: 'DELETED_QUERY', deletedAt: 3000 },
+  ]
+);
+assert.strictEqual(mergeNoResurrect.state.favorites.length, 0, 'mergeLocalAndRemote non deve resuscitare entità con deletion locale pendente');
+assert.strictEqual(mergeNoResurrect.state.searchHistory.length, 0, 'mergeLocalAndRemote non deve resuscitare query con deletion locale pendente');
+
+// 5. mergeLocalAndRemote preserves local pending sharedSettings mutations (AniSkip)
+const mergePreserveSettings = mergeLocalAndRemote(
+  {
+    favorites: [],
+    continueWatching: [],
+    watchHistory: [],
+    watchProgress: [],
+    sharedSettings: { aniSkipSettings: { mode: 'auto', buttonDuration: 25 } },
+    searchHistory: [],
+  },
+  {
+    serverTime: 5000,
+    deltas: {
+      favorites: [],
+      continueWatching: [],
+      watchHistory: [],
+      watchProgress: [],
+      sharedSettings: { aniSkipSettings: { mode: 'manual', buttonDuration: 10 } }, // Stale remote
+      searchHistory: [],
+    },
+    tombstones: [],
+  },
+  [],
+  {
+    sharedSettings: { aniSkipSettings: { mode: 'auto', buttonDuration: 25 } },
+  }
+);
+assert.strictEqual(mergePreserveSettings.state.sharedSettings.aniSkipSettings.mode, 'auto', 'mergeLocalAndRemote deve preservare mutation pendente di AniSkip');
+
+// 6. SyncManager.scheduleAutoSync & pushPending full search history
+let pushedPayload: any = null;
+AppStorage.setString(StorageKeys.SYNC_DEVICE_TOKEN, 'test-auto-sync-token');
+AppStorage.setString(StorageKeys.SYNC_SERVER_URL, 'https://test-sync.workers.dev');
+
+(globalThis as any).fetch = async (url: string, options: any) => {
+  if (url.includes('/api/sync/push')) {
+    pushedPayload = JSON.parse(options.body);
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true, serverTime: 999999, appliedCount: 1 }),
+    } as any;
+  }
+  return { ok: true, status: 200, json: async () => ({ ok: true }) } as any;
+};
+
+// Set watermark
+AppStorage.setNumber(StorageKeys.SYNC_LAST_TIMESTAMP, 12345);
+
+AppStorage.recordSyncMutation('searchHistory', { query: 'NEW TEST QUERY', timestamp: Date.now() });
+const initialTimestamp = AppStorage.getNumber(StorageKeys.SYNC_LAST_TIMESTAMP);
+await SyncManager.pushPending(true);
+
+assert(pushedPayload !== null, 'pushPending deve inviare payload al server');
+assert(Array.isArray(pushedPayload.searchHistory), 'pushPending deve inviare l array completo di searchHistory');
+assert(pushedPayload.searchHistory.some((s: any) => s.query === 'SOLO LEVELING'), 'pushPending deve includere le query precedenti da getSearchHistory()');
+assert.strictEqual(AppStorage.getNumber(StorageKeys.SYNC_LAST_TIMESTAMP), initialTimestamp, 'pushPending NON deve sovrascrivere SYNC_LAST_TIMESTAMP (preservazione watermark pull)');
+
+unsubMut();
+AppStorage.clearPendingSyncDeletions();
+AppStorage.clearPendingSyncMutations();
+await SyncManager.disconnect();
+
+console.log('✓ Auto-Sync Reattivo, Mutation Listeners, AniSkip/Search Sync & Preservazione Local Deletions verificati con successo.');
+
+// -----------------------------------------------------------------------------
 // Fine Test
 // -----------------------------------------------------------------------------
 console.log('\n==============================================');

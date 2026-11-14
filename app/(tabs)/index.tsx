@@ -27,6 +27,7 @@ import {
   syncCaughtUpWithRemote,
   type SearchHistoryItem,
 } from '@/services/storage';
+import { SyncManager } from '@/services/sync';
 import { AnimeWorldScraper } from '@/services/scraper';
 import { oledTheme, useTheme, getContrastTextColor } from '@/theme';
 import { AnimeCard } from '@/components/AnimeCard';
@@ -383,6 +384,13 @@ export default function HomeScreen() {
 
   const handleRefresh = React.useCallback(async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    if (SyncManager.isConnected()) {
+      try {
+        await SyncManager.pullDelta();
+      } catch {
+        // Safe catch
+      }
+    }
     await Promise.all([
       refetch(),
       queryClient.invalidateQueries({ queryKey: animeQueryKeys.all }),

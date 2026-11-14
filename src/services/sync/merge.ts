@@ -21,11 +21,25 @@ import type {
  */
 export function mergeLocalAndRemote(
   local: LocalStorageState,
-  remote: RemotePullResponse
+  remote: RemotePullResponse,
+  localDeletions?: Array<{ type: string; key: string; deletedAt?: number }>,
+  localPendingMutations?: Record<string, any>
 ): MergeResult {
   const tombstoneMap = new Map<string, number>();
   for (const t of remote.tombstones || []) {
     tombstoneMap.set(`${t.type}:${t.key}`, t.deletedAt);
+    if (t.type === 'search_history') {
+      tombstoneMap.set(`search_history:${t.key.trim().toLowerCase()}`, t.deletedAt);
+    }
+  }
+  for (const d of localDeletions || []) {
+    if (!d?.type || !d?.key) continue;
+    const time = d.deletedAt || Date.now();
+    const existing = tombstoneMap.get(`${d.type}:${d.key}`);
+    tombstoneMap.set(`${d.type}:${d.key}`, Math.max(existing || 0, time));
+    if (d.type === 'search_history') {
+      tombstoneMap.set(`search_history:${d.key.trim().toLowerCase()}`, Math.max(existing || 0, time));
+    }
   }
 
   let appliedDeletions = 0;
@@ -218,6 +232,7 @@ export function mergeLocalAndRemote(
   const sharedSettings = {
     ...local.sharedSettings,
     ...remote.deltas?.sharedSettings,
+    ...(localPendingMutations?.sharedSettings || {}),
   };
 
   // --------------------------------------------------------------------------
@@ -225,22 +240,28 @@ export function mergeLocalAndRemote(
   // --------------------------------------------------------------------------
   const searchHistoryMap = new Map<string, SearchHistoryItem>();
   for (const s of local.searchHistory || []) {
-    const tomb = tombstoneMap.get(`search_history:${s.query}`);
+    const queryKey = s.query.trim().toLowerCase();
+    const tomb =
+      tombstoneMap.get(`search_history:${s.query}`) ??
+      tombstoneMap.get(`search_history:${queryKey}`);
     if (tomb !== undefined && (s.timestamp || 0) <= tomb) {
       appliedDeletions++;
     } else {
-      searchHistoryMap.set(s.query, { ...s });
+      searchHistoryMap.set(queryKey, { ...s });
     }
   }
 
   for (const s of remote.deltas?.searchHistory || []) {
-    const tomb = tombstoneMap.get(`search_history:${s.query}`);
+    const queryKey = s.query.trim().toLowerCase();
+    const tomb =
+      tombstoneMap.get(`search_history:${s.query}`) ??
+      tombstoneMap.get(`search_history:${queryKey}`);
     if (tomb !== undefined && (s.timestamp || 0) <= tomb) {
       continue;
     }
-    const existing = searchHistoryMap.get(s.query);
+    const existing = searchHistoryMap.get(queryKey);
     if (!existing || s.timestamp >= existing.timestamp) {
-      searchHistoryMap.set(s.query, { ...s });
+      searchHistoryMap.set(queryKey, { ...s });
       appliedUpserts++;
     }
   }

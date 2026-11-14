@@ -13,6 +13,7 @@ import { FlashList } from '@shopify/flash-list';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { AppStorage } from '@/services/storage';
+import { SyncManager } from '@/services/sync';
 import { oledTheme, useTheme, getContrastTextColor } from '@/theme';
 import { AnimeCard } from '@/components/AnimeCard';
 import { ConfirmModal } from '@/components/ConfirmModal';
@@ -82,11 +83,18 @@ export default function FavoritesScreen() {
     }, [isSelectionMode, clearSelection, router])
   );
 
-  const onRefresh = React.useCallback(() => {
+  const onRefresh = React.useCallback(async () => {
     setIsRefreshing(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    if (SyncManager.isConnected()) {
+      try {
+        await SyncManager.performFullSync();
+      } catch {
+        // Safe sync error catch
+      }
+    }
     loadFavorites();
-    setTimeout(() => setIsRefreshing(false), 300);
+    setIsRefreshing(false);
   }, [loadFavorites]);
 
   const navigateToAnime = React.useCallback(

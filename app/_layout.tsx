@@ -64,9 +64,11 @@ function RootNavigation() {
         }
         if (SyncManager.isConnected()) {
           SyncManager.pullDelta().catch(() => {});
+          SyncManager.startPeriodicSync(60000);
         }
       } else if (state === 'background' || state === 'inactive') {
         if (SyncManager.isConnected()) {
+          SyncManager.stopPeriodicSync();
           SyncManager.pushPending(true).catch(() => {});
         }
       }
@@ -81,6 +83,7 @@ function RootNavigation() {
     return () => {
       subAppState.remove();
       unsubSettings();
+      SyncManager.stopPeriodicSync();
     };
   }, [navBarMode]);
 
@@ -109,7 +112,9 @@ function RootNavigation() {
 
       setStartupSyncFeedback(null);
 
-      if (!res.ok && res.wasLoggedOut) {
+      if (res.ok) {
+        SyncManager.startPeriodicSync(60000);
+      } else if (res.wasLoggedOut) {
         setConnectionFailurePrompt({
           visible: true,
           title: 'CONNESSIONE KUROSYNC FALLITA',
