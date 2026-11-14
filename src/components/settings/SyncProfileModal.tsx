@@ -18,6 +18,7 @@ interface SyncProfileModalProps {
   theme: any;
   onClose: () => void;
   onProfileSelected: (profile: ProfileItem) => void;
+  onProposeLogin?: () => void;
 }
 
 export const SyncProfileModal: React.FC<SyncProfileModalProps> = React.memo(({
@@ -26,10 +27,12 @@ export const SyncProfileModal: React.FC<SyncProfileModalProps> = React.memo(({
   theme,
   onClose,
   onProfileSelected,
+  onProposeLogin,
 }) => {
   const [profiles, setProfiles] = useState<ProfileItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [switchingProfileId, setSwitchingProfileId] = useState<string | null>(null);
+  const [retryFeedback, setRetryFeedback] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
@@ -41,13 +44,25 @@ export const SyncProfileModal: React.FC<SyncProfileModalProps> = React.memo(({
   const loadProfiles = async () => {
     setIsLoading(true);
     setErrorMsg(null);
+    setRetryFeedback(null);
     try {
-      const list = await SyncManager.listProfiles();
-      setProfiles(list);
+      const res = await SyncManager.listProfilesWithRetries(2, (attempt, max) => {
+        setRetryFeedback(`Connessione a KuroSync... (tentativo ${attempt} di ${max})`);
+      });
+      if (res.ok) {
+        setProfiles(res.profiles);
+      } else {
+        setErrorMsg(res.error || 'Impossibile recuperare i profili');
+        if (res.wasLoggedOut) {
+          onClose();
+          onProposeLogin?.();
+        }
+      }
     } catch (err: any) {
       setErrorMsg(err?.message || 'Impossibile recuperare i profili');
     } finally {
       setIsLoading(false);
+      setRetryFeedback(null);
     }
   };
 
@@ -61,22 +76,30 @@ export const SyncProfileModal: React.FC<SyncProfileModalProps> = React.memo(({
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     setSwitchingProfileId(profile.id);
     setErrorMsg(null);
+    setRetryFeedback(null);
 
     try {
-      const success = await SyncManager.switchProfile(profile.id, profile.name);
-      if (success) {
+      const res = await SyncManager.switchProfileWithRetries(profile.id, profile.name, 2, (attempt, max) => {
+        setRetryFeedback(`Passaggio al profilo... (tentativo ${attempt} di ${max})`);
+      });
+      if (res.ok) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
         onProfileSelected(profile);
         onClose();
       } else {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
-        setErrorMsg(SyncManager.getStatus().lastError || 'Passaggio al profilo fallito');
+        setErrorMsg(res.error || 'Passaggio al profilo fallito');
+        if (res.wasLoggedOut) {
+          onClose();
+          onProposeLogin?.();
+        }
       }
     } catch (err: any) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
       setErrorMsg(err?.message || 'Errore durante il cambio profilo');
     } finally {
       setSwitchingProfileId(null);
+      setRetryFeedback(null);
     }
   };
 
@@ -119,9 +142,23 @@ export const SyncProfileModal: React.FC<SyncProfileModalProps> = React.memo(({
             </Pressable>
           </View>
 
-          {isLoading ? (
-            <View style={{ paddingVertical: 24, alignItems: 'center', justifyContent: 'center' }}>
+          {isLoading || switchingProfileId ? (
+            <View style={{ paddingVertical: 24, alignItems: 'center', justifyContent: 'center', gap: 10 }}>
               <ActivityIndicator size="small" color={theme.colors.primary} />
+              {retryFeedback && (
+                <Text
+                  style={{
+                    fontFamily: 'monospace',
+                    fontSize: 12,
+                    fontWeight: '700',
+                    color: theme.colors.textMuted,
+                    textTransform: 'uppercase',
+                    textAlign: 'center',
+                  }}
+                >
+                  {retryFeedback}
+                </Text>
+              )}
             </View>
           ) : errorMsg ? (
             <View

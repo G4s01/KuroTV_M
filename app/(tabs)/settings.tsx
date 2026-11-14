@@ -7,6 +7,7 @@ import {
   Pressable,
   ActivityIndicator,
   Platform,
+  BackHandler,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
@@ -57,6 +58,21 @@ export default function SettingsScreen() {
   const { theme } = useTheme();
   const { isTablet } = useResponsiveLayout();
   const primaryContrast = getContrastTextColor(theme.colors.primary);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      const backSub = BackHandler.addEventListener('hardwareBackPress', () => {
+        Haptics.selectionAsync().catch(() => {});
+        if (router.canGoBack()) {
+          router.back();
+        } else {
+          router.replace('/(tabs)');
+        }
+        return true;
+      });
+      return () => backSub.remove();
+    }, [router])
+  );
 
   const [activeTheme, setActiveTheme] = React.useState<string>(() => {
     const fam = AppStorage.getThemeFamily() || 'oled';

@@ -4160,6 +4160,78 @@ assert(indexLatestCode.includes('isFilterSheetVisibleRef'), 'index.tsx deve chiu
 console.log('✓ Fix Tablet Rail (Doppio Contorno & Back Gesture), Smartphone Navbar & Palinsesto verificati con successo.');
 
 // -----------------------------------------------------------------------------
+// [29/29] Verifica Gestures Indietro Tablet & Retry Automatici KuroSync con Auto-Logout
+// -----------------------------------------------------------------------------
+console.log('\n[29/29] Verifica Gestures Indietro Tablet & Retry Automatici KuroSync con Auto-Logout...');
+
+// 1. Back gesture coverage across all tab screens
+const favoritesLatestCode = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/favorites.tsx'), 'utf-8');
+assert(favoritesLatestCode.includes("router.replace('/(tabs)')"), 'favorites.tsx deve tornare alla home quando non in selection mode');
+assert(favoritesLatestCode.includes('useFocusEffect('), 'favorites.tsx deve usare useFocusEffect per hardwareBackPress');
+
+const historyLatestCode = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/history.tsx'), 'utf-8');
+assert(historyLatestCode.includes("router.replace('/(tabs)')"), 'history.tsx deve tornare alla home quando non in selection mode');
+assert(historyLatestCode.includes('useFocusEffect('), 'history.tsx deve usare useFocusEffect per hardwareBackPress');
+
+const settingsLatestCode = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/settings.tsx'), 'utf-8');
+assert(settingsLatestCode.includes("router.replace('/(tabs)')"), 'settings.tsx deve tornare alla home alla pressione indietro');
+assert(settingsLatestCode.includes('useFocusEffect('), 'settings.tsx deve usare useFocusEffect per hardwareBackPress');
+
+assert(tabLayoutLatestCode.includes('backBehavior="initialRoute"'), 'TabLayout deve configurare backBehavior="initialRoute"');
+
+// 2. SyncManager retry methods exist
+assert(typeof (SyncManager as any).performFullSyncWithRetries === 'function', 'SyncManager deve definire performFullSyncWithRetries');
+assert(typeof (SyncManager as any).listProfilesWithRetries === 'function', 'SyncManager deve definire listProfilesWithRetries');
+assert(typeof (SyncManager as any).switchProfileWithRetries === 'function', 'SyncManager deve definire switchProfileWithRetries');
+
+// 3. Root Navigation startup sync & retry banner & reconnect prompt
+const rootLayoutLatestCode = fs.readFileSync(path.resolve(process.cwd(), 'app/_layout.tsx'), 'utf-8');
+assert(rootLayoutLatestCode.includes('performFullSyncWithRetries'), 'app/_layout.tsx deve usare performFullSyncWithRetries');
+assert(rootLayoutLatestCode.includes('startupSyncBanner'), 'app/_layout.tsx deve mostrare il banner di feedback durante i tentativi di sincronizzazione');
+assert(rootLayoutLatestCode.includes('connectionFailurePrompt'), 'app/_layout.tsx deve gestire connectionFailurePrompt per proporre il login');
+assert(rootLayoutLatestCode.includes('SyncConnectModal'), 'app/_layout.tsx deve includere SyncConnectModal per consentire il login immediato (QR o manuale)');
+
+// 4. SyncProfileModal retry feedback & onProposeLogin
+const syncProfileModalCode = fs.readFileSync(path.resolve(process.cwd(), 'src/components/settings/SyncProfileModal.tsx'), 'utf-8');
+assert(syncProfileModalCode.includes('listProfilesWithRetries'), 'SyncProfileModal deve usare listProfilesWithRetries');
+assert(syncProfileModalCode.includes('switchProfileWithRetries'), 'SyncProfileModal deve usare switchProfileWithRetries');
+assert(syncProfileModalCode.includes('onProposeLogin'), 'SyncProfileModal deve supportare la prop onProposeLogin');
+assert(syncProfileModalCode.includes('retryFeedback'), 'SyncProfileModal deve mostrare retryFeedback durante i tentativi');
+
+// 5. Test SyncManager.performFullSyncWithRetries behavior with failing mock fetch
+const tempToken = 'test-retry-token-123';
+AppStorage.setString(StorageKeys.SYNC_DEVICE_TOKEN, tempToken);
+AppStorage.setString(StorageKeys.SYNC_SERVER_URL, 'https://test-sync.workers.dev');
+
+let retryCallbackCalls: number[] = [];
+// Save current fetch
+const savedFetch = (globalThis as any).fetch;
+(globalThis as any).fetch = async (url: string) => {
+  if (url.includes('/api/sync/pull')) {
+    return {
+      ok: false,
+      status: 500,
+      json: async () => ({ ok: false, error: 'Database transient error' }),
+    } as any;
+  }
+  return { ok: true, status: 200, json: async () => ({ ok: true }) } as any;
+};
+
+try {
+  const retrySyncRes = await SyncManager.performFullSyncWithRetries(2, (attempt, max) => {
+    retryCallbackCalls.push(attempt);
+  });
+  assert.strictEqual(retrySyncRes.ok, false, 'performFullSyncWithRetries deve fallire se tutte le chiamate falliscono');
+  assert.strictEqual(retrySyncRes.wasLoggedOut, true, 'performFullSyncWithRetries deve disconnettere l utente in caso di fallimento persistente');
+  assert.strictEqual(retryCallbackCalls.length, 2, 'performFullSyncWithRetries deve eseguire 2 retry (totale 3 tentativi)');
+  assert.strictEqual(SyncManager.isConnected(), false, 'SyncManager non deve più essere connesso dopo l auto-logout');
+} finally {
+  (globalThis as any).fetch = savedFetch;
+}
+
+console.log('✓ Gestures Indietro Tablet & Retry Automatici KuroSync con Auto-Logout verificati con successo.');
+
+// -----------------------------------------------------------------------------
 // Fine Test
 // -----------------------------------------------------------------------------
 console.log('\n==============================================');

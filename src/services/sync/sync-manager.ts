@@ -887,6 +887,56 @@ class SyncManagerClass {
     return this.client.listProfiles();
   }
 
+  /**
+   * Retrieves profiles with automated retries and visual feedback.
+   * In case of persistent failure, automatically logs out and signals the caller
+   * to propose a re-login (QR or manual).
+   */
+  async listProfilesWithRetries(
+    maxRetries = 2,
+    onRetry?: (attempt: number, maxRetries: number, error: string) => void
+  ): Promise<{
+    ok: boolean;
+    profiles: ProfileItem[];
+    error?: string;
+    wasLoggedOut?: boolean;
+  }> {
+    if (!this.isConnected()) {
+      return { ok: false, profiles: [], error: 'KuroSync non collegato' };
+    }
+
+    this.ensureClientConfigured();
+
+    let lastError = '';
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      if (attempt > 0) {
+        if (onRetry) {
+          onRetry(attempt, maxRetries, lastError);
+        }
+        this.lastError = `Tentativo ${attempt}/${maxRetries}: ${lastError}`;
+        this.notify();
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+      try {
+        const profiles = await this.client.listProfiles();
+        this.lastError = null;
+        this.notify();
+        return { ok: true, profiles };
+      } catch (err: any) {
+        lastError = err?.message || 'Impossibile recuperare i profili';
+      }
+    }
+
+    // All retries failed -> auto-logout
+    await this.disconnect();
+    return {
+      ok: false,
+      profiles: [],
+      error: lastError || 'Connessione a KuroSync fallita dopo diversi tentativi',
+      wasLoggedOut: true,
+    };
+  }
+
   async switchProfile(profileId: string, profileName?: string): Promise<boolean> {
     if (!this.isConnected() || !profileId) return false;
 
@@ -956,6 +1006,51 @@ class SyncManagerClass {
       this.notify();
       return false;
     }
+  }
+
+  /**
+   * Switches profile with automated retries and visual feedback.
+   * In case of persistent failure, automatically logs out and signals caller
+   * to propose a re-login (QR or manual).
+   */
+  async switchProfileWithRetries(
+    profileId: string,
+    profileName?: string,
+    maxRetries = 2,
+    onRetry?: (attempt: number, maxRetries: number, error: string) => void
+  ): Promise<{
+    ok: boolean;
+    error?: string;
+    wasLoggedOut?: boolean;
+  }> {
+    if (!this.isConnected() || !profileId) {
+      return { ok: false, error: 'KuroSync non collegato o profilo non valido' };
+    }
+
+    let lastError = '';
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      if (attempt > 0) {
+        if (onRetry) {
+          onRetry(attempt, maxRetries, lastError);
+        }
+        this.lastError = `Tentativo ${attempt}/${maxRetries}: ${lastError}`;
+        this.notify();
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+      const success = await this.switchProfile(profileId, profileName);
+      if (success) {
+        return { ok: true };
+      }
+      lastError = this.getStatus().lastError || 'Passaggio al profilo fallito';
+    }
+
+    // All retries failed -> auto-logout
+    await this.disconnect();
+    return {
+      ok: false,
+      error: lastError || 'Passaggio al profilo fallito dopo diversi tentativi',
+      wasLoggedOut: true,
+    };
   }
 
   // --------------------------------------------------------------------------
@@ -1162,6 +1257,62 @@ class SyncManagerClass {
       this.notify();
       return { ok: false, upserts: 0, deletions: 0, error: this.lastError || undefined };
     }
+  }
+
+  /**
+   * Performs full synchronization with retries and visual feedback.
+   * In case of persistent failure, automatically logs out and signals caller
+   * to propose a re-login (QR or manual).
+   */
+  async performFullSyncWithRetries(
+    maxRetries = 2,
+    onRetry?: (attempt: number, maxRetries: number, error: string) => void
+  ): Promise<{
+    ok: boolean;
+    upserts: number;
+    deletions: number;
+    error?: string;
+    wasLoggedOut?: boolean;
+  }> {
+    if (!this.isConnected()) {
+      return { ok: false, upserts: 0, deletions: 0, error: 'KuroSync non collegato' };
+    }
+
+    let syncRes = await this.performFullSync();
+    if (syncRes.ok) {
+      return syncRes;
+    }
+
+    let lastError = syncRes.error || 'Errore di sincronizzazione';
+
+    // If initial sync failed, retry up to maxRetries times with visual feedback and delay
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      if (onRetry) {
+        onRetry(attempt, maxRetries, lastError);
+      }
+      this.lastError = `Tentativo ${attempt}/${maxRetries}: ${lastError}`;
+      this.notify();
+
+      // Short delay between retries for network / server settling
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+
+      syncRes = await this.performFullSync();
+      if (syncRes.ok) {
+        return syncRes;
+      }
+      lastError = syncRes.error || lastError;
+    }
+
+    // After all retries failed, log out locally to protect state and propose re-login
+    await this.disconnect();
+
+    return {
+      ok: false,
+      upserts: 0,
+      deletions: 0,
+      error: lastError || 'Impossibile connettersi a KuroSync dopo diversi tentativi',
+      wasLoggedOut: true,
+    };
   }
 
   async pullDelta(): Promise<{ ok: boolean; upserts: number; deletions: number; error?: string }> {

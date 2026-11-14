@@ -1,5 +1,5 @@
 import React from 'react';
-import { Platform, AppState, Dimensions } from 'react-native';
+import { Platform, AppState, Dimensions, View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as NavigationBar from 'expo-navigation-bar';
@@ -13,6 +13,7 @@ import { UpdaterService, UpdateStore } from '@/services/updater';
 import { SyncManager, parseKuroSyncDeepLink } from '@/services/sync';
 import * as Linking from 'expo-linking';
 import { UpdateModal, ConfirmModal } from '@/components';
+import { SyncConnectModal } from '@/components/settings';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -88,6 +89,40 @@ function RootNavigation() {
     title: string;
     message: string;
   } | null>(null);
+
+  const [startupSyncFeedback, setStartupSyncFeedback] = React.useState<string | null>(null);
+  const [connectionFailurePrompt, setConnectionFailurePrompt] = React.useState<{
+    visible: boolean;
+    title: string;
+    message: string;
+  } | null>(null);
+  const [isConnectModalOpen, setIsConnectModalOpen] = React.useState(false);
+
+  // Initial KuroSync delta pull on app startup with automated retry feedback & auto-logout
+  React.useEffect(() => {
+    const syncTimer = setTimeout(async () => {
+      if (!SyncManager.isConnected()) return;
+
+      const res = await SyncManager.performFullSyncWithRetries(2, (attempt, max) => {
+        setStartupSyncFeedback(`Connessione a KuroSync... (tentativo ${attempt} di ${max})`);
+      });
+
+      setStartupSyncFeedback(null);
+
+      if (!res.ok && res.wasLoggedOut) {
+        setConnectionFailurePrompt({
+          visible: true,
+          title: 'CONNESSIONE KUROSYNC FALLITA',
+          message:
+            'Impossibile collegarsi al server KuroSync dopo vari tentativi. Sei stato disconnesso per sicurezza. Vuoi accedere nuovamente?',
+        });
+      }
+    }, 1500);
+
+    return () => {
+      clearTimeout(syncTimer);
+    };
+  }, []);
 
   // KuroSync deep-link handling (e.g. kurosync://connect?url=...&token=...&profile=... or kurosync://pair?code=...)
   React.useEffect(() => {
@@ -223,6 +258,46 @@ function RootNavigation() {
         />
       </Stack>
       <UpdateModal />
+      {startupSyncFeedback && (
+        <View
+          style={[
+            styles.startupSyncBanner,
+            {
+              backgroundColor: theme.colors.surface,
+              borderColor: theme.colors.primary,
+            },
+          ]}
+        >
+          <ActivityIndicator size="small" color={theme.colors.primary} />
+          <Text style={[styles.startupSyncText, { color: theme.colors.text }]} numberOfLines={1}>
+            {startupSyncFeedback}
+          </Text>
+        </View>
+      )}
+      {connectionFailurePrompt?.visible && (
+        <ConfirmModal
+          visible={connectionFailurePrompt.visible}
+          title={connectionFailurePrompt.title}
+          message={connectionFailurePrompt.message}
+          icon="cloud-offline-outline"
+          iconColor={theme.colors.warning || '#F59E0B'}
+          confirmText="ACCEDI (QR / MANUALE)"
+          cancelText="ANNULLA"
+          confirmColor={theme.colors.primary}
+          onConfirm={() => {
+            setConnectionFailurePrompt(null);
+            setIsConnectModalOpen(true);
+          }}
+          onCancel={() => setConnectionFailurePrompt(null)}
+        />
+      )}
+      <SyncConnectModal
+        visible={isConnectModalOpen}
+        initialTab="qr"
+        theme={theme}
+        onClose={() => setIsConnectModalOpen(false)}
+        onSuccess={() => setIsConnectModalOpen(false)}
+      />
       {syncAlert?.visible && (
         <ConfirmModal
           visible={syncAlert.visible}
@@ -240,6 +315,34 @@ function RootNavigation() {
     </GestureHandlerRootView>
   );
 }
+
+const styles = StyleSheet.create({
+  startupSyncBanner: {
+    position: 'absolute',
+    top: Platform.OS === 'android' ? 44 : 54,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 24,
+    borderWidth: 1.5,
+    zIndex: 9999,
+    elevation: 8,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 6,
+  },
+  startupSyncText: {
+    fontFamily: 'monospace',
+    fontWeight: '700',
+    fontSize: 12,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+});
 
 export default function RootLayout() {
   React.useEffect(() => {
@@ -264,17 +367,9 @@ export default function RootLayout() {
         .catch(() => {});
     }, 1200);
 
-    // Initial KuroSync delta pull on app startup
-    const syncTimer = setTimeout(() => {
-      if (SyncManager.isConnected()) {
-        SyncManager.performFullSync().catch(() => {});
-      }
-    }, 1500);
-
     return () => {
       clearTimeout(timer);
       clearTimeout(updateTimer);
-      clearTimeout(syncTimer);
     };
   }, []);
 

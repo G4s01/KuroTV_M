@@ -442,6 +442,9 @@ export const SyncSettingsCard: React.FC<SyncSettingsCardProps> = React.memo(({ t
           setSyncFeedback(`PROFILO ATTIVO: ${p.name.toUpperCase()}`);
           setTimeout(() => setSyncFeedback(null), 3500);
         }}
+        onProposeLogin={() => {
+          setIsConnectModalOpen(true);
+        }}
       />
     </View>
   );

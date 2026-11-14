@@ -353,6 +353,7 @@ export default function TabLayout() {
   return (
     <>
       <Tabs
+        backBehavior="initialRoute"
         tabBar={
           isTablet
             ? (props) => (
@@ -555,6 +556,9 @@ export default function TabLayout() {
         onClose={() => setIsProfileModalOpen(false)}
         onProfileSelected={() => {
           setIsProfileModalOpen(false);
+        }}
+        onProposeLogin={() => {
+          setIsConnectModalOpen(true);
         }}
       />
     </>

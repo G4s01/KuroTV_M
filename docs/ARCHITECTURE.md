@@ -13,7 +13,7 @@ KuroM/
 │   ├── (tabs)/                  # Navigazione a schede inferiori
 │   │   ├── _layout.tsx          # Configurazione TabBar con tinte reattive & pulsante Profilo rapido
 │   │   ├── index.tsx            # Home: Hero Spotlight, Continua a guardare, Ultime uscite, ricerca unificata & pulsante Palinsesto
-│   │   ├── explore.tsx          # Palinsesto: Programmazione uscite settimanali con orari previsti, selettore giorni & freccia indietro (href: null)
+│   │   ├── explore.tsx          # Palinsesto: Programmazione uscite settimanali con orari previsti, selettore giorni & freccia indietro (tabBarItemStyle: { display: 'none' })
 │   │   ├── favorites.tsx        # Preferiti: Griglia anime salvati in locale
 │   │   ├── history.tsx          # Cronologia: Storico di visione e ripresa episodio
 │   │   ├── profile.tsx          # Profilo: Route di sicurezza con redirect automatico (gestita tramite tabPress / custom button)
@@ -164,7 +164,7 @@ La ricerca catalogo è integrata direttamente nell'header della schermata Home:
 
 ## 📅 Palinsesto & Programmazione Settimanale (`app/(tabs)/explore.tsx`)
 
-La schermata Palinsesto visualizza la programmazione delle uscite anime settimanali con gli orari previsti da AnimeWorld (`animeworld.ac/schedule`). È accessibile direttamente dall'header della Home (`HomeAppBar`, posizionato tra il pulsante Download e la Ricerca) con rotta tab dedicata (`href: null`) e integra una freccia Indietro touch-native (`arrow-back`, $44 \times 44$dp) per un ritorno fluido alla schermata principale:
+La schermata Palinsesto visualizza la programmazione delle uscite anime settimanali con gli orari previsti da AnimeWorld (`animeworld.ac/schedule`). È accessibile direttamente dall'header della Home (`HomeAppBar`, posizionato tra il pulsante Download e la Ricerca) con navigazione `router.navigate('/(tabs)/explore')` e scheda nascosta dalla barra tramite `tabBarItemStyle: { display: 'none' }` e `tabBarButton: () => null` (preservando la rotta runtime in Expo Router v58), e integra una freccia Indietro touch-native (`arrow-back`, $44 \times 44$dp) e listener `useFocusEffect` `hardwareBackPress` per un ritorno fluido alla schermata principale:
 
 ### 1. Scraper & Parsing Dati (`schedule.parser.ts`)
 - **Estrazione Strutturata con `cheerio/slim` & `htmlparser2`**:
@@ -396,3 +396,51 @@ Kuro Mobile integra un'architettura completa di sincronizzazione self-hosted mul
 - **Pulsante Profilo Rapido nella Tab Bar (`app/(tabs)/_layout.tsx`)**: Pulsante dedicato posizionato tra Cronologia e Impostazioni con icona contestuale (`person-circle` / `person`) che permette di cambiare profilo o avviare l'accoppiamento con un solo tap da qualsiasi schermata.
 - **`QrScannerModal.tsx`**: Scanner fotocamera basato su `CameraView` di `expo-camera` (v17 / SDK 58, `recordAudioAndroid: false`), mirino centrale OLED, torcia e gestione permessi con redirect a `Linking.openSettings()` se bloccati. Montato come frammento disaccoppiato per azzerare crash di finestre modali annidate su Android Fabric.
 - **`AuthorizeTvModal.tsx`**: Modale per autorizzare un dispositivo Android TV inquadrando il QR mostrato sul televisore o digitando il codice a 6 cifre (es. `K7X9P2`) tramite `client.approveTvPairing`.
+
+---
+
+## 📱 Adattamento Tablet, Left Navigation Rail & Layout Responsive
+
+Kuro Mobile include un'architettura completa per schermi di grandi dimensioni (tablet Android e dispositivi pieghevoli):
+
+### 1. Discriminazione Tablet Affidabile (Standard Android `sw600dp`)
+- Nel modulo `src/hooks/useResponsiveLayout.ts`, la qualificazione avviene mediante `Math.min(windowWidth, windowHeight) >= 600`.
+- Gli smartphone ruotati in landscape (es. 844×390dp, dove `min(844, 390) = 390 < 600`) preservano rigorosamente il layout smartphone e la navigazione inferiore, senza commutare erroneamente su layout tablet.
+
+### 2. Left Navigation Rail Touch-Native (`TabletNavigationRail.tsx`)
+- Su tablet, la navigazione inferiore si sposta automaticamente a sinistra con larghezza fissa di 76dp.
+- **Allineamento Separatore 60dp**: Il container adotta `paddingTop: insets.top` e la sezione superiore del profilo (`topSection`) adotta `height: 60` con `borderBottomWidth: 1, borderBottomColor: theme.colors.border`. Tutte le intestazioni delle viste (`HomeAppBar`, `SelectionAppBar`, `ExploreScreen`, `DownloadsScreen`, `SettingsScreen`) mantengono un'altezza fissa di 60dp, allineando con precisione millimetrica la linea orizzontale della sidebar con quella dell'intestazione principale.
+- **Azzeramento del Doppio Contorno**: I componenti icona usano `styles.tabletTabIconWrapper` senza applicare un secondo bordo interno, lasciando che il solo `styles.tabItemActive` della rail applichi il contorno arrotondato.
+- **Selettore Profilo & Login**: In cima alla rail è posizionato il pulsante profilo/login con touch target $\ge 44 \times 44$dp. Con profilo attivo mostra l'avatar con lettera iniziale monospace e pallino verde online; senza accesso o profilo, mostra l'icona `log-in-outline` e accessibilità `'ACCEDI / COLLEGA KUROSYNC'`.
+
+### 3. Layout Master-Detail Adattivo per Anime Dettaglio (`app/anime/[id].tsx`)
+- **In Verticale (Portrait su Tablet)**: La schermata mantiene un layout a colonna singola armonioso (`isMasterDetail: false`), centrato (`maxWidth: 960dp`), con testata pulita, sinossi, tabella tecnica e griglia episodi proporzionata (5-8 colonne).
+- **In Orizzontale (Landscape su Tablet)**: Si attiva il layout Master-Detail a due colonne affiancate (`isMasterDetail = isTablet && isLandscape`): colonna sinistra Master (35%, max 420dp) con locandina, azioni e scheda tecnica; colonna destra Detail (restante larghezza) con sinossi, selettore batch e griglia episodi.
+
+### 4. Smartphone Bottom Tab Bar & Spaziatura Bordo Superiore
+- Componente unificato `ProfileTabIcon` con avatar circolare, lettera iniziale del profilo monospace e stato online, con fallback a `log-in-outline`.
+- Spaziatura dal bordo superiore della barra (`borderTopWidth: 1`): `paddingTop: 6` su `tabBarStyle` con altezza card ridotta a 38dp, garantendo una comoda clearance (~12dp) che evita contatti visivi antiestetici.
+
+### 5. Gestione Gesture Back di Sistema Android (`useFocusEffect` + `BackHandler`)
+- **Navigazione Universale tra Schede (Preferiti, Cronologia, Impostazioni)**: Tutte le viste di navigazione secondarie registrano un listener `hardwareBackPress` con `useFocusEffect` che naviga verso la Home (`router.replace('/(tabs)')`) quando non sono attive modalità di selezione multipla. Questo risolve il problema riscontrato sui tablet Android (es. Xiaomi Mi Pad 6 con HyperOS/MIUI) in cui la gesture di navigazione a schermo intero mandava l'applicazione in background invece di tornare alla schermata principale. Inoltre, `<Tabs>` adotta `backBehavior="initialRoute"`.
+- **Ricerca in Home**: Gestita con `useFocusEffect` e ref sincroni (`isFilterSheetVisibleRef`, `isSearchActiveRef`). Se il foglio filtri è aperto, il primo back chiude il foglio; il secondo back chiude la tastiera, azzera la ricerca e ripristina la home feed.
+- **Scaricati**: Gestita con `useFocusEffect` e `isSheetVisibleRef`. Chiude prima il foglio episodi scaricati o torna alla Home via `router.canGoBack() ? router.back() : router.replace('/(tabs)')`.
+- **Palinsesto**: Freccia indietro visibile e listener `hardwareBackPress` per tornare sempre alla Home.
+
+---
+
+## 🔄 Resilienza Connessione KuroSync, Retry con Feedback & Auto-Logout
+
+Per garantire un'esperienza utente affidabile anche in presenza di disconnessioni di rete temporanee, instabilità Wi-Fi o token revocati:
+
+### 1. Retry Progressivi con Feedback (`SyncManager`)
+- I metodi `performFullSyncWithRetries`, `listProfilesWithRetries` e `switchProfileWithRetries` (`src/services/sync/sync-manager.ts`) gestiscono fino a 2 retry (3 tentativi totali con backoff progressivo 1000ms, 1500ms).
+- Un callback di notifica invia lo stato del tentativo al chiamante, consentendo di visualizzare feedback di caricamento dedicati:
+  - **All'avvio dell'app (`app/_layout.tsx`)**: Un banner/HUD fluttuante OLED a comparsa informa l'utente durante la sincronizzazione iniziale e gli eventuali tentativi di riconnessione (`"Sincronizzazione KuroSync... (tentativo X di 2)"`).
+  - **Nel selettore profili (`SyncProfileModal.tsx`)**: Mostra lo stato di connessione e il conteggio dei tentativi in corso.
+
+### 2. Auto-Logout Pulito & Proposta di Re-Autenticazione
+- Se tutti i tentativi falliscono, il sistema considera la sessione non valida o il server irraggiungibile:
+  - Invoca automaticamente `await this.disconnect()` per ripulire le credenziali in MMKV ed evitare stati "falsamente connessi";
+  - **All'avvio**: Mostra un `ConfirmModal` che avvisa l'utente della disconnessione e, su conferma, apre `SyncConnectModal`;
+  - **Nel Selettore Profili**: Chiude il modale profili ed apre direttamente `SyncConnectModal` offrendo l'accesso immediato tramite QR code o credenziali manuali.

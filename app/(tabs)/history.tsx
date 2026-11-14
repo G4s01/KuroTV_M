@@ -325,13 +325,21 @@ export default function HistoryScreen() {
 
   useFocusEffect(
     React.useCallback(() => {
-      if (!isSelectionMode) return;
       const backSub = BackHandler.addEventListener('hardwareBackPress', () => {
-        clearSelection();
+        if (isSelectionMode) {
+          clearSelection();
+          return true;
+        }
+        Haptics.selectionAsync().catch(() => {});
+        if (router.canGoBack()) {
+          router.back();
+        } else {
+          router.replace('/(tabs)');
+        }
         return true;
       });
       return () => backSub.remove();
-    }, [isSelectionMode, clearSelection])
+    }, [isSelectionMode, clearSelection, router])
   );
 
   React.useEffect(() => {

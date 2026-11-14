@@ -7,6 +7,31 @@ e questo progetto aderisce al [Semantic Versioning](https://semver.org/lang/it/)
 
 ## [Unreleased]
 
+### Aggiunto
+- **Resilienza Connessione KuroSync con Retry Automatici, Feedback di Caricamento & Auto-Logout**:
+  - Implementati `performFullSyncWithRetries`, `listProfilesWithRetries` e `switchProfileWithRetries` in `SyncManager` (`src/services/sync/sync-manager.ts`) che gestiscono fino a 2 tentativi di riconnessione automatica (3 tentativi totali con backoff progressivo) con callback per il feedback visivo di stato.
+  - Feedback contestuale di caricamento sia all'avvio dell'app in `app/_layout.tsx` (con banner/HUD fluttuante OLED a comparsa durante la sincronizzazione) sia all'apertura o cambio profilo in `SyncProfileModal.tsx` (`"Connessione a KuroSync... (tentativo X di 2)"`).
+  - In caso di fallimento persistente al termine dei retry, l'app esegue l'auto-logout pulito (`await this.disconnect()`), azzera lo stato inconsistente in MMKV e propone immediatamente il nuovo accesso all'utente tramite `ConfirmModal` all'avvio o aprendo direttamente `SyncConnectModal` (accesso rapido QR o manuale) da `SyncProfileModal` e `SyncSettingsCard`.
+- **Suite di Test Estesa a 29 Stadi**:
+  - Aggiunto lo stadio `[29/29]` in `tests/core-verification.test.ts` per validare le gesture indietro su tutte le schede secondarie (`favorites`, `history`, `settings`), la configurazione `backBehavior="initialRoute"` su `<Tabs>`, la logica di retry progressivo con auto-logout e la proposta di login in-app.
+
+### Risolto
+- **Risoluzione Back Gesture su Tablet (Xiaomi Mi Pad 6 & Grandi Schermi)**:
+  - Risolto il problema per cui su tablet Xiaomi Mi Pad 6 (e in generale con gesture di navigazione Android a schermo intero) la back gesture nelle tab secondarie (`Preferiti`, `Cronologia`, `Impostazioni`) mandava l'applicazione direttamente in background anziché tornare alla Home.
+  - Integrato listener `hardwareBackPress` con `useFocusEffect` di Expo Router in `favorites.tsx`, `history.tsx` e `settings.tsx` per intercettare la gesture e reindirizzare a `router.replace('/(tabs)')` quando non vi sono modalità di selezione attive.
+  - Aggiunta la proprietà `backBehavior="initialRoute"` al componente `<Tabs>` in `app/(tabs)/_layout.tsx` per standardizzare il comportamento della cronologia di navigazione secondo le convenzioni Android.
+- **Azzeramento Doppio Contorno su Tablet Rail**:
+  - Introdotto `styles.tabletTabIconWrapper` per evitare che `BottomTabIcon` e `SettingsTabIcon` aggiungano un secondo contorno interno a quello già disegnato da `tabItemActive` sulla sidebar tablet.
+- **Allineamento Linea Separatore della Sidebar a 60dp**:
+  - Impostato `paddingTop: insets.top` su `railContainer` e `height: 60` su `topSection` con `borderBottomWidth: 1`, armonizzando tutte le intestazioni delle viste (`HomeAppBar`, `SelectionAppBar`, `ExploreScreen`, `DownloadsScreen`, `SettingsScreen`) ad altezza fissa 60dp (`height: 60, minHeight: 60`), garantendo che la linea orizzontale scorra continua e uniforme dal bordo sinistro all'intera larghezza dello schermo.
+- **Fix Apertura Palinsesto (`router.navigate`)**:
+  - Rimosso `href: null` dalle opzioni della scheda `explore` in `app/(tabs)/_layout.tsx` (che causava il redirect automatico o mancata apertura su Expo Router v58) sostituendolo con `tabBarItemStyle: { display: 'none' }` e `tabBarButton: () => null`.
+  - Freccia Indietro nel Palinsesto resa sempre visibile con fallback sicuro `router.canGoBack() ? router.back() : router.replace('/(tabs)')`.
+- **Distanziamento Card Selezionate dal Bordo Superiore della Navbar**:
+  - Aggiunto `paddingTop: 6` su `tabBarStyle` e ridotta l'altezza delle pill card selezionate a 38dp (`width: 50, height: 38, borderRadius: 14`), garantendo ~12dp di clearance dal bordo superiore (`borderTopWidth: 1`).
+- **Ritorno alla Home con Gesture di Sistema da Scaricati e Ricerca**:
+  - Migrata la gestione di `BackHandler` a `useFocusEffect` con ref sincroni in `app/(tabs)/index.tsx` e `app/downloads/index.tsx`: la gesture di sistema Android da bordo schermo chiude prioritariamente i modali secondari aperti (foglio filtri ricerca o lista puntate scaricate) prima di riportare alla Home feed, evitando categoricamente l'uscita accidentale dall'applicazione.
+
 ### Migliorato
 - **AniSkip Intelligente per Ending & Scene Post-Ending (`'SALTA'` / `'PROSSIMO'`)**:
   - Introdotto `computeAniSkipOverlayState`, `doesEndingCoincideWithEnd` e soglia `ENDING_COINCIDE_END_THRESHOLD_SECONDS` (5s) in `src/services/aniskip/index.ts`: quando la sigla di chiusura (`ed` / `mixed-ed`) termina entro `5s` dalla durata dell'episodio ed è disponibile l'episodio successivo, il pulsante `'SALTA'` diventa automaticamente **`'PROSSIMO'`** per evitare di ritrovarsi alla fine della puntata già conclusa (e in modalità `AUTO` naviga direttamente alla puntata seguente). Sull'ultimo episodio resta sempre `'SALTA'`.
