@@ -31,18 +31,27 @@ function RootNavigation() {
   const [navBarMode, setNavBarMode] = React.useState<NavBarMode>(() => AppStorage.getNavBarMode());
 
   React.useEffect(() => {
-    const handleOrientationPolicy = () => {
-      const { width, height } = Dimensions.get('window');
-      const isTabletDevice = Math.min(width, height) >= 600;
-      if (isTabletDevice) {
-        ScreenOrientation.unlockAsync().catch(() => {});
-      } else {
-        ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
-      }
-    };
+    let wasTablet = Math.min(Dimensions.get('window').width, Dimensions.get('window').height) >= 600;
+    if (wasTablet) {
+      ScreenOrientation.unlockAsync().catch(() => {});
+    } else {
+      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
+    }
 
-    handleOrientationPolicy();
-    const dimSub = Dimensions.addEventListener('change', handleOrientationPolicy);
+    const dimSub = Dimensions.addEventListener(
+      'change',
+      ({ window }: { window: { width: number; height: number } }) => {
+        const isTablet = Math.min(window.width, window.height) >= 600;
+        if (isTablet !== wasTablet) {
+          wasTablet = isTablet;
+          if (isTablet) {
+            ScreenOrientation.unlockAsync().catch(() => {});
+          } else {
+            ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
+          }
+        }
+      }
+    );
     return () => {
       dimSub.remove();
     };

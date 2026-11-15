@@ -543,10 +543,14 @@ export default function VideoPlayerScreen() {
 
   const toggleOrientationFullscreen = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    if (isLandscape) {
-      await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
-    } else {
-      await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
+    try {
+      if (isLandscape) {
+        await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
+      } else {
+        await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
+      }
+    } catch (err) {
+      console.warn('[VideoPlayer] toggleOrientationFullscreen error:', err);
     }
   };
 
@@ -554,6 +558,7 @@ export default function VideoPlayerScreen() {
   const loadStream = React.useCallback(async () => {
     setIsLoadingSource(true);
     setSourceError(null);
+    setVideoUrl(null);
 
     try {
       let directUrl = '';
@@ -1230,11 +1235,28 @@ export default function VideoPlayerScreen() {
           <PlayerSkeleton animeTitle={animeTitle} episodeNumber={episodeNumber} />
         ) : (
           <View style={styles.loadingWrapper}>
+            <Pressable
+              style={[
+                styles.errorBackBtn,
+                {
+                  top: Math.max(16, insets.top + 8),
+                  left: Math.max(16, insets.left + 8),
+                },
+              ]}
+              onPress={() => router.back()}
+              hitSlop={8}
+              accessibilityLabel="TORNA INDIETRO"
+            >
+              <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+            </Pressable>
+
             <Ionicons name="alert-circle-outline" size={48} color={theme.colors.error || oledTheme.colors.error} />
             <Text style={styles.errorText}>{(sourceError || 'IMPOSSIBILE RIPRODURRE').toUpperCase()}</Text>
             <Pressable
               style={[styles.retryBtn, { backgroundColor: theme.colors.primary }]}
               onPress={loadStream}
+              hitSlop={8}
+              accessibilityLabel="RIPROVA CARICAMENTO STREAMING"
             >
               <Text style={[styles.retryBtnText, { color: getContrastTextColor(theme.colors.primary) }]}>RIPROVA</Text>
             </Pressable>
@@ -1242,7 +1264,7 @@ export default function VideoPlayerScreen() {
         )}
 
         {/* Integrated Loading / Buffering feedback indicator when OSD controls are hidden */}
-        {!showControls && isBufferingOrLoading && (
+        {!showControls && isBufferingOrLoading && !sourceError && (
           <View style={styles.loadingOverlay} pointerEvents="none">
             <View style={[styles.centerPlayBtn, { backgroundColor: `${theme.colors.primary}E0` }]}>
               <ActivityIndicator size="small" color={getContrastTextColor(theme.colors.primary)} />
@@ -1250,8 +1272,8 @@ export default function VideoPlayerScreen() {
           </View>
         )}
 
-        {/* Gesture detector touch surface over video (active when controls hidden) */}
-        {!showControls && (
+        {/* Gesture detector touch surface over video (active only when controls are hidden and video is healthy) */}
+        {!showControls && !sourceError && !isLoadingSource && (
           <GestureDetector gesture={composedGestures}>
             <View style={StyleSheet.absoluteFill} />
           </GestureDetector>
@@ -1297,7 +1319,7 @@ export default function VideoPlayerScreen() {
 
         {/* HUD Volume / Brightness / Speed Indicator */}
         {hudIndicator && (
-          <View style={[styles.hudBox, { top: Math.max(24, insets.top + 8) }]}>
+          <View pointerEvents="none" style={[styles.hudBox, { top: Math.max(24, insets.top + 8) }]}>
             <Ionicons
               name={
                 hudIndicator.type === 'volume'
@@ -1320,7 +1342,7 @@ export default function VideoPlayerScreen() {
         )}
 
         {/* OSD Controls Overlay */}
-        {showControls && Boolean(videoUrl) && (
+        {showControls && Boolean(videoUrl) && !sourceError && (
           <View style={styles.osdOverlay}>
             {/* Background tap handler to dismiss controls */}
             <Pressable style={StyleSheet.absoluteFill} onPress={toggleControls} />

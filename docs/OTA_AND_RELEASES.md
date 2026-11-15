@@ -58,8 +58,12 @@ Il servizio [`UpdaterService`](../src/services/updater/updater-service.ts) gesti
 2. **Download in Background con Progresso**:
    - Scarica l'APK nella cache locale tramite `expo-file-system`.
    - Emette callback continui con percentuale, byte scritti e byte totali per aggiornare la barra di progresso in tempo reale.
-3. **Installazione Automatica con Intent Android**:
-   - Completato il download, invoca l'Intent nativo `android.intent.action.VIEW` con mime-type `application/vnd.android.package-archive` e flag `FLAG_GRANT_READ_URI_PERMISSION` tramite `expo-intent-launcher`.
+3. **Verifica Integrità Checksum SHA-256 (Hermes-Safe)**:
+   - Prima dell'installazione, `verifyApkChecksum` calcola l'hash crittografico SHA-256 dell'APK scaricato confrontandolo con quello specificato nel manifest OTA.
+   - Adotta un decodificatore Base64 a `Uint8Array` autonomo e sicuro per il motore Hermes (privo di dipendenze volatili da `atob`).
+   - In caso di effettivo mismatch (file corrotto o parziale), l'APK viene immediatamente cancellato dal disco per scongiurare installazioni fallite o pacchetti manomessi.
+4. **Installazione Automatica con Intent Android**:
+   - Superata la verifica, invoca l'Intent nativo `android.intent.action.VIEW` con mime-type `application/vnd.android.package-archive` e flag `FLAG_GRANT_READ_URI_PERMISSION` tramite `expo-intent-launcher`.
 
 ---
 

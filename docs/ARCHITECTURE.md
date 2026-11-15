@@ -7,17 +7,25 @@ Kuro Mobile è costruito con un'architettura modulare e moderna, progettata per 
 ## 📁 Struttura delle Directory
 
 ```
-KuroM/
+KuroTV_M/
 ├── app/                         # Routing File-Based (Expo Router v58)
-│   ├── _layout.tsx              # Root Layout: ThemeProvider, QueryClient, GestureHandler
+│   ├── _layout.tsx              # Root Layout: ThemeProvider, QueryClient, GestureHandler & Deep-Link Guard
 │   ├── (tabs)/                  # Navigazione a schede inferiori
 │   │   ├── _layout.tsx          # Configurazione TabBar con tinte reattive & pulsante Profilo rapido
-│   │   ├── index.tsx            # Home: Hero Spotlight, Continua a guardare, Ultime uscite, ricerca unificata & pulsante Palinsesto
-│   │   ├── explore.tsx          # Palinsesto: Programmazione uscite settimanali con orari previsti, selettore giorni & freccia indietro (tabBarItemStyle: { display: 'none' })
-│   │   ├── favorites.tsx        # Preferiti: Griglia anime salvati in locale
+│   │   ├── index.tsx            # Home: Hero Swiper, Continua a guardare, Raccomandati, Ricerca & pulsante Palinsesto
+│   │   ├── explore.tsx          # Palinsesto: Programmazione uscite settimanali con orari previsti & selettore giorni
+│   │   ├── favorites.tsx        # Preferiti: Griglia anime salvati in locale con rimozione rapida
 │   │   ├── history.tsx          # Cronologia: Storico di visione e ripresa episodio
-│   │   ├── profile.tsx          # Profilo: Route di sicurezza con redirect automatico (gestita tramite tabPress / custom button)
-│   │   └── settings.tsx         # Impostazioni: Temi SVG, AniSkip, Navbar Android, sorgente (.ac, .so, .tv), info & updater
+│   │   ├── profile.tsx          # Profilo: Route di sicurezza con redirect automatico
+│   │   └── settings.tsx         # Impostazioni: Hub & Spoke con schede tematiche
+│   ├── settings/                # Sotto-pagine Impostazioni Hub & Spoke nello Stack nativo
+│   │   ├── appearance.tsx       # Temi OLED, palette d'accento e Navbar
+│   │   ├── playback.tsx         # AniSkip (modalità e durata) & Player
+│   │   ├── sync.tsx             # KuroSync multi-dispositivo & TV Pairing
+│   │   ├── downloads.tsx        # Percorso SAF, vincolo Wi-Fi & Storage
+│   │   ├── source.tsx           # Domini specchio AnimeWorld (.ac, .so, .tv)
+│   │   ├── history.tsx          # Ritenzione cronologia e svuotamento ricerche
+│   │   └── about.tsx            # Info build, licenze & OTA Updater
 │   ├── anime/
 │   │   └── [id].tsx             # Scheda Dettaglio Anime (Header, Trama, Server, Griglia Puntate)
 │   ├── downloads/
@@ -27,12 +35,15 @@ KuroM/
 ├── assets/                      # Risorse statiche
 │   ├── icons/                   # Icone SVG (temi, youtube, myanimelist, anilist)
 │   └── images/                  # Icone app Android, Splash screen e banner
+├── plugins/                     # Expo Config Plugins nativi (withAndroidBackPress per gesture tablet)
 ├── src/                         # Moduli core dell'applicazione
 │   ├── components/              # Componenti UI riutilizzabili (FlashList items, Modali touch-native)
-│   │   ├── anime/               # Moduli dettaglio anime (Backdrop, Synopsis, AnimeInfoTable, Controls)
+│   │   ├── anime/               # Moduli dettaglio anime (Backdrop, Synopsis, AnimeInfoTable, Controls, anime.styles)
 │   │   ├── downloads/           # Moduli Sezione Download (StorageUsageBar, ActiveDownloadCard, DownloadedAnimeCard, DownloadedEpisodesSheet)
-│   │   ├── home/                # Moduli Home Screen (home.styles, HomeSection, ContinueWatching, Search)
-│   │   ├── player/              # Moduli isolati video player (Header, Timeline, Footer, Carousel, Info)
+│   │   ├── explore/             # Moduli Palinsesto (explore.styles)
+│   │   ├── history/             # Moduli Cronologia (history.styles)
+│   │   ├── home/                # Moduli Home Screen (HeroBannerSection, RecommendedCarouselSection, HomeSection, ContinueWatching, Search, home.styles, filter-bottom-sheet.styles)
+│   │   ├── player/              # Moduli isolati video player (Header, Timeline, Footer, Carousel, Info, player.styles)
 │   │   ├── settings/            # Moduli Impostazioni (settings.styles, ThemeSettings, SourceSettings, DownloadSettings, SyncSettingsCard, SyncConnectModal, AuthorizeTvModal, SyncProfileModal, QrScannerModal)
 │   │   ├── skeleton/            # Primitive e layout skeleton animati (Zero CLS, OLED #161616)
 │   │   ├── FilterBottomSheet.tsx# Modale filtri di ricerca touch-safe
@@ -43,18 +54,18 @@ KuroM/
 │   │   ├── AniSkipSlider.tsx    # Slider modalità salto sigle (OFF, MANUALE, AUTO)
 │   │   └── AniSkipDurationSlider.tsx # Slider durata pulsante salto (5s - 60s, ∞)
 │   ├── services/
-│   │   ├── aniskip/             # Servizio timestamp per skip intro/outro/recap
-│   │   ├── downloads/           # Gestore download offline, coda sequenziale, SAF e persistenza MMKV
+│   │   ├── aniskip/             # Servizio timestamp per skip intro/outro/recap con timeout difensivo
+│   │   ├── downloads/           # Gestore download offline, coda sequenziale, SAF, sanitizzazione anti-traversal e persistenza MMKV
 │   │   ├── queries/             # QueryOptions TanStack React Query v5
 │   │   ├── scraper/             # Web Scraper AnimeWorld con cheerio/slim
 │   │   ├── storage/             # Storage locale MMKV v3 (app-storage.ts, continue-watching-sync.ts, barrel privo di cicli)
-│   │   ├── sync/                # Sincronizzazione KuroSync self-hosted (client.ts, merge.ts, sync-manager.ts, types.ts)
-│   │   └── updater/             # Client OTA manifest, update store reattivo e download APK
-│   ├── theme/                   # Sistema di stili reattivo e ThemeProvider
+│   │   ├── sync/                # Sincronizzazione KuroSync self-hosted (client.ts, merge.ts, sync-manager.ts, types.ts) con resilienza offline
+│   │   └── updater/             # Client OTA manifest, update store reattivo, download APK e verifica checksum SHA-256
+│   ├── theme/                   # Sistema di stili reattivo, ThemeProvider e memoizzazione Proxy
 │   └── types/                   # Definizioni TypeScript condivise
 ├── workers/                     # Cloudflare Worker unificato per OTA
-├── scripts/                     # Tooling DevOps, release pipeline & patch native (apply-patches, build-release)
-└── tests/                       # Suite di verifica qualità a 25 stadi
+├── scripts/                     # Tooling DevOps, release pipeline & patch native (apply-patches, build-release, backup-secrets)
+└── tests/                       # Suite di verifica qualità a 32 stadi
 ```
 
 ---
@@ -281,6 +292,7 @@ Il sottosistema video ([`app/player/[id].tsx`](../app/player/[id].tsx)) adotta l
 - **Controlli Multimediali in Notifica & Patch Native (`scripts/apply-patches.mjs` + `buildFromSource`)**: Espone `showNowPlayingNotification = true` con titolo principale `EPISODIO <Num>` (immune ai tagli dei nomi lunghi), sottotitolo/artista `<TITOLO SERIE>` e locandina artwork scaricata e serializzata come JPEG byte array in `artworkData` per i Quick Settings di Android 13+ e bitmap `largeIcon`. Grazie a `"buildFromSource": ["expo-video"]` in `package.json` (`expo.autolinking.android`), Gradle compila `KuroForwardingPlayer` anziché collegare l'AAR precompilato, preservando `COMMAND_SEEK_TO_NEXT` / `COMMAND_SEEK_TO_NEXT_MEDIA_ITEM` e `COMMAND_SEEK_TO_PREVIOUS` / `COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM` (anche attraverso `onAvailableCommandsChanged`) per esporre l'intera barra simmetrica a 5 tasti (`seek -10s`, `precedente`, `play/pausa`, `successivo`, `seek +10s`) e gli eventi `KuroNotificationNextEpisode` / `KuroNotificationPrevEpisode`.
 - **Scheda Dettagli Player (`PlayerInfoSheet.tsx`)**: Badge puntata formattato rigorosamente come `'EPISODIO X/TOT'` (es. `'EPISODIO 1/170'`, `'EPISODIO 1/??'`), pulito da suffissi titolo puntata ridondanti.
 - **AniSkip Intelligente (`'SALTA'` / `'PROSSIMO'`)**: Rileva sigle d'apertura (`op`, `mixed-op`), chiusura (`ed`, `mixed-ed`) e `recap` con finestra configurabile (`5s`–`60s` o `∞` via `AniSkipDurationSlider`) e modalità (`OFF`, `MANUALE`, `AUTO`) via `AniSkipSlider`. Quando una ending coincide con la fine episodio (`≤ 5s`) trasforma `'SALTA'` in `'PROSSIMO'`, mentre in presenza di scene post-ending mantiene `'SALTA'` sulla sigla e propone separatamente `'PROSSIMO'` all'avvio della sezione post-ending (senza coesistenza dei due pulsanti).
+- **Orientamento Orizzontale Stabile & Touch Safety su Errori**: Il player si apre automaticamente in modalità orizzontale (`ScreenOrientation.lockAsync(LANDSCAPE)`), e il layout radice `app/_layout.tsx` vincola il controllo di orientamento al mutamento della classificazione dispositivo (`isTablet !== wasTablet`), azzerando il bug per cui la rotazione dello schermo invocava `PORTRAIT_UP`. Toccando il pulsante di orientamento nel footer, l'utente può passare a visualizzazione verticale o tornare a orizzontale senza reset involontari. In caso di errore sorgente, la schermata di errore (`loadingWrapper`) opera a `zIndex: 40`, inibendo `GestureDetector` e `osdOverlay` e offrendo un pulsante `RIPROVA` touch-safe con tasto indietro dedicato (`errorBackBtn`).
 
 ---
 
@@ -332,7 +344,7 @@ Il sottosistema di download e visione offline (`src/services/downloads/` e `app/
 ### 3. Integrazione con i Componenti Esistenti
 - **Video Player (`app/player/[id].tsx` & `PlayerHeader.tsx`)**:
   - Icona download nell'header OSD per scaricare l'episodio in riproduzione con un singolo tocco.
-  - Prioritizzazione automatica del file locale: al caricamento (`loadStream`), `app/player/[id].tsx` verifica l'integrità su disco tramite `DownloadService.resolvePlayableLocalUri()` ed esegue un singolo caricamento su `useVideoPlayer(null)` senza race condition, mostrando il badge **`LOCALE / OFFLINE`** nell'header OSD.
+  - Prioritizzazione automatica del file locale: al caricamento (`loadStream`), `app/player/[id].tsx` verifica l'integrità su disco tramite `DownloadService.resolvePlayableLocalUri()` ed esegue un singolo caricamento su `useVideoPlayer(null)` senza race condition, mostrando il badge **`LOCALE / OFFLINE`** nell'header OSD. Se l'episodio è attualmente in corso di download (`status !== 'completed'`), `resolvePlayableLocalUri` restituisce `null`, instradando la riproduzione in streaming online trasparente ed azzerando qualsiasi eccezione di file corrotto/incompleto di ExoPlayer.
 - **Scheda Dettaglio Anime (`app/anime/[id].tsx`, `DownloadOptionsSheet.tsx`, `EpisodeItem.tsx`, `BatchBottomSheet.tsx`)**:
   - Pulsante download nell'intestazione (`navRight`, 44×44 dp) accanto a Preferiti e Condivisione, con modale dedicato `DownloadOptionsSheet` dotato di chiusura swipe-down (`useBottomSheetDragDismiss`).
   - Icona di download e stato visuale su ciascuna card o riga episodio sia in vista griglia (`gridDownloadBtn`) che lista. Premendo nuovamente l'icona durante il download, la coda o la pausa, il download viene annullato all'istante (`cancelDownload`) senza warning o stati di errore.
@@ -429,9 +441,9 @@ Kuro Mobile include un'architettura completa per schermi di grandi dimensioni (t
 
 ---
 
-## 🔄 Resilienza Connessione KuroSync, Retry con Feedback & Auto-Logout
+## 🔄 Resilienza Connessione KuroSync, Retry con Feedback & Disconnessione Selettiva
 
-Per garantire un'esperienza utente affidabile anche in presenza di disconnessioni di rete temporanee, instabilità Wi-Fi o token revocati:
+Per garantire un'esperienza utente affidabile anche in presenza di disconnessioni di rete temporanee, instabilità Wi-Fi, uso offline o token revocati:
 
 ### 1. Retry Progressivi con Feedback (`SyncManager`)
 - I metodi `performFullSyncWithRetries`, `listProfilesWithRetries` e `switchProfileWithRetries` (`src/services/sync/sync-manager.ts`) gestiscono fino a 2 retry (3 tentativi totali con backoff progressivo 1000ms, 1500ms).
@@ -439,8 +451,28 @@ Per garantire un'esperienza utente affidabile anche in presenza di disconnession
   - **All'avvio dell'app (`app/_layout.tsx`)**: Un banner/HUD fluttuante OLED a comparsa informa l'utente durante la sincronizzazione iniziale e gli eventuali tentativi di riconnessione (`"Sincronizzazione KuroSync... (tentativo X di 2)"`).
   - **Nel selettore profili (`SyncProfileModal.tsx`)**: Mostra lo stato di connessione e il conteggio dei tentativi in corso.
 
-### 2. Auto-Logout Pulito & Proposta di Re-Autenticazione
-- Se tutti i tentativi falliscono, il sistema considera la sessione non valida o il server irraggiungibile:
-  - Invoca automaticamente `await this.disconnect()` per ripulire le credenziali in MMKV ed evitare stati "falsamente connessi";
-  - **All'avvio**: Mostra un `ConfirmModal` che avvisa l'utente della disconnessione e, su conferma, apre `SyncConnectModal`;
-  - **Nel Selettore Profili**: Chiude il modale profili ed apre direttamente `SyncConnectModal` offrendo l'accesso immediato tramite QR code o credenziali manuali.
+### 2. Disconnessione Selettiva (Isolamento Errori di Autenticazione `isSyncAuthError`)
+- Per preservare la piena fruibilità dell'app in mobilità (metropolitana, aereo, assenza di campo), la disconnessione forzata (`await this.disconnect()`) **avviene esclusivamente a fronte di errori HTTP 401 Unauthorized o 403 Forbidden** (sessione scaduta o token revocato dal server).
+- In presenza di mancata connessione a Internet, timeout di rete o errori temporanei 500 del server Cloudflare:
+  - Le credenziali, i token locali e l'endpoint salvati in MMKV **vengono rigorosamente preservati**;
+  - L'applicazione rimane utilizzabile offline e notifica semplicemente l'impossibilità momentanea di sincronizzare;
+  - I retry automatici riprenderanno trasparente al ripristino della connettività o al cambio di stato in foreground.
+
+---
+
+## 🔒 Sicurezza, Hardening & Protezione Deep-Link
+
+L'applicazione adotta una serie di presidi architetturali per proteggere l'utente e il dispositivo:
+
+1. **Protezione CSRF Deep-Link con `ConfirmModal`**:
+   - Qualsiasi deep link (`kurosync://pair` o `kurosync://connect`) viene intercettato da `app/_layout.tsx` e richiede l'approvazione esplicita dell'utente tramite `ConfirmModal` prima di procedere.
+   - Vengono mostrati chiaramente il codice TV da autorizzare o l'URL del server a cui connettersi, azzerando qualsiasi hijacking silenzioso della sessione o esfiltrazione dati.
+2. **Hardening Permessi & Backup Android**:
+   - Permessi speciali invasivi azzerati: rimosso `android.permission.SYSTEM_ALERT_WINDOW` da `app.json`.
+   - `android:allowBackup="false"` in `app.json` per scongiurare l'estrazione non autorizzata dei token di autenticazione e dello storage MMKV tramite `adb backup`.
+3. **Verifica Integrità Checksum SHA-256 (Hermes-Safe)**:
+   - `UpdaterService.verifyApkChecksum` calcola l'hash crittografico SHA-256 degli APK scaricati confrontandolo con il manifest OTA, cancellando immediatamente file corrotti o parziali.
+4. **Sanitizzazione Nomi File Anti-Path-Traversal**:
+   - `DownloadService.sanitizeFileName` elimina e neutralizza sequenze di punti iniziali o arbitrarie (`..`), garantendo che i file scaricati risiedano sempre all'interno della cartella sandbox assegnata.
+5. **Config Plugin Expo `plugins/withAndroidBackPress.js`**:
+   - Inietta in modo deterministico e idempotente il bridge `OnBackPressedCallback` in `MainActivity.kt` durante `expo prebuild`, garantendo che le gesture indietro su tablet Android e Xiaomi/HyperOS rimangano intatte anche su macchine di build pulite o in CI/CD.

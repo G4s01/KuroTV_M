@@ -129,3 +129,5 @@ e questo progetto aderisce al [Semantic Versioning](https://semver.org/lang/it/)
 - **Ordinamento per Data Reale di Uscita**: Aggiunto `sort: '5'` per ordinare in base alla data di rilascio reale delle serie (`release_date:desc`), oltre a Ultime aggiunte (`1`), Più visti (`6`), Meglio valutati (`7`), A-Z (`2`) e Z-A (`3`).
 
 ## [1.0.0] - 2026-11-15
+
+FINALE

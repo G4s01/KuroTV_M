@@ -4592,6 +4592,35 @@ assert(typeof homeBarrel.RecommendedCarouselSection === 'object' || typeof homeB
 console.log('✓ Audit Codebase (Hardening Deep-link, Resilienza Rete, Validazione Checksum OTA, Plugin MainActivity & De-monolizzazione Home) verificati con successo.');
 
 // -----------------------------------------------------------------------------
+// [33/33] Verifica Player Fix: Orientamento Orizzontale Stabile, Download Source Error & Riprova Sbloccato
+// -----------------------------------------------------------------------------
+console.log('\n[33/33] Verifica Player Fix: Orientamento Orizzontale Stabile, Download Source Error & Riprova Sbloccato...');
+
+// 1. Verifica _layout.tsx: nessun lock forzato al cambio orientamento su smartphone
+const layoutSrc = fs.readFileSync(path.resolve(process.cwd(), 'app/_layout.tsx'), 'utf-8');
+assert(layoutSrc.includes('isTablet !== wasTablet'), '_layout.tsx deve mutare lock solo se lo stato tablet cambia realmente');
+assert(!layoutSrc.includes('handleOrientationPolicy();\n    const dimSub = Dimensions.addEventListener(\'change\', handleOrientationPolicy);'), '_layout.tsx non deve ri-eseguire lock su ogni rotazione');
+
+// 2. Verifica download-service: resolvePlayableLocalUri restituisce null se l\'episodio è in downloading/queued/paused/error
+const downloadServiceSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/services/downloads/download-service.ts'), 'utf-8');
+assert(downloadServiceSrc.includes('item && item.status !== \'completed\''), 'resolvePlayableLocalUri deve verificare che lo status non sia completed');
+assert(downloadServiceSrc.includes('return null;'), 'resolvePlayableLocalUri deve restituire null per download incompleti');
+
+// 3. Verifica app/player/[id].tsx: GestureDetector & osdOverlay disattivati in presenza di sourceError
+const playerSrc = fs.readFileSync(path.resolve(process.cwd(), 'app/player/[id].tsx'), 'utf-8');
+assert(playerSrc.includes('!showControls && !sourceError && !isLoadingSource && ('), 'GestureDetector deve essere inibito in presenza di sourceError');
+assert(playerSrc.includes('showControls && Boolean(videoUrl) && !sourceError && ('), 'osdOverlay deve essere inibito in presenza di sourceError');
+assert(playerSrc.includes('errorBackBtn'), 'La schermata di errore deve offrire un pulsante indietro dedicato');
+assert(playerSrc.includes('setVideoUrl(null)'), 'loadStream deve resettare videoUrl durante il ricaricamento');
+
+// 4. Verifica player.styles.ts: loadingWrapper ha zIndex elevato ed errorBackBtn è definito
+const playerStylesSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/components/player/player.styles.ts'), 'utf-8');
+assert(playerStylesSrc.includes('zIndex: 40'), 'loadingWrapper deve avere zIndex: 40 per non essere sovrastato');
+assert(playerStylesSrc.includes('errorBackBtn: {'), 'errorBackBtn deve essere presente nei fogli di stile del player');
+
+console.log('✓ Player Fix: Orientamento Orizzontale Stabile, Download Source Error & Riprova Sbloccato verificati con successo.');
+
+// -----------------------------------------------------------------------------
 // Fine Test
 // -----------------------------------------------------------------------------
 console.log('\n==============================================');

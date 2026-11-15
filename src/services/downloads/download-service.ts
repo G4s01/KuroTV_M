@@ -251,6 +251,12 @@ class DownloadManager {
     const id = `${animeId}-ep-${episodeNumber}`;
     const item = animeId ? this.items.get(id) : undefined;
 
+    // If item is actively tracked in downloads and is NOT completed (e.g. downloading, queued, paused, error),
+    // it is an incomplete local file. Do not attempt offline playback; allow online streaming.
+    if (item && item.status !== 'completed') {
+      return null;
+    }
+
     const candidates: string[] = [];
     const pushUnique = (uri?: string | null) => {
       if (uri && typeof uri === 'string' && !candidates.includes(uri)) {
@@ -260,10 +266,9 @@ class DownloadManager {
 
     if (item && item.status === 'completed') {
       pushUnique(item.fileUri);
-    }
-
-    if (animeId && Number.isFinite(episodeNumber) && episodeNumber > 0) {
-      pushUnique(this.getDownloadFileUri(animeId, episodeNumber));
+      if (animeId && Number.isFinite(episodeNumber) && episodeNumber > 0) {
+        pushUnique(this.getDownloadFileUri(animeId, episodeNumber));
+      }
     }
 
     if (fallbackUri) {
