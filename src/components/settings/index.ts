@@ -1,4 +1,6 @@
 export * from './settings.styles';
+export * from './SettingsCategoryRow';
+export * from './SettingsHeader';
 export * from './ThemeSettingsCard';
 export * from './SourceSettingsCard';
 export * from './DownloadSettingsCard';
@@ -7,4 +9,3 @@ export * from './SyncConnectModal';
 export * from './AuthorizeTvModal';
 export * from './SyncProfileModal';
 export * from './QrScannerModal';
-

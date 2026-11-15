@@ -1230,6 +1230,14 @@ const requiredRoutes = [
   'app/(tabs)/index.tsx',
   'app/(tabs)/profile.tsx',
   'app/(tabs)/settings.tsx',
+  'app/settings/_layout.tsx',
+  'app/settings/appearance.tsx',
+  'app/settings/playback.tsx',
+  'app/settings/sync.tsx',
+  'app/settings/downloads.tsx',
+  'app/settings/source.tsx',
+  'app/settings/history.tsx',
+  'app/settings/about.tsx',
   'app/anime/[id].tsx',
   'app/player/[id].tsx',
 ];
@@ -1393,12 +1401,14 @@ const homeIndexCode = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/in
 assert(homeIndexCode.includes('FilterBottomSheet'), 'app/(tabs)/index.tsx deve integrare FilterBottomSheet');
 assert(homeIndexCode.includes('isSearchActive'), 'app/(tabs)/index.tsx deve gestire lo stato isSearchActive');
 
-// 8. AniSkip Settings in SettingsScreen
-const settingsScreenCode = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/settings.tsx'), 'utf-8');
-assert(settingsScreenCode.includes('ANISKIP'), 'app/(tabs)/settings.tsx deve contenere la sezione ANISKIP');
-assert(settingsScreenCode.includes('MODALITÀ DI SALTO'), 'app/(tabs)/settings.tsx deve permettere la selezione della modalità');
-assert(settingsScreenCode.includes('COSA SALTARE'), 'app/(tabs)/settings.tsx deve permettere di selezionare cosa saltare');
-assert(settingsScreenCode.includes('enableRecap'), 'app/(tabs)/settings.tsx deve supportare lo skip del recap');
+// 8. AniSkip Settings in SettingsScreen / Playback Subpage
+const settingsScreenCode = fs.existsSync(path.resolve(process.cwd(), 'app/settings/playback.tsx'))
+  ? fs.readFileSync(path.resolve(process.cwd(), 'app/settings/playback.tsx'), 'utf-8')
+  : fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/settings.tsx'), 'utf-8');
+assert(settingsScreenCode.includes('ANISKIP'), 'playback.tsx deve contenere la sezione ANISKIP');
+assert(settingsScreenCode.includes('MODALITÀ DI SALTO'), 'playback.tsx deve permettere la selezione della modalità');
+assert(settingsScreenCode.includes('COSA SALTARE'), 'playback.tsx deve permettere di selezionare cosa saltare');
+assert(settingsScreenCode.includes('enableRecap'), 'playback.tsx deve supportare lo skip del recap');
 
 // 9. AniSkip Storage & Recap support
 const aniSettings = AppStorage.getAniSkipSettings();
@@ -1478,8 +1488,10 @@ assert(rootLayoutSource.includes('expo-navigation-bar'), 'RootLayout deve integr
 assert(rootLayoutSource.includes('setVisibilityAsync'), 'RootLayout deve richiamare setVisibilityAsync per nascondere la barra ad app aperta');
 assert(rootLayoutSource.includes('navBarMode'), 'RootLayout deve sincronizzarsi dinamicamente con navBarMode');
 
-// 4. Settings screen UI section
-const settingsSource = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/settings.tsx'), 'utf-8');
+// 4. Settings screen UI section (Appearance Subpage)
+const settingsSource = fs.existsSync(path.resolve(process.cwd(), 'app/settings/appearance.tsx'))
+  ? fs.readFileSync(path.resolve(process.cwd(), 'app/settings/appearance.tsx'), 'utf-8')
+  : fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/settings.tsx'), 'utf-8');
 assert(settingsSource.includes('NAVBAR DI SISTEMA'), 'SettingsScreen deve contenere la sezione NAVBAR DI SISTEMA');
 assert(settingsSource.includes('NASCONDI (SWIPE)'), 'SettingsScreen deve contenere l\'opzione NASCONDI (SWIPE)');
 assert(settingsSource.includes('SEMPRE VISIBILE'), 'SettingsScreen deve contenere l\'opzione SEMPRE VISIBILE');
@@ -1549,7 +1561,9 @@ assert(
   'UpdateModal deve passare il parametro scrollTo: update per far scorrere la vista'
 );
 
-const updatedSettings = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/settings.tsx'), 'utf-8');
+const updatedSettings = fs.existsSync(path.resolve(process.cwd(), 'app/settings/about.tsx'))
+  ? fs.readFileSync(path.resolve(process.cwd(), 'app/settings/about.tsx'), 'utf-8')
+  : fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/settings.tsx'), 'utf-8');
 assert(
   updatedSettings.includes('scrollToUpdateSection'),
   'SettingsScreen deve implementare scrollToUpdateSection'
@@ -1624,10 +1638,15 @@ assert.strictEqual(ANISKIP_STEPS[2].label, 'AUTO', 'Terza opzione deve essere AU
 assert.strictEqual(ANISKIP_STEPS[2].value, 'auto', 'AUTO deve corrispondere a auto');
 
 // 2. Settings screen uses AniSkipSlider and streamlined navbar description
-const settingsCodeAfter = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/settings.tsx'), 'utf-8');
-assert(settingsCodeAfter.includes('AniSkipSlider'), 'app/(tabs)/settings.tsx deve utilizzare AniSkipSlider');
-assert(settingsCodeAfter.includes('A SCOMPARSA, RICHIAMABILE CON SWIPE DAL BASSO.'), 'app/(tabs)/settings.tsx deve avere la descrizione snellita per NAVBAR auto-hide');
-assert(settingsCodeAfter.includes('SEMPRE FISSA E VISIBILE IN-APP.'), 'app/(tabs)/settings.tsx deve avere la descrizione snellita per NAVBAR visible');
+const settingsCodeAfter = fs.existsSync(path.resolve(process.cwd(), 'app/settings/playback.tsx'))
+  ? fs.readFileSync(path.resolve(process.cwd(), 'app/settings/playback.tsx'), 'utf-8')
+  : fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/settings.tsx'), 'utf-8');
+assert(settingsCodeAfter.includes('AniSkipSlider'), 'playback.tsx deve utilizzare AniSkipSlider');
+const navBarCodeAfter = fs.existsSync(path.resolve(process.cwd(), 'app/settings/appearance.tsx'))
+  ? fs.readFileSync(path.resolve(process.cwd(), 'app/settings/appearance.tsx'), 'utf-8')
+  : fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/settings.tsx'), 'utf-8');
+assert(navBarCodeAfter.includes('A SCOMPARSA, RICHIAMABILE CON SWIPE DAL BASSO.'), 'appearance.tsx deve avere la descrizione snellita per NAVBAR auto-hide');
+assert(navBarCodeAfter.includes('SEMPRE FISSA E VISIBILE IN-APP.'), 'appearance.tsx deve avere la descrizione snellita per NAVBAR visible');
 
 // 3. Player integrated loading animation and notification listeners
 const playerSourceAfter = fs.readFileSync(path.resolve(process.cwd(), 'app/player/[id].tsx'), 'utf-8');
@@ -1701,7 +1720,9 @@ assert.strictEqual(ANISKIP_DURATION_STEPS[7].label, '∞', 'Ultimo step deve ave
 
 // 4. AniSkipDurationSlider export and settings integration
 assert(typeof AniSkipDurationSlider === 'function' || typeof AniSkipDurationSlider === 'object', 'AniSkipDurationSlider deve essere esportato');
-const settingsCodeFinal = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/settings.tsx'), 'utf-8');
+const settingsCodeFinal = fs.existsSync(path.resolve(process.cwd(), 'app/settings/playback.tsx'))
+  ? fs.readFileSync(path.resolve(process.cwd(), 'app/settings/playback.tsx'), 'utf-8')
+  : fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/settings.tsx'), 'utf-8');
 assert(settingsCodeFinal.includes('AniSkipDurationSlider'), 'settings.tsx deve importare e usare AniSkipDurationSlider');
 assert(settingsCodeFinal.includes("newSettings.mode = 'disabled'"), 'settings.tsx deve impostare mode su disabled se tutti gli intervalli sono deselezionati');
 assert(
@@ -1991,11 +2012,13 @@ assert(scheduleTabLayoutSource.includes('name="explore"'), 'TabLayout deve conte
 assert(scheduleTabLayoutSource.includes('calendar'), 'TabLayout deve usare l icona calendar per explore');
 assert(scheduleTabLayoutSource.includes('name="explore"') && scheduleTabLayoutSource.includes('href: null'), 'explore deve avere href: null nel TabLayout poichè il pulsante è stato spostato in Home');
 
-// 7. Verifica Fix Aggiornamenti Manuali in settings.tsx
-const settingsFixedSource = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/settings.tsx'), 'utf-8');
-assert(settingsFixedSource.includes('onPress={() => handleStartDownloadUpdate()}'), 'settings.tsx non deve passare event a handleStartDownloadUpdate');
-assert(settingsFixedSource.includes('isManifest = (m: any): boolean =>'), 'settings.tsx deve validare che il manifest passato sia un UpdateManifest valido');
-assert(settingsFixedSource.includes("prev === 'idle' || prev === 'error' ? 'available' : prev"), 'settings.tsx deve recuperare dallo stato di errore al focus');
+// 7. Verifica Fix Aggiornamenti Manuali in settings.tsx / about.tsx
+const settingsFixedSource = fs.existsSync(path.resolve(process.cwd(), 'app/settings/about.tsx'))
+  ? fs.readFileSync(path.resolve(process.cwd(), 'app/settings/about.tsx'), 'utf-8')
+  : fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/settings.tsx'), 'utf-8');
+assert(settingsFixedSource.includes('onPress={() => handleStartDownloadUpdate()}'), 'settings/about deve non passare event a handleStartDownloadUpdate');
+assert(settingsFixedSource.includes('isManifest = (m: any): boolean =>'), 'settings/about deve validare che il manifest passato sia un UpdateManifest valido');
+assert(settingsFixedSource.includes("prev === 'idle' || prev === 'error' ? 'available' : prev"), 'settings/about deve recuperare dallo stato di errore al focus');
 
 console.log('✓ Palinsesto / Schedule & Fix Aggiornamenti Manuali verificati con successo.');
 
@@ -2160,10 +2183,12 @@ assert(!homeSearchSource.includes('SUGGERIMENTI RAPIDI'), 'index.tsx non deve pi
 assert(homeSearchSource.includes('ANIME_DUB'), 'index.tsx deve integrare il filtro AUDIO');
 assert(homeSearchSource.includes('removeGenre'), 'index.tsx deve supportare la rimozione di singoli generi selezionati');
 
-const settingsSearchSource = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/settings.tsx'), 'utf-8');
-assert(settingsSearchSource.includes('CRONOLOGIA DI RICERCA'), 'settings.tsx deve contenere la sezione CRONOLOGIA DI RICERCA');
-assert(settingsSearchSource.includes('SEARCH_RETENTION_STEPS'), 'settings.tsx deve usare SEARCH_RETENTION_STEPS con HistorySlider');
-assert(settingsSearchSource.includes('isClearSearchHistoryConfirmOpen'), 'settings.tsx deve gestire la modale ConfirmModal per svuotare le ricerche');
+const settingsSearchSource = fs.existsSync(path.resolve(process.cwd(), 'app/settings/history.tsx'))
+  ? fs.readFileSync(path.resolve(process.cwd(), 'app/settings/history.tsx'), 'utf-8')
+  : fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/settings.tsx'), 'utf-8');
+assert(settingsSearchSource.includes('CRONOLOGIA DI RICERCA'), 'history/settings deve contenere la sezione CRONOLOGIA DI RICERCA');
+assert(settingsSearchSource.includes('SEARCH_RETENTION_STEPS'), 'history/settings deve usare SEARCH_RETENTION_STEPS con HistorySlider');
+assert(settingsSearchSource.includes('isClearSearchHistoryConfirmOpen'), 'history/settings deve gestire la modale ConfirmModal per svuotare le ricerche');
 
 console.log('✓ Cronologia Ricerche, Filtri Avanzati (Multi-Genere & Audio) & Fix Scraper verificati con successo.');
 
@@ -3641,8 +3666,10 @@ const authorizeTvSource = fs.readFileSync(path.resolve(process.cwd(), 'src/compo
 assert(authorizeTvSource.includes('QrScannerModal'), 'AuthorizeTvModal deve integrare QrScannerModal');
 assert(authorizeTvSource.includes('SCANSIONA QR DELLA TV'), 'AuthorizeTvModal deve offrire il pulsante scanner fotocamera');
 
-const settingsSyncCheckSource = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/settings.tsx'), 'utf-8');
-assert(settingsSyncCheckSource.includes('<SyncSettingsCard'), 'settings.tsx deve includere SyncSettingsCard');
+const settingsSyncCheckSource = fs.existsSync(path.resolve(process.cwd(), 'app/settings/sync.tsx'))
+  ? fs.readFileSync(path.resolve(process.cwd(), 'app/settings/sync.tsx'), 'utf-8')
+  : fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/settings.tsx'), 'utf-8');
+assert(settingsSyncCheckSource.includes('<SyncSettingsCard'), 'settings sync deve includere SyncSettingsCard');
 
 const layoutSource = fs.readFileSync(path.resolve(process.cwd(), 'app/_layout.tsx'), 'utf-8');
 assert(layoutSource.includes('kurosync://'), '_layout.tsx deve gestire il deep-link kurosync://');
@@ -4365,6 +4392,97 @@ AppStorage.clearPendingSyncMutations();
 await SyncManager.disconnect();
 
 console.log('✓ Auto-Sync Reattivo, Mutation Listeners, AniSkip/Search Sync & Preservazione Local Deletions verificati con successo.');
+
+// -----------------------------------------------------------------------------
+// 31. Verifica Riprogettazione Modulare "Impostazioni" (Hub & Spoke, 7 Sotto-pagine, Hero Card & Deep-links)
+// -----------------------------------------------------------------------------
+console.log('\n[31/31] Verifica Riprogettazione Modulare "Impostazioni" (Hub & Spoke, 7 Sotto-pagine, Hero Card & Deep-links)...');
+
+// 1. Hub Screen Structure and Hero Card
+const hubSource = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/settings.tsx'), 'utf-8');
+assert(hubSource.includes('SettingsCategoryRow'), 'Hub settings.tsx deve importare e renderizzare SettingsCategoryRow');
+assert(hubSource.includes('hubHeroCard'), 'Hub settings.tsx deve includere la Hero Card per KuroSync e profilo');
+assert(hubSource.includes('hubHeroAvatar'), 'Hub settings.tsx deve includere l avatar circolare con iniziale o icona');
+assert(hubSource.includes('hubHeroStatusDot'), 'Hub settings.tsx deve includere il pallino di stato connessione');
+
+// 2. Hub renders all 7 Category Rows with dynamic glanceability
+const expectedCategories = [
+  'ASPETTO & INTERFACCIA',
+  'RIPRODUZIONE & ANISKIP',
+  'KUROSYNC & PROFILI',
+  'DOWNLOAD & ARCHIVIAZIONE',
+  'SORGENTE & RETE',
+  'CRONOLOGIA & PRIVACY',
+  'INFO & AGGIORNAMENTI',
+];
+for (const cat of expectedCategories) {
+  assert(hubSource.includes(cat), `Hub settings.tsx deve contenere la riga categoria ${cat}`);
+}
+
+// 3. Deep link and auto-download redirection (with anti-infinite loop param clearance)
+assert(
+  hubSource.includes("params.scrollTo === 'downloads'") && hubSource.includes('/settings/downloads'),
+  'Hub settings.tsx deve reindirizzare verso /settings/downloads su parametro scrollTo: downloads'
+);
+assert(
+  (hubSource.includes("params.scrollTo === 'update'") || hubSource.includes('isAutoDownloadRequested')) &&
+  hubSource.includes('/settings/about'),
+  'Hub settings.tsx deve reindirizzare verso /settings/about su parametro scrollTo: update o auto-download'
+);
+assert(
+  hubSource.includes('setParams') && hubSource.includes('scrollTo: undefined'),
+  'Hub settings.tsx deve azzerare il parametro scrollTo via setParams per azzerare loop infiniti al ritorno'
+);
+
+// 4. Zero Alert.alert in Hub and all subpages
+assert(!hubSource.includes('Alert.alert'), 'Hub settings.tsx non deve MAI usare Alert.alert');
+const settingsSubpages = [
+  'app/settings/appearance.tsx',
+  'app/settings/playback.tsx',
+  'app/settings/sync.tsx',
+  'app/settings/downloads.tsx',
+  'app/settings/source.tsx',
+  'app/settings/history.tsx',
+  'app/settings/about.tsx',
+];
+for (const subpage of settingsSubpages) {
+  const p = path.resolve(process.cwd(), subpage);
+  assert(fs.existsSync(p), `La sottopagina ${subpage} deve esistere`);
+  const content = fs.readFileSync(p, 'utf-8');
+  assert(!content.includes('Alert.alert'), `${subpage} non deve MAI usare Alert.alert`);
+  assert(content.includes('SettingsHeader'), `${subpage} deve utilizzare SettingsHeader`);
+  assert(content.includes('useFocusEffect('), `${subpage} deve gestire hardwareBackPress con useFocusEffect`);
+  assert(content.includes('router.back()'), `${subpage} deve consentire il ritorno indietro fluido con router.back()`);
+}
+
+// 5. Shared components verification
+const categoryRowSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/settings/SettingsCategoryRow.tsx'), 'utf-8');
+assert(categoryRowSource.includes('Haptics.selectionAsync'), 'SettingsCategoryRow deve fornire feedback tattile al tocco');
+assert(categoryRowSource.includes('chevron-forward'), 'SettingsCategoryRow deve mostrare la chevron destra');
+
+const headerComponentSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/settings/SettingsHeader.tsx'), 'utf-8');
+const settingsStylesSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/settings/settings.styles.ts'), 'utf-8');
+assert(headerComponentSource.includes('subPageBackBtn'), 'SettingsHeader deve applicare la classe subPageBackBtn');
+assert(settingsStylesSource.includes('subPageBackBtn') && settingsStylesSource.includes('minWidth: 44'), 'SettingsHeader deve garantire un touch target >= 44dp');
+assert(settingsStylesSource.includes('hubHeroActionBtn') && settingsStylesSource.includes('minHeight: 44'), 'hubHeroActionBtn deve garantire un touch target >= 44dp');
+assert(settingsStylesSource.includes('smallActionBtn') && settingsStylesSource.includes('minHeight: 44'), 'smallActionBtn deve garantire un touch target >= 44dp');
+assert(headerComponentSource.includes('arrow-back'), 'SettingsHeader deve mostrare la freccia Indietro');
+
+// 5b. Dynamic Contrast YIQ & Robustness
+const sourceCardSource = fs.readFileSync(path.resolve(process.cwd(), 'src/components/settings/SourceSettingsCard.tsx'), 'utf-8');
+assert(sourceCardSource.includes('getContrastTextColor'), 'SourceSettingsCard deve applicare il contrasto dinamico YIQ sul tasto Applica');
+
+const aboutSource = fs.readFileSync(path.resolve(process.cwd(), 'app/settings/about.tsx'), 'utf-8');
+assert(aboutSource.includes('setParams') && aboutSource.includes('autoDownload: undefined'), 'about.tsx deve azzerare autoDownload via setParams per prevenire download duplicati');
+
+// 6. Navigation Stack Layouts
+const settingsLayoutSource = fs.readFileSync(path.resolve(process.cwd(), 'app/settings/_layout.tsx'), 'utf-8');
+assert(settingsLayoutSource.includes("animation: 'slide_from_right'"), 'app/settings/_layout.tsx deve adottare animazione slide_from_right');
+
+const rootLayoutCheckSource = fs.readFileSync(path.resolve(process.cwd(), 'app/_layout.tsx'), 'utf-8');
+assert(rootLayoutCheckSource.includes('name="settings"'), 'app/_layout.tsx deve registrare la rotta settings');
+
+console.log('✓ Riprogettazione Modulare "Impostazioni" (Hub & Spoke, 7 Sotto-pagine, Hero Card & Deep-links) verificati con successo.');
 
 // -----------------------------------------------------------------------------
 // Fine Test

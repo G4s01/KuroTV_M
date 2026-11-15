@@ -44,7 +44,8 @@ Kuro Mobile è un'applicazione concepita **esclusivamente per smartphone Android
 - **Primitiva Slider Unificata (`StepSlider`)**: `StepSlider.tsx` gestisce in modo centralizzato e touch-safe il trascinamento (`PanResponder` con `onPanResponderTerminationRequest: () => false` e `pointerEvents="none"` su tracce e thumb), il layout dinamico e il feedback aptico (`Haptics.selectionAsync()`) per `HistorySlider`, `AniSkipSlider` e `AniSkipDurationSlider`.
 - **Architettura Componenti Modulare**:
   - `src/components/home/`: isolamento completo di `home.styles.ts`, `HomeSection.tsx`, `ContinueWatchingSection.tsx`, `HomeSearchHeader.tsx`, `SearchFilterChips.tsx`, `SearchResultsGrid.tsx` e `SearchHistoryList.tsx`.
-  - `src/components/settings/`: isolamento completo di `settings.styles.ts`, `ThemeSettingsCard.tsx` e `SourceSettingsCard.tsx`.
+  - `src/components/settings/`: isolamento completo di `settings.styles.ts`, `SettingsCategoryRow.tsx`, `SettingsHeader.tsx`, `ThemeSettingsCard.tsx`, `SourceSettingsCard.tsx`, `DownloadSettingsCard.tsx`, `SyncSettingsCard.tsx`, `SyncConnectModal.tsx`, `AuthorizeTvModal.tsx`, `SyncProfileModal.tsx` e `QrScannerModal.tsx`.
+  - `app/settings/`: architettura Hub & Spoke con 7 sotto-pagine dedicate nello Stack nativo (`slide_from_right`) con `SettingsHeader` e `hardwareBackPress` protetto via `useFocusEffect` (`appearance.tsx`, `playback.tsx`, `sync.tsx`, `downloads.tsx`, `source.tsx`, `history.tsx`, `about.tsx`).
   - `src/components/anime/` & `src/components/player/`: subcomponenti dedicati per scheda tecnica metadati, backdrop, header, timeline, carosello puntate e controlli OSD.
 - **Gestione Sistema Android & Navbar**: `expo-navigation-bar` con modalità immersiva auto-hide (`BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE`) per nascondere la barra di sistema ad app aperta e richiamarla con swipe dal basso, e `react-native-safe-area-context` per l'adattamento dinamico con la navbar a 3 pulsanti.
 - **Data Fetching & Cache Remota**: `@tanstack/react-query` v5 con stale-time ottimizzato.
@@ -371,11 +372,26 @@ Prima di ogni commit o push è obbligatorio verificare la conformità tramite:
      - Prima sezione **`EPISODI SALVATI`** con l'elenco delle serie già scaricate (`DownloadedAnimeCard.tsx`, conteggio episodi, peso in MB/GB, tasto *"RIPRODUCI"* e `DownloadedEpisodesSheet.tsx`).
      - Seconda sezione **`IN CORSO & IN CODA`** raggruppata per serie (`ActiveDownloadGroupCard.tsx`): la serie con il download attivo in corso precede le altre serie secondarie (che restano racchiuse ed espandibili al tap); all'interno di ciascuna serie l'episodio attualmente in `downloading` è sempre in cima e i restanti episodi in coda seguono in ordine **crescente di numero episodio** racchiusi in un pannello espandibile dedicato (`ALTRI N EPISODI IN CODA`). L'annullamento dell'intero raggruppamento di episodi attivi/in coda di una serie (tramite **`ANNULLA TUTTI (N EP.)`** o il controllo rapido `44×44dp` sull'header multi-serie) deve passare sempre da `ConfirmModal` (`app/downloads/index.tsx`) ed invocare `DownloadService.cancelAnimeDownloads` lasciando intatti eventuali episodi già completati; `DownloadedEpisodesSheet` deve inoltre sincronizzare la propria chiusura quando `selectedGroup` si svuota.
    - Pulsante di accesso rapido con badge numerico dinamico dei download attivi nell'header della Home (`HomeAppBar`) e link diretto dalla scheda Impostazioni.
-6. **Card Impostazioni Minimale `DownloadSettingsCard.tsx` (`app/(tabs)/settings.tsx`)**:
+6. **Card Impostazioni Minimale `DownloadSettingsCard.tsx` (`app/settings/downloads.tsx` & Hub `app/(tabs)/settings.tsx`)**:
    - Interfaccia compatta e testi essenziali/minimali (*`SCARICATI`*, *`PERCORSO`*, *`RETE`*, *`MEMORIA`*).
    - Gestione cartella SAF (*"CAMBIA"* e *"PREDEFINITA"*).
    - Toggle *"SOLO WI-FI"*.
    - Monitoraggio spazio totale e pulsante *"SVUOTA"* protetto da `ConfirmModal`.
+
+7. **Riprogettazione Modulare "Impostazioni" — Architettura Hub & Spoke (`app/(tabs)/settings.tsx` & `app/settings/*`)**:
+   - **Hub Principale Snello (`app/(tabs)/settings.tsx`)**:
+     - **Hero Card KuroSync & Profilo**: In cima all'Hub, espone avatar circolare del profilo attivo con iniziale o icona di accesso, nome profilo, indicatore di stato sincrono (pallino verde `CONNESSO`, spinner `SINCRONIZZAZIONE`, grigio `OFFLINE`), nome server host, pulsante rapido `CAMBIA` (apre `SyncProfileModal`) o `ACCEDI` (`SyncConnectModal`), ed eventuale alert compatto per nuovi aggiornamenti con redirect ad `about.tsx`.
+     - **Righe Categoria Ricche (`SettingsCategoryRow.tsx`)**: Lista modulare a 7 schede con icona tematica, titolo monospace, sottotitolo dinamico di stato in tempo reale da MMKV/servizi e chevron destra con touch target $\ge 56$dp.
+   - **Le 7 Sotto-pagine Dedicate nello Stack Nativo (`app/settings/*`, animazione `slide_from_right`)**:
+     1. `appearance.tsx`: Tema OLED/Pikachu/Orchid/Rainbow con toggle Dark/Light al tocco e Navbar Android (Auto-hide con swipe vs Sempre visibile);
+     2. `playback.tsx`: AniSkip completo (`AniSkipSlider` per Auto/Manual/Disabled, `AniSkipDurationSlider` 5s-60s/∞, chip sezioni Intro/Recap/Outro);
+     3. `sync.tsx`: KuroSync completo (`SyncSettingsCard`, stato backend D1, pairing TV via QR/PIN, sync delta manuale);
+     4. `downloads.tsx`: Gestione download SAF personalizzato, switch Wi-Fi only, monitoraggio memoria e svuotamento con `ConfirmModal`;
+     5. `source.tsx`: TLD AnimeWorld (.ac, .so, .tv), URL personalizzato e avvisi inline;
+     6. `history.tsx`: Conservazione cronologia visioni e ricerche stile Google con `HistorySlider` e cancellazione con `ConfirmModal`;
+     7. `about.tsx`: Info app/ABI, Changelog tabs corrente/futuro, OTA Updater integrato con progress bar e installazione APK.
+   - **Barra Superiore Unificata (`SettingsHeader.tsx`) & Gestione Tasto Indietro**: Ciascuna sotto-pagina adotta `SettingsHeader` con touch target $\ge 44$dp e gestione fisica `hardwareBackPress` tramite `useFocusEffect` (ritorno prioritario all'Hub delle Impostazioni senza minimizzare l'app).
+   - **Retrocompatibilità Parametri & Deep-links**: Il parametro `scrollTo: 'downloads'` da `app/downloads/index.tsx` reindirizza istantaneamente a `/settings/downloads`, mentre `scrollTo: 'update'` o `UpdateStore.isAutoDownloadRequested()` reindirizzano a `/settings/about`.
 
 ---
 

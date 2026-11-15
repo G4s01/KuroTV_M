@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, Pressable, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import type { Theme } from '@/theme';
+import { getContrastTextColor, type Theme } from '@/theme';
 import { settingsStyles } from './settings.styles';
 
 export const QUICK_DOMAINS = ['ac', 'so', 'tv'] as const;
@@ -82,7 +82,9 @@ export function SourceSettingsCard({
           style={[settingsStyles.applyBtn, { backgroundColor: theme.colors.primary }]}
           onPress={onApplyCustomUrl}
         >
-          <Text style={settingsStyles.applyBtnText}>APPLICA</Text>
+          <Text style={[settingsStyles.applyBtnText, { color: getContrastTextColor(theme.colors.primary) }]}>
+            APPLICA
+          </Text>
         </Pressable>
       </View>
 
