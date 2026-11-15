@@ -1094,11 +1094,15 @@ export const AppStorage = {
       rawContinue.splice(targetIdx, 1);
       rawContinue.unshift(updatedItem);
       AppStorage.setObject(StorageKeys.CONTINUE_WATCHING, rawContinue.slice(0, 50));
+      AppStorage.recordSyncMutation('continueWatching', updatedItem);
+      notifySettingsListeners(AppStorage.getSettings());
       return true;
     } else if (totalEpisodes && item.totalEpisodes !== totalEpisodes) {
       item.totalEpisodes = totalEpisodes;
       item.lastCheckedAt = Date.now();
       AppStorage.setObject(StorageKeys.CONTINUE_WATCHING, rawContinue);
+      AppStorage.recordSyncMutation('continueWatching', item);
+      notifySettingsListeners(AppStorage.getSettings());
       return true;
     }
     return false;
@@ -1267,6 +1271,9 @@ export const AppStorage = {
       ? rawContinue.filter((c) => c.animeId !== payload.animeId)
       : [];
 
+    const totalStr = String(payload.totalEpisodes || existing?.totalEpisodes || '').trim();
+    const isOngoing = totalStr.includes('?') || Boolean(payload.isOngoing);
+
     if (isCompleted) {
       if (payload.nextEpisode && payload.nextEpisode.number) {
         // Advance to next episode starting at 0%
@@ -1289,8 +1296,6 @@ export const AppStorage = {
       } else {
         // No next episode available in current list.
         // Check if the anime is ongoing (unknown total '?' or explicit isOngoing flag)
-        const totalStr = String(payload.totalEpisodes || existing?.totalEpisodes || '').trim();
-        const isOngoing = totalStr.includes('?') || Boolean(payload.isOngoing);
         if (isOngoing) {
           const caughtUpItem: ContinueWatchingItem = {
             animeId: payload.animeId,
@@ -1334,9 +1339,18 @@ export const AppStorage = {
 
     AppStorage.recordSyncMutation('watchProgress', progressItem);
     AppStorage.recordSyncMutation('watchHistory', historyItem);
-    if (continueList.length > 0) {
-      AppStorage.recordSyncMutation('continueWatching', continueList[0]);
+
+    const isConcluded = Boolean(isCompleted && !payload.nextEpisode && !isOngoing);
+    if (isConcluded) {
+      AppStorage.recordSyncDeletion('continue_watching', payload.animeId);
+    } else {
+      const currentCw = continueList.find((c) => c.animeId === payload.animeId);
+      if (currentCw) {
+        AppStorage.recordSyncMutation('continueWatching', currentCw);
+      }
     }
+
+    notifySettingsListeners(AppStorage.getSettings());
 
     return progressItem;
   },
@@ -1615,6 +1629,27 @@ export const AppStorage = {
     AppStorage.remove(StorageKeys.SYNC_PENDING_DELETIONS);
   },
 
+  removePendingSyncDeletions: (
+    processedDeletions: Array<{ type: string; key: string }>
+  ): void => {
+    if (!Array.isArray(processedDeletions) || processedDeletions.length === 0) return;
+    try {
+      const current = AppStorage.getPendingSyncDeletions();
+      if (current.length === 0) return;
+
+      const processedSet = new Set(processedDeletions.map((d) => `${d.type}:${d.key}`));
+      const remaining = current.filter((d) => !processedSet.has(`${d.type}:${d.key}`));
+
+      if (remaining.length === 0) {
+        AppStorage.remove(StorageKeys.SYNC_PENDING_DELETIONS);
+      } else {
+        AppStorage.setObject(StorageKeys.SYNC_PENDING_DELETIONS, remaining);
+      }
+    } catch {
+      // Safe fallback
+    }
+  },
+
   recordSyncMutation: (
     type:
       | 'favorites'
@@ -1708,6 +1743,89 @@ export const AppStorage = {
 
   clearPendingSyncMutations: (): void => {
     AppStorage.remove(StorageKeys.SYNC_PENDING_MUTATIONS);
+  },
+
+  removePendingSyncMutations: (processed: Record<string, any>): void => {
+    if (!processed || typeof processed !== 'object') return;
+    try {
+      const current = AppStorage.getPendingSyncMutations();
+      if (Object.keys(current).length === 0) return;
+
+      if (Array.isArray(processed.favorites) && Array.isArray(current.favorites)) {
+        const procMap = new Map(processed.favorites.map((f: any) => [f.id, f.updatedAt || 0]));
+        current.favorites = current.favorites.filter((f: any) => {
+          const procTime = procMap.get(f.id);
+          return procTime === undefined || (f.updatedAt || 0) > procTime;
+        });
+        if (current.favorites.length === 0) delete current.favorites;
+      }
+
+      if (Array.isArray(processed.continueWatching) && Array.isArray(current.continueWatching)) {
+        const procMap = new Map(
+          processed.continueWatching.map((c: any) => [c.animeId, c.updatedAt || 0])
+        );
+        current.continueWatching = current.continueWatching.filter((c: any) => {
+          const procTime = procMap.get(c.animeId);
+          return procTime === undefined || (c.updatedAt || 0) > procTime;
+        });
+        if (current.continueWatching.length === 0) delete current.continueWatching;
+      }
+
+      if (Array.isArray(processed.watchHistory) && Array.isArray(current.watchHistory)) {
+        const procMap = new Map(
+          processed.watchHistory.map((h: any) => [
+            `${h.animeId}:${h.episodeNumber}`,
+            h.updatedAt || 0,
+          ])
+        );
+        current.watchHistory = current.watchHistory.filter((h: any) => {
+          const procTime = procMap.get(`${h.animeId}:${h.episodeNumber}`);
+          return procTime === undefined || (h.updatedAt || 0) > procTime;
+        });
+        if (current.watchHistory.length === 0) delete current.watchHistory;
+      }
+
+      if (Array.isArray(processed.watchProgress) && Array.isArray(current.watchProgress)) {
+        const procMap = new Map(
+          processed.watchProgress.map((p: any) => [
+            `${p.animeId}:${p.episodeNumber}`,
+            p.updatedAt || 0,
+          ])
+        );
+        current.watchProgress = current.watchProgress.filter((p: any) => {
+          const procTime = procMap.get(`${p.animeId}:${p.episodeNumber}`);
+          return procTime === undefined || (p.updatedAt || 0) > procTime;
+        });
+        if (current.watchProgress.length === 0) delete current.watchProgress;
+      }
+
+      if (Array.isArray(processed.searchHistory) && Array.isArray(current.searchHistory)) {
+        const procSet = new Set(
+          processed.searchHistory.map((s: any) => (s.query || '').toLowerCase())
+        );
+        current.searchHistory = current.searchHistory.filter(
+          (s: any) => !procSet.has((s.query || '').toLowerCase())
+        );
+        if (current.searchHistory.length === 0) delete current.searchHistory;
+      }
+
+      if (processed.sharedSettings && current.sharedSettings) {
+        for (const k of Object.keys(processed.sharedSettings)) {
+          delete current.sharedSettings[k];
+        }
+        if (Object.keys(current.sharedSettings).length === 0) {
+          delete current.sharedSettings;
+        }
+      }
+
+      if (Object.keys(current).length === 0) {
+        AppStorage.remove(StorageKeys.SYNC_PENDING_MUTATIONS);
+      } else {
+        AppStorage.setObject(StorageKeys.SYNC_PENDING_MUTATIONS, current);
+      }
+    } catch {
+      // Safe fallback
+    }
   },
 
   getAllWatchProgress: (): WatchProgressItem[] => {

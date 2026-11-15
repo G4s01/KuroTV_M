@@ -4621,6 +4621,188 @@ assert(playerStylesSrc.includes('errorBackBtn: {'), 'errorBackBtn deve essere pr
 console.log('✓ Player Fix: Orientamento Orizzontale Stabile, Download Source Error & Riprova Sbloccato verificati con successo.');
 
 // -----------------------------------------------------------------------------
+// [34/34] Verifica Sincronizzazione Avanzata: Riprendi a Guardare, Preferiti & Cronologia
+// -----------------------------------------------------------------------------
+console.log('\n[34/34] Verifica Sincronizzazione Avanzata: Riprendi a Guardare, Preferiti & Cronologia...');
+
+// 1. Verifica che updateContinueWatchingEpisode generi una sync mutation per continueWatching
+AppStorage.clearPendingSyncMutations();
+AppStorage.clearPendingSyncDeletions();
+AppStorage.setObject(StorageKeys.CONTINUE_WATCHING, [
+  {
+    animeId: 'caughtup-sync-test',
+    title: 'CaughtUp Test',
+    thumbnail: 'https://example.com/thumb.jpg',
+    episodeId: 'ep-1',
+    episodeNumber: 1,
+    totalEpisodes: 12,
+    position: 0,
+    duration: 1400,
+    percentage: 100,
+    isCaughtUp: true,
+    updatedAt: 1000,
+  },
+]);
+
+const updatedCw = AppStorage.updateContinueWatchingEpisode(
+  'caughtup-sync-test',
+  { id: 'ep-2', number: 2 },
+  12
+);
+assert.strictEqual(updatedCw, true, 'updateContinueWatchingEpisode deve restituire true');
+const pendingAfterAdvance = AppStorage.getPendingSyncMutations();
+assert(
+  Array.isArray(pendingAfterAdvance.continueWatching),
+  'updateContinueWatchingEpisode deve registrare una mutation per continueWatching'
+);
+assert(
+  pendingAfterAdvance.continueWatching.some(
+    (c: any) => c.animeId === 'caughtup-sync-test' && c.episodeNumber === 2
+  ),
+  'La mutation continueWatching deve contenere il nuovo episodio avanzato'
+);
+
+// 2. Verifica che un anime concluso in saveWatchProgress generi tombstone continue_watching e non muti anime estranei
+AppStorage.clearPendingSyncMutations();
+AppStorage.clearPendingSyncDeletions();
+AppStorage.setObject(StorageKeys.CONTINUE_WATCHING, [
+  {
+    animeId: 'unrelated-anime',
+    title: 'Unrelated Anime',
+    thumbnail: '',
+    episodeId: 'ep-1',
+    episodeNumber: 1,
+    totalEpisodes: 24,
+    position: 500,
+    duration: 1400,
+    percentage: 35,
+    isCaughtUp: false,
+    updatedAt: 1000,
+  },
+  {
+    animeId: 'concluded-anime',
+    title: 'Concluded Anime',
+    thumbnail: '',
+    episodeId: 'ep-12',
+    episodeNumber: 12,
+    totalEpisodes: 12,
+    position: 1390,
+    duration: 1400,
+    percentage: 99,
+    isCaughtUp: false,
+    updatedAt: 1000,
+  },
+]);
+
+AppStorage.saveWatchProgress({
+  animeId: 'concluded-anime',
+  animeTitle: 'Concluded Anime',
+  episodeId: 'ep-12',
+  episodeNumber: 12,
+  totalEpisodes: 12,
+  currentTime: 1400,
+  duration: 1400,
+  isOngoing: false, // Serie conclusa
+  nextEpisode: undefined, // Nessun prossimo episodio
+});
+
+const delsAfterConclude = AppStorage.getPendingSyncDeletions();
+assert(
+  delsAfterConclude.some((d) => d.type === 'continue_watching' && d.key === 'concluded-anime'),
+  'Il completamento di una serie conclusa deve generare un tombstone continue_watching per quella serie'
+);
+
+const mutsAfterConclude = AppStorage.getPendingSyncMutations();
+const cwMuts = mutsAfterConclude.continueWatching || [];
+assert(
+  !cwMuts.some((c: any) => c.animeId === 'unrelated-anime'),
+  'Il completamento di una serie conclusa NON deve mutare arbitrariamente anime estranei in cima alla lista'
+);
+
+// 3. Verifica atomic acknowledgement: removePendingSyncMutations & removePendingSyncDeletions
+AppStorage.clearPendingSyncMutations();
+AppStorage.clearPendingSyncDeletions();
+
+AppStorage.recordSyncMutation('favorites', {
+  id: 'fav-1',
+  title: 'Fav 1',
+  thumbnail: '',
+  link: '',
+  updatedAt: 100,
+});
+AppStorage.recordSyncMutation('favorites', {
+  id: 'fav-2',
+  title: 'Fav 2',
+  thumbnail: '',
+  link: '',
+  updatedAt: 100,
+});
+AppStorage.recordSyncMutation('continueWatching', {
+  animeId: 'cw-1',
+  title: 'CW 1',
+  thumbnail: '',
+  episodeId: 'ep-1',
+  episodeNumber: 1,
+  updatedAt: 100,
+});
+
+// Simula arrivo completamento push per solo fav-1: fav-2 e cw-1 devono rimanere intatti
+AppStorage.removePendingSyncMutations({
+  favorites: [{ id: 'fav-1', updatedAt: 100 }],
+});
+const remainingMuts = AppStorage.getPendingSyncMutations();
+assert.strictEqual(remainingMuts.favorites.length, 1, 'Solo fav-1 doveva essere rimosso');
+assert.strictEqual(remainingMuts.favorites[0].id, 'fav-2', 'fav-2 deve rimanere in coda');
+assert.strictEqual(remainingMuts.continueWatching.length, 1, 'cw-1 deve rimanere in coda');
+
+// Simula mutazione concorrente in-flight: fav-2 riceve update a t=200 mentre il push era per t=100
+AppStorage.recordSyncMutation('favorites', {
+  id: 'fav-2',
+  title: 'Fav 2 Updated In-Flight',
+  thumbnail: '',
+  link: '',
+  updatedAt: 200,
+});
+AppStorage.removePendingSyncMutations({
+  favorites: [{ id: 'fav-2', updatedAt: 100 }], // Push completato per versione vecchia a 100
+});
+const remainingAfterInFlight = AppStorage.getPendingSyncMutations();
+assert(remainingAfterInFlight.favorites && remainingAfterInFlight.favorites.length === 1, 'fav-2 con timestamp più recente (200) non deve essere cancellato');
+assert.strictEqual(remainingAfterInFlight.favorites[0].updatedAt, 200);
+
+// Verifica removePendingSyncDeletions
+AppStorage.recordSyncDeletion('favorite', 'del-1');
+AppStorage.recordSyncDeletion('favorite', 'del-2');
+AppStorage.removePendingSyncDeletions([{ type: 'favorite', key: 'del-1' }]);
+const remainingDels = AppStorage.getPendingSyncDeletions();
+assert.strictEqual(remainingDels.length, 1, 'del-1 deve essere rimosso e del-2 preservato');
+assert.strictEqual(remainingDels[0].key, 'del-2');
+
+// 4. Verifica prevenzione regressione unmount nel player
+const playerSourceCode = fs.readFileSync(path.resolve(process.cwd(), 'app/player/[id].tsx'), 'utf-8');
+assert(playerSourceCode.includes('hasNavigatedRef.current = true;'), 'player/[id].tsx deve impostare hasNavigatedRef alla navigazione');
+assert(playerSourceCode.includes('!hasNavigatedRef.current && currentAnimeIdRef.current'), 'Il cleanup di unmount non deve sovrascrivere il progresso se la navigazione è già avvenuta');
+assert(playerSourceCode.includes('currentTimeRef.current = savePos;'), 'handleNavigateToEpisode deve aggiornare currentTimeRef al valore salvato');
+assert(playerSourceCode.includes('currentTimeRef.current = finalDuration;'), 'playToEnd deve aggiornare currentTimeRef al valore finale');
+
+// 5. Verifica pullDeltaIfNeeded e aggancio a schermate
+assert(typeof (SyncManager as any).pullDeltaIfNeeded === 'function', 'SyncManager deve esporre pullDeltaIfNeeded');
+const homeSrc = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/index.tsx'), 'utf-8');
+const favSrc = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/favorites.tsx'), 'utf-8');
+const histSrc = fs.readFileSync(path.resolve(process.cwd(), 'app/(tabs)/history.tsx'), 'utf-8');
+assert(homeSrc.includes('SyncManager.pullDeltaIfNeeded'), 'Home index.tsx deve richiamare pullDeltaIfNeeded on focus');
+assert(favSrc.includes('SyncManager.pullDeltaIfNeeded'), 'Favorites favorites.tsx deve richiamare pullDeltaIfNeeded on focus');
+assert(histSrc.includes('SyncManager.pullDeltaIfNeeded'), 'History history.tsx deve richiamare pullDeltaIfNeeded on focus');
+
+// 6. Verifica fallback defaults non-null nel backend KuroTV_S
+const serverSyncSrc = fs.readFileSync(path.resolve(process.cwd(), '../KuroTV_S/src/worker/routes/sync.ts'), 'utf-8');
+assert(serverSyncSrc.includes('item.thumbnail || ""'), 'KuroTV_S deve applicare fallback non-null per thumbnail');
+assert(serverSyncSrc.includes('item.title || "Anime"'), 'KuroTV_S deve applicare fallback non-null per title');
+assert(serverSyncSrc.includes('item.episodeId || ""'), 'KuroTV_S deve applicare fallback non-null per episodeId');
+
+console.log('✓ Sincronizzazione Avanzata: Riprendi a Guardare, Preferiti & Cronologia verificati con successo.');
+
+// -----------------------------------------------------------------------------
 // Fine Test
 // -----------------------------------------------------------------------------
 console.log('\n==============================================');

@@ -441,6 +441,7 @@ export default function VideoPlayerScreen() {
   useEventListener(player, 'playToEnd', () => {
     if (animeId && episodeId) {
       const finalDuration = player.duration || durationRef.current;
+      currentTimeRef.current = finalDuration;
       saveProgress(finalDuration, finalDuration);
     }
   });
@@ -451,6 +452,7 @@ export default function VideoPlayerScreen() {
   currentEpisodeIdRef.current = episodeId;
   const saveProgressRef = React.useRef(saveProgress);
   saveProgressRef.current = saveProgress;
+  const hasNavigatedRef = React.useRef(false);
 
   // AppState listener: if app goes to background without PiP, pause playback and save progress
   React.useEffect(() => {
@@ -503,7 +505,7 @@ export default function VideoPlayerScreen() {
     return () => {
       player.pause();
       player.showNowPlayingNotification = false;
-      if (currentAnimeIdRef.current && currentEpisodeIdRef.current) {
+      if (!hasNavigatedRef.current && currentAnimeIdRef.current && currentEpisodeIdRef.current) {
         saveProgressRef.current(currentTimeRef.current, durationRef.current);
       }
       SyncManager.flushPlaybackProgress().catch(() => {});
@@ -845,11 +847,13 @@ export default function VideoPlayerScreen() {
       targetEp: Episode | { id: string; number: number; dataId?: string; thumbnail?: string },
       options?: { markCurrentCompleted?: boolean }
     ) => {
+      hasNavigatedRef.current = true;
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
       const savePos =
         options?.markCurrentCompleted && durationRef.current > 0
           ? durationRef.current
           : currentTimeRef.current;
+      currentTimeRef.current = savePos;
       saveProgress(savePos, durationRef.current);
       SyncManager.flushPlaybackProgress().catch(() => {});
       hasResumedRef.current = false;

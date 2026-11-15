@@ -7,6 +7,9 @@ import type {
   LocalStorageState,
   ProfileItem,
   WatchProgressItem,
+  AnimeItem,
+  ContinueWatchingItem,
+  WatchHistoryItem,
 } from './types';
 import type { SaveProgressPayload } from '../storage/app-storage';
 
@@ -149,6 +152,68 @@ export function parseKuroSyncDeepLink(deepLink: string): {
   }
 }
 
+function sanitizePushPayload(payload: DeltaPushRequest): DeltaPushRequest {
+  const sanitized: DeltaPushRequest = { ...payload };
+
+  if (Array.isArray(sanitized.favorites)) {
+    sanitized.favorites = sanitized.favorites.map((f) => ({
+      ...f,
+      title: f.title || 'Anime',
+      thumbnail: f.thumbnail || '',
+      link: f.link || '',
+      genres: Array.isArray(f.genres) ? f.genres : [],
+      updatedAt: f.updatedAt || Date.now(),
+    }));
+  }
+
+  if (Array.isArray(sanitized.continueWatching)) {
+    sanitized.continueWatching = sanitized.continueWatching.map((c) => ({
+      ...c,
+      title: c.title || 'Anime',
+      thumbnail: c.thumbnail || '',
+      episodeId: c.episodeId || '',
+      episodeNumber: typeof c.episodeNumber === 'number' ? c.episodeNumber : 1,
+      position: typeof c.position === 'number' ? c.position : 0,
+      duration: typeof c.duration === 'number' ? c.duration : 0,
+      percentage: typeof c.percentage === 'number' ? c.percentage : 0,
+      isCaughtUp: Boolean(c.isCaughtUp),
+      updatedAt: c.updatedAt || Date.now(),
+    }));
+  }
+
+  if (Array.isArray(sanitized.watchHistory)) {
+    sanitized.watchHistory = sanitized.watchHistory.map((h) => ({
+      ...h,
+      title: h.title || 'Anime',
+      thumbnail: h.thumbnail || '',
+      episodeId: h.episodeId || '',
+      episodeNumber: typeof h.episodeNumber === 'number' ? h.episodeNumber : 1,
+      position: typeof h.position === 'number' ? h.position : 0,
+      duration: typeof h.duration === 'number' ? h.duration : 0,
+      progressPercent: typeof h.progressPercent === 'number' ? h.progressPercent : 0,
+      isCompleted: Boolean(h.isCompleted),
+      updatedAt: h.updatedAt || Date.now(),
+    }));
+  }
+
+  if (Array.isArray(sanitized.watchProgress)) {
+    sanitized.watchProgress = sanitized.watchProgress.map((p) => ({
+      ...p,
+      animeTitle: p.animeTitle || 'Anime',
+      thumbnail: p.thumbnail || '',
+      episodeId: p.episodeId || '',
+      episodeNumber: typeof p.episodeNumber === 'number' ? p.episodeNumber : 1,
+      currentTime: typeof p.currentTime === 'number' ? p.currentTime : 0,
+      duration: typeof p.duration === 'number' ? p.duration : 0,
+      percentage: typeof p.percentage === 'number' ? p.percentage : 0,
+      isCompleted: Boolean(p.isCompleted),
+      updatedAt: p.updatedAt || Date.now(),
+    }));
+  }
+
+  return sanitized;
+}
+
 class SyncManagerClass {
   private client: KuroSyncClient;
   private isSyncing = false;
@@ -193,6 +258,12 @@ class SyncManagerClass {
     AppStorage.addMutationListener((type) => {
       // Playback progress mutations are debounced 45-60s during video playback
       if (type === 'watchProgress') return;
+      if (
+        this.pendingPlaybackPayload !== null &&
+        (type === 'watchHistory' || type === 'continueWatching')
+      ) {
+        return;
+      }
       this.scheduleAutoSync(1500);
     });
   }
@@ -1223,6 +1294,10 @@ class SyncManagerClass {
       this.lastError = null;
       this.notify();
 
+      if (this.pendingPlaybackPayload) {
+        this.commitPlaybackPayload();
+      }
+
       const since =
         forcedSince !== undefined
           ? forcedSince
@@ -1301,7 +1376,7 @@ class SyncManagerClass {
       // If initial bootstrap (since === 0), also push current local data to populate the profile
       let pushPayload: DeltaPushRequest;
       if (since === 0) {
-        pushPayload = {
+        pushPayload = sanitizePushPayload({
           favorites: mergedState.favorites,
           continueWatching: mergedState.continueWatching,
           watchHistory: mergedState.watchHistory,
@@ -1309,16 +1384,16 @@ class SyncManagerClass {
           sharedSettings: mergedState.sharedSettings,
           searchHistory: mergedState.searchHistory,
           deletions: pendingDeletions,
-        };
+        });
       } else if (hasPending) {
         const hasSearchChanges =
           Array.isArray(pendingMutations.searchHistory) ||
           pendingDeletions.some((d) => d.type === 'search_history');
 
-        pushPayload = {
+        pushPayload = sanitizePushPayload({
           ...pendingMutations,
           deletions: pendingDeletions,
-        };
+        });
         if (hasSearchChanges) {
           pushPayload.searchHistory = mergedState.searchHistory;
         }
@@ -1332,8 +1407,8 @@ class SyncManagerClass {
         if (pushRes.serverTime) {
           newServerTime = pushRes.serverTime;
         }
-        AppStorage.clearPendingSyncDeletions();
-        AppStorage.clearPendingSyncMutations();
+        AppStorage.removePendingSyncDeletions(pendingDeletions);
+        AppStorage.removePendingSyncMutations(pushPayload);
       }
 
       AppStorage.setNumber(StorageKeys.SYNC_LAST_TIMESTAMP, newServerTime);
@@ -1435,8 +1510,24 @@ class SyncManagerClass {
     };
   }
 
+  private lastPullDeltaTime = 0;
+
   async pullDelta(): Promise<{ ok: boolean; upserts: number; deletions: number; error?: string }> {
+    this.lastPullDeltaTime = Date.now();
     return this.performFullSync();
+  }
+
+  async pullDeltaIfNeeded(
+    minIntervalMs = 15000
+  ): Promise<{ ok: boolean; upserts: number; deletions: number; error?: string }> {
+    if (!this.isConnected()) {
+      return { ok: false, upserts: 0, deletions: 0, error: 'Non collegato' };
+    }
+    const now = Date.now();
+    if (now - this.lastPullDeltaTime < minIntervalMs) {
+      return { ok: true, upserts: 0, deletions: 0 };
+    }
+    return this.pullDelta();
   }
 
   private commitPlaybackPayload(): void {
@@ -1447,30 +1538,62 @@ class SyncManagerClass {
     this.lastPlaybackPushTime = Date.now();
     this.lastPlaybackPos = p.currentTime;
 
+    const now = Date.now();
+    const isCompleted = Boolean(
+      p.isCompleted || (p.duration > 0 && p.currentTime / p.duration >= 0.9)
+    );
+    const percentage =
+      p.duration > 0 ? Math.min(100, Math.round((p.currentTime / p.duration) * 100)) : 0;
+
     const watchProgressItem: WatchProgressItem = {
       animeId: p.animeId,
       animeTitle: p.animeTitle || p.title || 'Anime',
       thumbnail: p.thumbnail || '',
-      episodeId: p.episodeId,
+      episodeId: p.episodeId || '',
       episodeNumber: p.episodeNumber,
       totalEpisodes: p.totalEpisodes,
       currentTime: p.currentTime,
       duration: p.duration,
-      percentage:
-        p.duration > 0 ? Math.min(100, Math.round((p.currentTime / p.duration) * 100)) : 0,
-      isCompleted: Boolean(p.isCompleted || (p.duration > 0 && p.currentTime / p.duration >= 0.9)),
-      updatedAt: Date.now(),
+      percentage,
+      isCompleted,
+      updatedAt: now,
       dataId: p.dataId,
       serverId: p.serverId,
     };
-
     AppStorage.recordSyncMutation('watchProgress', watchProgressItem);
+
+    const historyItem: WatchHistoryItem = {
+      animeId: p.animeId,
+      title: p.animeTitle || p.title || 'Anime',
+      thumbnail: p.thumbnail || '',
+      episodeId: p.episodeId || '',
+      episodeNumber: p.episodeNumber,
+      position: p.currentTime,
+      duration: p.duration,
+      progressPercent: percentage,
+      isCompleted,
+      updatedAt: now,
+      dataId: p.dataId,
+      serverId: p.serverId,
+    };
+    AppStorage.recordSyncMutation('watchHistory', historyItem);
+
+    const isConcluded = Boolean(isCompleted && !p.nextEpisode && !p.isOngoing);
+    if (isConcluded) {
+      AppStorage.recordSyncDeletion('continue_watching', p.animeId);
+    } else {
+      const currentCw = AppStorage.getContinueWatching().find((c) => c.animeId === p.animeId);
+      if (currentCw) {
+        AppStorage.recordSyncMutation('continueWatching', currentCw);
+      }
+    }
   }
 
   async pushPending(force = false): Promise<{ ok: boolean; error?: string }> {
     this.cancelAutoSync();
     this.ensureClientConfigured();
     if (!this.isConnected()) return { ok: false, error: 'Non collegato' };
+    if (this.isSyncing) return { ok: true };
 
     // Atomically commit any pending playback progress into pending mutations
     if (this.pendingPlaybackPayload) {
@@ -1485,14 +1608,17 @@ class SyncManagerClass {
     }
 
     try {
+      this.isSyncing = true;
+      this.notify();
+
       const hasSearchChanges =
         Array.isArray(pendingMutations.searchHistory) ||
         pendingDeletions.some((d) => d.type === 'search_history');
 
-      const pushPayload: DeltaPushRequest = {
+      const pushPayload: DeltaPushRequest = sanitizePushPayload({
         ...pendingMutations,
         deletions: pendingDeletions,
-      };
+      });
 
       if (hasSearchChanges) {
         pushPayload.searchHistory = AppStorage.getSearchHistory();
@@ -1500,13 +1626,15 @@ class SyncManagerClass {
 
       await this.client.pushDelta(pushPayload);
 
-      AppStorage.clearPendingSyncDeletions();
-      AppStorage.clearPendingSyncMutations();
+      AppStorage.removePendingSyncDeletions(pendingDeletions);
+      AppStorage.removePendingSyncMutations(pushPayload);
       AppStorage.setNumber(StorageKeys.SYNC_LAST_TIME, Date.now());
-      this.notify();
       return { ok: true };
     } catch (err: any) {
       return { ok: false, error: err?.message };
+    } finally {
+      this.isSyncing = false;
+      this.notify();
     }
   }
 

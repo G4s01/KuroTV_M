@@ -361,6 +361,10 @@ export default function HomeScreen() {
     React.useCallback(() => {
       setContinueWatching(AppStorage.getContinueWatching());
 
+      if (SyncManager.isConnected()) {
+        SyncManager.pullDeltaIfNeeded(15000).catch(() => {});
+      }
+
       // 2. Controllo remoto periodico (Ibrido Smart: verifica ogni 4 ore in background)
       syncCaughtUpWithRemote(false).then((updated) => {
         if (updated) {

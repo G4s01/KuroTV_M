@@ -55,6 +55,9 @@ export default function FavoritesScreen() {
   useFocusEffect(
     React.useCallback(() => {
       loadFavorites();
+      if (SyncManager.isConnected()) {
+        SyncManager.pullDeltaIfNeeded(15000).catch(() => {});
+      }
     }, [loadFavorites])
   );
 

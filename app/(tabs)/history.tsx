@@ -322,6 +322,9 @@ export default function HistoryScreen() {
   useFocusEffect(
     React.useCallback(() => {
       loadHistory();
+      if (SyncManager.isConnected()) {
+        SyncManager.pullDeltaIfNeeded(15000).catch(() => {});
+      }
     }, [loadHistory])
   );
 
