@@ -88,12 +88,44 @@ function formatBytes(bytes) {
 }
 
 async function listBucketObjects(bucket) {
-  const accountId = process.env.R2_ACCOUNT_ID;
+  const accountId = process.env.R2_ACCOUNT_ID || process.env.CLOUDFLARE_ACCOUNT_ID;
+  const apiToken = process.env.CLOUDFLARE_API_TOKEN || process.env.CF_API_TOKEN;
   const accessKeyId = process.env.R2_ACCESS_KEY_ID;
   const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
   const endpoint = process.env.R2_ENDPOINT_URL || (accountId ? `https://${accountId}.r2.cloudflarestorage.com` : '');
 
-  // Strategy 1: S3 SDK
+  // Strategy 1: Cloudflare REST API v4 (preferred when CLOUDFLARE_API_TOKEN is available, zero external dependencies)
+  if (accountId && apiToken) {
+    try {
+      const targetUrl = new URL(`https://api.cloudflare.com/client/v4/accounts/${accountId}/r2/buckets/${encodeURIComponent(bucket)}/objects`);
+      const res = await new Promise((resolve, reject) => {
+        https.get(targetUrl, {
+          headers: {
+            Authorization: `Bearer ${apiToken}`,
+            'User-Agent': 'KuroTV-R2-Cleaner',
+          },
+        }, (res) => {
+          let data = '';
+          res.on('data', chunk => data += chunk);
+          res.on('end', () => {
+            if (res.statusCode >= 200 && res.statusCode < 300) {
+              try { resolve(JSON.parse(data)); } catch (e) { reject(e); }
+            } else {
+              reject(new Error(`HTTP ${res.statusCode}: ${data}`));
+            }
+          });
+        }).on('error', reject);
+      });
+
+      const rawItems = res.result || [];
+      const items = rawItems.map(obj => ({ key: obj.key, size: obj.size || 0 }));
+      return { source: 'cf-api', items, accountId, apiToken };
+    } catch (err) {
+      console.warn(`[Cleanup] Cloudflare API list failed for '${bucket}': ${err.message}. Trying S3 fallback...`);
+    }
+  }
+
+  // Strategy 2: S3 SDK fallback
   if (accessKeyId && secretAccessKey && endpoint) {
     try {
       const { S3Client, ListObjectsV2Command } = await import('@aws-sdk/client-s3');
@@ -124,39 +156,7 @@ async function listBucketObjects(bucket) {
 
       return { source: 's3', items, s3 };
     } catch (err) {
-      console.warn(`[Cleanup] S3 list failed for '${bucket}': ${err.message}. Trying Cloudflare API...`);
-    }
-  }
-
-  // Strategy 2: Cloudflare API v4
-  const apiToken = process.env.CLOUDFLARE_API_TOKEN;
-  if (accountId && apiToken) {
-    try {
-      const targetUrl = new URL(`https://api.cloudflare.com/client/v4/accounts/${accountId}/r2/buckets/${encodeURIComponent(bucket)}/objects`);
-      const res = await new Promise((resolve, reject) => {
-        https.get(targetUrl, {
-          headers: {
-            Authorization: `Bearer ${apiToken}`,
-            'User-Agent': 'KuroTV-R2-Cleaner',
-          },
-        }, (res) => {
-          let data = '';
-          res.on('data', chunk => data += chunk);
-          res.on('end', () => {
-            if (res.statusCode >= 200 && res.statusCode < 300) {
-              try { resolve(JSON.parse(data)); } catch (e) { reject(e); }
-            } else {
-              reject(new Error(`HTTP ${res.statusCode}: ${data}`));
-            }
-          });
-        }).on('error', reject);
-      });
-
-      const rawItems = res.result || [];
-      const items = rawItems.map(obj => ({ key: obj.key, size: obj.size || 0 }));
-      return { source: 'cf-api', items, accountId, apiToken };
-    } catch (err) {
-      console.warn(`[Cleanup] Cloudflare API list failed for '${bucket}': ${err.message}`);
+      console.warn(`[Cleanup] S3 list failed for '${bucket}': ${err.message}`);
     }
   }
 
