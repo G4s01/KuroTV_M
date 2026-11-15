@@ -12,12 +12,12 @@
     "userInterfaceStyle": "automatic",
     "android": {
       "package": "com.kurotv.mobile",
-      "versionCode": 46,
+      "versionCode": 47,
       "adaptiveIcon": {
         "backgroundColor": "#000000",
         "foregroundImage": "./assets/images/android-icon-foreground.png"
       },
-      "predictiveBackGestureEnabled": true,
+      "predictiveBackGestureEnabled": false,
       "permissions": [
         "android.permission.INTERNET",
         "android.permission.ACCESS_NETWORK_STATE",

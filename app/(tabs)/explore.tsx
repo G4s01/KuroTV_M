@@ -8,7 +8,7 @@ import {
   RefreshControl,
   BackHandler,
 } from 'react-native';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter, useNavigation, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { FlashList } from '@shopify/flash-list';
@@ -23,6 +23,7 @@ import type { ScheduleDay, ScheduleItem } from '@/types';
 
 export default function ExploreScreen() {
   const router = useRouter();
+  const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const { isTablet } = useResponsiveLayout();
   const { theme } = useTheme();
@@ -101,12 +102,13 @@ export default function ExploreScreen() {
         if (router.canGoBack()) {
           router.back();
         } else {
+          (navigation as any).navigate('index');
           router.replace('/(tabs)');
         }
         return true;
       });
       return () => backSub.remove();
-    }, [router])
+    }, [router, navigation])
   );
 
   return (
@@ -121,6 +123,7 @@ export default function ExploreScreen() {
                 if (router.canGoBack()) {
                   router.back();
                 } else {
+                  (navigation as any).navigate('index');
                   router.replace('/(tabs)');
                 }
               }}

@@ -7,7 +7,7 @@ import {
   RefreshControl,
   BackHandler,
 } from 'react-native';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter, useNavigation, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FlashList } from '@shopify/flash-list';
 import * as Haptics from 'expo-haptics';
@@ -25,6 +25,7 @@ const getFavoriteKey = (item: AnimeItem) => item.id;
 
 export default function FavoritesScreen() {
   const router = useRouter();
+  const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
   const { numColumns, cardWidth, cardHeight } = useResponsiveLayout();
@@ -75,12 +76,13 @@ export default function FavoritesScreen() {
         if (router.canGoBack()) {
           router.back();
         } else {
+          (navigation as any).navigate('index');
           router.replace('/(tabs)');
         }
         return true;
       });
       return () => backSub.remove();
-    }, [isSelectionMode, clearSelection, router])
+    }, [isSelectionMode, clearSelection, router, navigation])
   );
 
   const onRefresh = React.useCallback(async () => {

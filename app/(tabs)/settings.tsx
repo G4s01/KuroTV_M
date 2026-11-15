@@ -1,5 +1,5 @@
 import React from 'react';
-import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter, useNavigation } from 'expo-router';
 import {
   Text,
   View,
@@ -51,6 +51,7 @@ import { useResponsiveLayout } from '@/hooks';
 
 export default function SettingsScreen() {
   const router = useRouter();
+  const navigation = useNavigation();
   const params = useLocalSearchParams<{ scrollTo?: string }>();
   const scrollViewRef = React.useRef<React.ElementRef<typeof ScrollView>>(null);
   const shouldScrollToUpdateRef = React.useRef(false);
@@ -66,12 +67,13 @@ export default function SettingsScreen() {
         if (router.canGoBack()) {
           router.back();
         } else {
+          (navigation as any).navigate('index');
           router.replace('/(tabs)');
         }
         return true;
       });
       return () => backSub.remove();
-    }, [router])
+    }, [router, navigation])
   );
 
   const [activeTheme, setActiveTheme] = React.useState<string>(() => {

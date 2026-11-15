@@ -10,7 +10,7 @@ import {
   BackHandler,
 } from 'react-native';
 import { Image } from 'expo-image';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter, useNavigation, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FlashList } from '@shopify/flash-list';
 import * as Haptics from 'expo-haptics';
@@ -282,6 +282,7 @@ type HistoryDeleteTarget = WatchHistoryItem | 'all' | 'selected' | null;
 
 export default function HistoryScreen() {
   const router = useRouter();
+  const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const { isTablet } = useResponsiveLayout();
   const { theme } = useTheme();
@@ -335,12 +336,13 @@ export default function HistoryScreen() {
         if (router.canGoBack()) {
           router.back();
         } else {
+          (navigation as any).navigate('index');
           router.replace('/(tabs)');
         }
         return true;
       });
       return () => backSub.remove();
-    }, [isSelectionMode, clearSelection, router])
+    }, [isSelectionMode, clearSelection, router, navigation])
   );
 
   React.useEffect(() => {
