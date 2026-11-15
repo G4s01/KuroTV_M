@@ -17,6 +17,8 @@ expo-env.d.ts
 # Native & Credentials (MAI committare)
 credentials/
 secure-backups/
+*credentials*.txt
+signing-credentials.txt
 *.enc
 *.orig.*
 *.jks
@@ -96,6 +98,4 @@ coverage/
 !.vscode/settings.json
 !.vscode/extensions.json
 
-_kurosync_ref/
-_kurosync_ref/
 _kurosync_ref/

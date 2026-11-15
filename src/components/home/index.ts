@@ -5,3 +5,5 @@ export * from './HomeSearchHeader';
 export * from './SearchFilterChips';
 export * from './SearchResultsGrid';
 export * from './SearchHistoryList';
+export * from './HeroBannerSection';
+export * from './RecommendedCarouselSection';

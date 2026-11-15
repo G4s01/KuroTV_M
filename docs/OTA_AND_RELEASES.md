@@ -41,16 +41,16 @@ L'applicazione condivide lo stesso Cloudflare Worker (`kuro-tv`) della versione 
 ## 🔒 Sicurezza e Protezione Manifest
 
 1. **Blocco Modifica In-App (`READ-ONLY`)**:
-   L'URL del manifest è bloccato in sola lettura nel file [`src/services/updater/updater-service.ts`](file:///home/g4s/VSCode/KuroM/src/services/updater/updater-service.ts). Qualsiasi tentativo di puntare alla root `/manifest.json` viene automaticamente riscritto a `/mobile/manifest.json` per scongiurare che gli utenti mobile installino accidentalmente la versione Android TV.
+   L'URL del manifest è bloccato in sola lettura nel file [`src/services/updater/updater-service.ts`](../src/services/updater/updater-service.ts). Qualsiasi tentativo di puntare alla root `/manifest.json` viene automaticamente riscritto a `/mobile/manifest.json` per scongiurare che gli utenti mobile installino accidentalmente la versione Android TV.
 2. **Quarantena Rigorosa delle Credenziali**:
-   - I file contenenti token e chiavi segrete (`.env`, `.env.local`, `credentials/`) sono protetti in [`.gitignore`](file:///home/g4s/VSCode/KuroM/.gitignore) e non vengono mai inclusi nei commit di Git.
-   - Il file [`.env.example`](file:///home/g4s/VSCode/KuroM/.env.example) funge da template pubblico documentato.
+   - I file contenenti token e chiavi segrete (`.env`, `.env.local`, `credentials/`) sono protetti in [`.gitignore`](../.gitignore) e non vengono mai inclusi nei commit di Git.
+   - Il file [`.env.example`](../.env.example) funge da template pubblico documentato.
 
 ---
 
 ## 📲 Ciclo di Vita dell'Updater In-App
 
-Il servizio [`UpdaterService`](file:///home/g4s/VSCode/KuroM/src/services/updater/updater-service.ts) gestisce l'intero ciclo di aggiornamento:
+Il servizio [`UpdaterService`](../src/services/updater/updater-service.ts) gestisce l'intero ciclo di aggiornamento:
 
 1. **Verifica Versione (SemVer)**:
    - Confronta la versione installata (`Constants.expoConfig?.version`) con `manifest.version`.

@@ -34,6 +34,26 @@ export class KuroSyncClient {
     this.deviceToken = options.deviceToken;
   }
 
+  private async fetchWithTimeout(url: string, init?: RequestInit, timeoutMs = 15000): Promise<Response> {
+    if (init?.signal) {
+      return fetch(url, init);
+    }
+    if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+      return fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      try {
+        controller.abort();
+      } catch {}
+    }, timeoutMs);
+    try {
+      return await fetch(url, { ...init, signal: controller.signal });
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   setBaseUrl(url: string): void {
     this.baseUrl = url.replace(/\/+$/, '');
   }
@@ -91,7 +111,7 @@ export class KuroSyncClient {
   // 1. Health & Status
   // --------------------------------------------------------------------------
   async checkHealth(): Promise<ClientHealthResponse> {
-    const res = await fetch(this.getUrl('/api/health'), {
+    const res = await this.fetchWithTimeout(this.getUrl('/api/health'), {
       method: 'GET',
       headers: this.getHeaders(),
     });
@@ -113,7 +133,7 @@ export class KuroSyncClient {
     profileId: string;
     profile: { id: string; name: string };
   }> {
-    const res = await fetch(this.getUrl('/api/auth/login'), {
+    const res = await this.fetchWithTimeout(this.getUrl('/api/auth/login'), {
       method: 'POST',
       headers: this.getHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ password }),
@@ -138,7 +158,7 @@ export class KuroSyncClient {
   }
 
   async loginDevice(req: DeviceLoginRequest): Promise<DeviceLoginResponse> {
-    const res = await fetch(this.getUrl('/api/auth/device-login'), {
+    const res = await this.fetchWithTimeout(this.getUrl('/api/auth/device-login'), {
       method: 'POST',
       headers: this.getHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(req),
@@ -156,7 +176,7 @@ export class KuroSyncClient {
   }
 
   async exchangeToken(req: TokenExchangeRequest): Promise<TokenExchangeResponse> {
-    const res = await fetch(this.getUrl('/api/auth/exchange'), {
+    const res = await this.fetchWithTimeout(this.getUrl('/api/auth/exchange'), {
       method: 'POST',
       headers: this.getHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(req),
@@ -174,7 +194,7 @@ export class KuroSyncClient {
   }
 
   async logout(): Promise<LogoutResponse> {
-    const res = await fetch(this.getUrl('/api/auth/logout'), {
+    const res = await this.fetchWithTimeout(this.getUrl('/api/auth/logout'), {
       method: 'POST',
       headers: this.getHeaders({ 'Content-Type': 'application/json' }),
     });
@@ -192,7 +212,7 @@ export class KuroSyncClient {
    * List profiles using master password (for Netflix-style profile selector before login)
    */
   async listProfilesWithPassword(password: string): Promise<ProfileItem[]> {
-    const res = await fetch(this.getUrl('/api/auth/profiles'), {
+    const res = await this.fetchWithTimeout(this.getUrl('/api/auth/profiles'), {
       method: 'POST',
       headers: this.getHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ password }),
@@ -210,7 +230,7 @@ export class KuroSyncClient {
    * List profiles using current authenticated deviceToken
    */
   async listProfiles(): Promise<ProfileItem[]> {
-    const res = await fetch(this.getUrl('/api/profiles'), {
+    const res = await this.fetchWithTimeout(this.getUrl('/api/profiles'), {
       method: 'GET',
       headers: this.getHeaders(),
     });
@@ -227,7 +247,7 @@ export class KuroSyncClient {
    * Switch the active profile for the currently connected device session
    */
   async switchProfile(profileId: string): Promise<SwitchProfileResponse> {
-    const res = await fetch(this.getUrl('/api/auth/switch-profile'), {
+    const res = await this.fetchWithTimeout(this.getUrl('/api/auth/switch-profile'), {
       method: 'POST',
       headers: this.getHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ profileId }),
@@ -244,7 +264,7 @@ export class KuroSyncClient {
   // 3. Simple-Login TV Pairing Flow
   // --------------------------------------------------------------------------
   async startTvPairing(req: PairingStartRequest): Promise<PairingStartResponse> {
-    const res = await fetch(this.getUrl('/api/pair/start'), {
+    const res = await this.fetchWithTimeout(this.getUrl('/api/pair/start'), {
       method: 'POST',
       headers: this.getHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(req),
@@ -259,7 +279,7 @@ export class KuroSyncClient {
 
   async pollTvPairing(code: string, pairSecret: string): Promise<PairingStatusResponse> {
     const normalizedCode = code.trim().toUpperCase();
-    const res = await fetch(
+    const res = await this.fetchWithTimeout(
       this.getUrl(`/api/pair/status?code=${encodeURIComponent(normalizedCode)}`),
       {
         method: 'GET',
@@ -281,7 +301,7 @@ export class KuroSyncClient {
   }
 
   async approveTvPairing(req: PairingApproveRequest): Promise<PairingApproveResponse> {
-    const res = await fetch(this.getUrl('/api/pair/approve'), {
+    const res = await this.fetchWithTimeout(this.getUrl('/api/pair/approve'), {
       method: 'POST',
       headers: this.getHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(req),
@@ -298,7 +318,7 @@ export class KuroSyncClient {
   // 4. Delta Synchronization (Pull & Push)
   // --------------------------------------------------------------------------
   async pullDelta(since = 0): Promise<RemotePullResponse> {
-    const res = await fetch(this.getUrl(`/api/sync/pull?since=${since}`), {
+    const res = await this.fetchWithTimeout(this.getUrl(`/api/sync/pull?since=${since}`), {
       method: 'GET',
       headers: this.getHeaders(),
     });
@@ -311,7 +331,7 @@ export class KuroSyncClient {
   }
 
   async pushDelta(delta: DeltaPushRequest): Promise<DeltaPushResponse> {
-    const res = await fetch(this.getUrl('/api/sync/push'), {
+    const res = await this.fetchWithTimeout(this.getUrl('/api/sync/push'), {
       method: 'POST',
       headers: this.getHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(delta),
@@ -329,7 +349,7 @@ export class KuroSyncClient {
   // --------------------------------------------------------------------------
   async exportBackup(profileId?: string): Promise<BackupExportData> {
     const query = profileId ? `?profileId=${encodeURIComponent(profileId)}` : '';
-    const res = await fetch(this.getUrl(`/api/sync/export${query}`), {
+    const res = await this.fetchWithTimeout(this.getUrl(`/api/sync/export${query}`), {
       method: 'GET',
       headers: this.getHeaders(),
     });
@@ -342,7 +362,7 @@ export class KuroSyncClient {
   }
 
   async importBackup(backup: BackupExportData): Promise<BackupImportResponse> {
-    const res = await fetch(this.getUrl('/api/sync/import'), {
+    const res = await this.fetchWithTimeout(this.getUrl('/api/sync/import'), {
       method: 'POST',
       headers: this.getHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ backup }),

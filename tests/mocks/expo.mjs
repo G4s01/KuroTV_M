@@ -7,6 +7,9 @@ export const Constants = {
 
 export const documentDirectory = '/mock/documents/';
 
+export let mockFileContent = '';
+export const setMockFileContent = (content) => { mockFileContent = content; };
+export const readAsStringAsync = async () => mockFileContent;
 export const makeDirectoryAsync = async () => {};
 export const getInfoAsync = async () => ({ exists: true, size: 104857600 });
 export const deleteAsync = async () => {};
@@ -149,6 +152,8 @@ export default {
   ImpactFeedbackStyle,
   NotificationFeedbackType,
   makeDirectoryAsync,
+  readAsStringAsync,
+  setMockFileContent,
   getInfoAsync,
   deleteAsync,
   getFreeDiskStorageAsync,

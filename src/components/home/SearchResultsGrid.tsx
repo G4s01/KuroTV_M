@@ -15,7 +15,7 @@ export interface SearchResultsGridProps {
   onItemPress: (item: AnimeItem) => void;
 }
 
-export function SearchResultsGrid({
+export const SearchResultsGrid = React.memo(function SearchResultsGrid({
   items,
   cardWidth,
   cardHeight,
@@ -57,4 +57,4 @@ export function SearchResultsGrid({
       )}
     />
   );
-}
+});

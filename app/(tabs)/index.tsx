@@ -1,15 +1,12 @@
 import React from 'react';
 import {
-  StyleSheet,
   Text,
   View,
   ScrollView,
   RefreshControl,
   Pressable,
-  TextInput,
   Keyboard,
   BackHandler,
-  ActivityIndicator,
   type NativeSyntheticEvent,
   type NativeScrollEvent,
 } from 'react-native';
@@ -17,7 +14,6 @@ import { Image } from 'expo-image';
 import { useRouter, useFocusEffect, useNavigation } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { FlashList } from '@shopify/flash-list';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { homeQueryOptions, animeQueryKeys, animeDetailQueryOptions } from '@/services/queries';
@@ -30,15 +26,11 @@ import {
 import { SyncManager } from '@/services/sync';
 import { AnimeWorldScraper } from '@/services/scraper';
 import { oledTheme, useTheme, getContrastTextColor } from '@/theme';
-import { AnimeCard } from '@/components/AnimeCard';
 import { ConfirmModal } from '@/components/ConfirmModal';
 import {
   FilterBottomSheet,
   type FilterState,
-  ANIME_GENRES,
-  ANIME_TYPES,
-  ANIME_STATUSES,
-  ANIME_SORTS,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   ANIME_DUB,
 } from '@/components/FilterBottomSheet';
 import {
@@ -50,6 +42,8 @@ import {
   SearchFilterChips,
   SearchResultsGrid,
   SearchHistoryList,
+  HeroBannerSection,
+  RecommendedCarouselSection,
 } from '@/components/home';
 import { HomeScreenSkeleton, ExploreScreenSkeleton } from '@/components/skeleton';
 import { useResponsiveLayout } from '@/hooks';
@@ -460,7 +454,7 @@ export default function HomeScreen() {
   // Stable memoized snap offsets to prevent layout thrashing on Android Fabric
   const recommendedSnapOffsets = React.useMemo(() => {
     return recommendedList.map((_, i) => i * RECOMMENDED_ITEM_TOTAL);
-  }, [recommendedList.length]);
+  }, [recommendedList]);
 
   // Safe index within bounds
   const safeFocusedIndex = Math.min(
@@ -806,345 +800,58 @@ export default function HomeScreen() {
           </View>
         ) : (
           <>
-            {/* 1. Hero Banner: Anime in evidenza (primo della top 8 dei raccomandati con swiper sincronizzato) */}
-            {recommendedList.length > 0 ? (
-              <View style={[styles.heroContainer, { width: contentWidth, height: heroHeight }]}>
-                <ScrollView
-                  ref={heroScrollRef}
-                  horizontal
-                  pagingEnabled
-                  showsHorizontalScrollIndicator={false}
-                  decelerationRate="fast"
-                  scrollEventThrottle={16}
-                  onScrollBeginDrag={() => {
-                    if (resetSourceTimeoutRef.current) clearTimeout(resetSourceTimeoutRef.current);
-                    activeScrollSourceRef.current = 'hero';
-                    lastSettledHeroIndexRef.current = -1;
-                  }}
-                  onScrollEndDrag={(e) => {
-                    const velocity = e.nativeEvent.velocity?.x ?? 0;
-                    if (Math.abs(velocity) < 0.1) {
-                      settleHeroScroll(e.nativeEvent.contentOffset.x);
-                    }
-                  }}
-                  onMomentumScrollEnd={(e) => {
-                    settleHeroScroll(e.nativeEvent.contentOffset.x);
-                  }}
-                  onScroll={handleHeroScroll}
-                  style={{ width: contentWidth, height: heroHeight }}
-                >
-                  {recommendedList.map((item, index) => {
-                    const isCurrent = index === safeFocusedIndex;
-                    return (
-                      <Pressable
-                        key={`hero-slide-${item.id}-${index}`}
-                        style={[styles.heroSlide, { width: contentWidth, height: heroHeight }]}
-                        onPress={() => navigateToAnime(item.id, item.title)}
-                        accessibilityRole="button"
-                        accessibilityLabel={`DETTAGLI ${item.title.toUpperCase()}`}
-                      >
-                        <Image
-                          source={{ uri: item.banner || item.image || item.thumbnail }}
-                          style={styles.heroImage}
-                          contentFit="cover"
-                          transition={300}
-                          priority="high"
-                        />
-                        <View style={styles.heroOverlay} />
+            {/* 1. Hero Banner: Anime in evidenza (primo della top 8 dei raccomandati con swiper sincronizzato, pulsanti RIPRODUCI e INFO) */}
+            <HeroBannerSection
+              recommendedList={recommendedList}
+              focusedItem={focusedItem}
+              safeFocusedIndex={safeFocusedIndex}
+              contentWidth={contentWidth}
+              heroHeight={heroHeight}
+              heroScrollRef={heroScrollRef}
+              isHeroPlayLoading={isHeroPlayLoading}
+              onPlayHero={handlePlayHero}
+              onNavigateToAnime={navigateToAnime}
+              onScrollBeginDrag={() => {
+                if (resetSourceTimeoutRef.current) clearTimeout(resetSourceTimeoutRef.current);
+                activeScrollSourceRef.current = 'hero';
+                lastSettledHeroIndexRef.current = -1;
+              }}
+              onScrollEndDrag={(e) => {
+                const velocity = e.nativeEvent.velocity?.x ?? 0;
+                if (Math.abs(velocity) < 0.1) {
+                  settleHeroScroll(e.nativeEvent.contentOffset.x);
+                }
+              }}
+              onMomentumScrollEnd={(e) => {
+                settleHeroScroll(e.nativeEvent.contentOffset.x);
+              }}
+              onScroll={handleHeroScroll}
+            />
 
-                        <View style={styles.heroContent}>
-                          <View style={styles.heroBadgeRow}>
-                            <View style={[styles.heroRankBadge, { backgroundColor: theme.colors.primary }]}>
-                              <Text style={[styles.heroRankBadgeText, { color: getContrastTextColor(theme.colors.primary) }]}>
-                                #{index + 1} RACCOMANDATO
-                              </Text>
-                            </View>
-                            {item.subOrDub && (
-                              <View style={[styles.heroSubBadge, { backgroundColor: theme.colors.surface }]}>
-                                <Text style={[styles.heroSubBadgeText, { color: theme.colors.textSecondary }]}>
-                                  {item.subOrDub}
-                                </Text>
-                              </View>
-                            )}
-                          </View>
-
-                          <Text style={styles.heroTitle} numberOfLines={2}>
-                            {item.title}
-                          </Text>
-
-                          {item.synopsis ? (
-                            <Text style={styles.heroSynopsis} numberOfLines={2}>
-                              {item.synopsis}
-                            </Text>
-                          ) : null}
-
-                          {/* Pulsanti d'azione: PLAY (inizia riproduzione) e INFO (scheda dettagli) */}
-                          <View style={styles.heroActionsRow}>
-                            <Pressable
-                              style={[
-                                styles.heroPlayBtn,
-                                { backgroundColor: theme.colors.primary },
-                                isHeroPlayLoading && isCurrent && styles.heroBtnDisabled,
-                              ]}
-                              onPress={(e) => {
-                                e.stopPropagation();
-                                handlePlayHero(item);
-                              }}
-                              hitSlop={8}
-                              disabled={isHeroPlayLoading && isCurrent}
-                              accessibilityRole="button"
-                              accessibilityLabel={`RIPRODUCI ${item.title.toUpperCase()}`}
-                            >
-                              {isHeroPlayLoading && isCurrent ? (
-                                <ActivityIndicator size="small" color={getContrastTextColor(theme.colors.primary)} />
-                              ) : (
-                                <>
-                                  <Ionicons name="play" size={18} color={getContrastTextColor(theme.colors.primary)} />
-                                  <Text
-                                    style={[
-                                      styles.heroPlayBtnText,
-                                      { color: getContrastTextColor(theme.colors.primary) },
-                                    ]}
-                                  >
-                                    RIPRODUCI
-                                  </Text>
-                                </>
-                              )}
-                            </Pressable>
-
-                            <Pressable
-                              style={[
-                                styles.heroInfoBtn,
-                                { backgroundColor: theme.colors.card, borderColor: theme.colors.border },
-                              ]}
-                              onPress={(e) => {
-                                e.stopPropagation();
-                                navigateToAnime(item.id, item.title);
-                              }}
-                              hitSlop={8}
-                              accessibilityRole="button"
-                              accessibilityLabel={`INFO ${item.title.toUpperCase()}`}
-                            >
-                              <Ionicons name="information-circle-outline" size={18} color={theme.colors.text} />
-                              <Text style={[styles.heroInfoBtnText, { color: theme.colors.text }]}>INFO</Text>
-                            </Pressable>
-                          </View>
-                        </View>
-                      </Pressable>
-                    );
-                  })}
-                </ScrollView>
-              </View>
-            ) : focusedItem ? (
-              <Pressable
-                style={styles.heroContainer}
-                onPress={() => navigateToAnime(focusedItem.id, focusedItem.title)}
-                accessibilityRole="button"
-                accessibilityLabel={`DETTAGLI ${focusedItem.title.toUpperCase()}`}
-              >
-                <Image
-                  source={{ uri: focusedItem.banner || focusedItem.image || focusedItem.thumbnail }}
-                  style={styles.heroImage}
-                  contentFit="cover"
-                  transition={300}
-                />
-                <View style={styles.heroOverlay} />
-
-                <View style={styles.heroContent}>
-                  <View style={styles.heroBadgeRow}>
-                    <View style={[styles.heroRankBadge, { backgroundColor: theme.colors.primary }]}>
-                      <Text style={[styles.heroRankBadgeText, { color: getContrastTextColor(theme.colors.primary) }]}>
-                        #1 RACCOMANDATO
-                      </Text>
-                    </View>
-                  </View>
-
-                  <Text style={styles.heroTitle} numberOfLines={2}>
-                    {focusedItem.title}
-                  </Text>
-
-                  {focusedItem.synopsis ? (
-                    <Text style={styles.heroSynopsis} numberOfLines={2}>
-                      {focusedItem.synopsis}
-                    </Text>
-                  ) : null}
-
-                  <View style={styles.heroActionsRow}>
-                    <Pressable
-                      style={[
-                        styles.heroPlayBtn,
-                        { backgroundColor: theme.colors.primary },
-                        isHeroPlayLoading && styles.heroBtnDisabled,
-                      ]}
-                      onPress={(e) => {
-                        e.stopPropagation();
-                        handlePlayHero(focusedItem);
-                      }}
-                      hitSlop={8}
-                      disabled={isHeroPlayLoading}
-                      accessibilityRole="button"
-                      accessibilityLabel={`RIPRODUCI ${focusedItem.title.toUpperCase()}`}
-                    >
-                      {isHeroPlayLoading ? (
-                        <ActivityIndicator size="small" color={getContrastTextColor(theme.colors.primary)} />
-                      ) : (
-                        <>
-                          <Ionicons name="play" size={18} color={getContrastTextColor(theme.colors.primary)} />
-                          <Text
-                            style={[
-                              styles.heroPlayBtnText,
-                              { color: getContrastTextColor(theme.colors.primary) },
-                            ]}
-                          >
-                            RIPRODUCI
-                          </Text>
-                        </>
-                      )}
-                    </Pressable>
-
-                    <Pressable
-                      style={[
-                        styles.heroInfoBtn,
-                        { backgroundColor: theme.colors.card, borderColor: theme.colors.border },
-                      ]}
-                      onPress={(e) => {
-                        e.stopPropagation();
-                        navigateToAnime(focusedItem.id, focusedItem.title);
-                      }}
-                      hitSlop={8}
-                      accessibilityRole="button"
-                      accessibilityLabel={`INFO ${focusedItem.title.toUpperCase()}`}
-                    >
-                      <Ionicons name="information-circle-outline" size={18} color={theme.colors.text} />
-                      <Text style={[styles.heroInfoBtnText, { color: theme.colors.text }]}>INFO</Text>
-                    </Pressable>
-                  </View>
-                </View>
-              </Pressable>
-            ) : null}
-
-            {/* 2. Carosello Raccomandati Numerati in Ordine (#1 .. #8) */}
-            {recommendedList.length > 0 && (
-              <View style={styles.section}>
-                <View style={styles.sectionHeader}>
-                  <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
-                    RACCOMANDATI
-                  </Text>
-                  <Text
-                    style={[
-                      styles.sectionBadge,
-                      {
-                        backgroundColor: theme.colors.primary,
-                        color: getContrastTextColor(theme.colors.primary),
-                      },
-                    ]}
-                  >
-                    {safeFocusedIndex + 1}/{recommendedList.length}
-                  </Text>
-                </View>
-
-                <ScrollView
-                  ref={recommendedScrollRef}
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={[
-                    styles.recommendedScrollContent,
-                    {
-                      paddingRight: Math.max(16, contentWidth - RECOMMENDED_ITEM_WIDTH - 16),
-                    },
-                  ]}
-                  snapToOffsets={recommendedSnapOffsets}
-                  decelerationRate="fast"
-                  scrollEventThrottle={16}
-                  onScrollBeginDrag={() => {
-                    if (resetSourceTimeoutRef.current) clearTimeout(resetSourceTimeoutRef.current);
-                    activeScrollSourceRef.current = 'recommended';
-                    lastSettledRecommendedIndexRef.current = -1;
-                  }}
-                  onScrollEndDrag={(e) => {
-                    const velocity = e.nativeEvent.velocity?.x ?? 0;
-                    if (Math.abs(velocity) < 0.1) {
-                      settleRecommendedScroll(e.nativeEvent.contentOffset.x);
-                    }
-                  }}
-                  onMomentumScrollEnd={(e) => {
-                    settleRecommendedScroll(e.nativeEvent.contentOffset.x);
-                  }}
-                  onScroll={handleRecommendedScroll}
-                >
-                  {recommendedList.map((item, index) => {
-                    const isFocused = index === safeFocusedIndex;
-                    return (
-                      <Pressable
-                        key={`recommended-${item.id}-${index}`}
-                        style={[
-                          styles.recommendedCard,
-                          {
-                            backgroundColor: theme.colors.card,
-                            borderColor: isFocused ? theme.colors.primary : theme.colors.border,
-                          },
-                        ]}
-                        onPress={() => handleSelectRecommended(index)}
-                        accessibilityRole="button"
-                        accessibilityLabel={`RACCOMANDATO NUMERO ${index + 1}: ${item.title.toUpperCase()}`}
-                      >
-                        <Image
-                          source={{ uri: item.thumbnail || item.banner || item.image }}
-                          style={styles.recommendedImage}
-                          contentFit="cover"
-                          transition={200}
-                        />
-                        <View style={styles.recommendedOverlay} />
-
-                        {/* Rank Badge top-left */}
-                        <View
-                          style={[
-                            styles.rankBadge,
-                            {
-                              backgroundColor: isFocused ? theme.colors.primary : 'rgba(0, 0, 0, 0.75)',
-                              borderColor: isFocused ? theme.colors.primary : 'rgba(255, 255, 255, 0.25)',
-                            },
-                          ]}
-                        >
-                          <Text
-                            style={[
-                              styles.rankBadgeText,
-                              {
-                                color: isFocused
-                                  ? getContrastTextColor(theme.colors.primary)
-                                  : '#FFFFFF',
-                              },
-                            ]}
-                          >
-                            #{index + 1}
-                          </Text>
-                        </View>
-
-                        {/* Sub / Dub tag */}
-                        {item.subOrDub && (
-                          <View style={[styles.recommendedSubBadge, { backgroundColor: theme.colors.surface }]}>
-                            <Text style={styles.recommendedSubBadgeText}>{item.subOrDub}</Text>
-                          </View>
-                        )}
-
-                        {/* Title Box */}
-                        <View style={styles.recommendedTitleBox}>
-                          <Text
-                            style={[
-                              styles.recommendedTitle,
-                              { color: isFocused ? theme.colors.primary : theme.colors.text },
-                            ]}
-                            numberOfLines={1}
-                          >
-                            {item.title}
-                          </Text>
-                        </View>
-                      </Pressable>
-                    );
-                  })}
-                </ScrollView>
-              </View>
-            )}
+            {/* 2. Carosello RACCOMANDATI con snapToOffsets e paddingRight: Math.max(16, contentWidth - RECOMMENDED_ITEM_WIDTH - 16) */}
+            <RecommendedCarouselSection
+              recommendedList={recommendedList}
+              safeFocusedIndex={safeFocusedIndex}
+              contentWidth={contentWidth}
+              recommendedScrollRef={recommendedScrollRef}
+              recommendedSnapOffsets={recommendedSnapOffsets}
+              onSelectRecommended={handleSelectRecommended}
+              onScrollBeginDrag={() => {
+                if (resetSourceTimeoutRef.current) clearTimeout(resetSourceTimeoutRef.current);
+                activeScrollSourceRef.current = 'recommended';
+                lastSettledRecommendedIndexRef.current = -1;
+              }}
+              onScrollEndDrag={(e) => {
+                const velocity = e.nativeEvent.velocity?.x ?? 0;
+                if (Math.abs(velocity) < 0.1) {
+                  settleRecommendedScroll(e.nativeEvent.contentOffset.x);
+                }
+              }}
+              onMomentumScrollEnd={(e) => {
+                settleRecommendedScroll(e.nativeEvent.contentOffset.x);
+              }}
+              onScroll={handleRecommendedScroll}
+            />
 
             {/* 3. Riprendi a guardare - Visibile SOLO quando vi sono serie con visione in corso */}
             {continueWatching.length > 0 && (

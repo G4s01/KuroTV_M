@@ -100,6 +100,12 @@ function RootNavigation() {
     message: string;
   } | null>(null);
   const [isConnectModalOpen, setIsConnectModalOpen] = React.useState(false);
+  const [deepLinkPrompt, setDeepLinkPrompt] = React.useState<{
+    type: 'pair' | 'connect';
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  } | null>(null);
 
   // Initial KuroSync delta pull on app startup with automated retry feedback & auto-logout
   React.useEffect(() => {
@@ -117,9 +123,9 @@ function RootNavigation() {
       } else if (res.wasLoggedOut) {
         setConnectionFailurePrompt({
           visible: true,
-          title: 'CONNESSIONE KUROSYNC FALLITA',
+          title: 'SESSIONE KUROSYNC SCADUTA',
           message:
-            'Impossibile collegarsi al server KuroSync dopo vari tentativi. Sei stato disconnesso per sicurezza. Vuoi accedere nuovamente?',
+            'La sessione o il token di KuroSync è scaduto o non è più valido. Vuoi accedere nuovamente?',
         });
       }
     }, 1500);
@@ -135,71 +141,93 @@ function RootNavigation() {
       if (!url) return;
       const parsed = parseKuroSyncDeepLink(url);
       if (parsed?.token) {
-        try {
-          const res = await SyncManager.connectFromDeepLink(url);
-          if (!res.ok) {
-            const isExpired =
-              res.isExpiredQr ||
-              res.message?.includes('410') ||
-              res.message?.toLowerCase().includes('scaduto');
-            setSyncAlert({
-              visible: true,
-              title: isExpired ? 'CODICE QR SCADUTO' : 'CONNESSIONE FALLITA',
-              message: isExpired
-                ? 'Il codice QR è scaduto o è già stato utilizzato. Generane uno nuovo dalla console Web.'
-                : res.message || 'Connessione fallita',
-            });
-          }
-        } catch (err: any) {
-          const isExpired =
-            err?.status === 410 ||
-            String(err?.message).includes('410') ||
-            String(err?.message).toLowerCase().includes('scaduto');
+        const targetServer = parsed.url || SyncManager.getServerUrl();
+        setDeepLinkPrompt({
+          type: 'connect',
+          title: 'COLLEGA KUROSYNC',
+          message: `Vuoi collegare l'applicazione al server KuroSync "${targetServer}"?`,
+          onConfirm: async () => {
+            setDeepLinkPrompt(null);
+            try {
+              const res = await SyncManager.connectFromDeepLink(url);
+              if (!res.ok) {
+                const isExpired =
+                  res.isExpiredQr ||
+                  res.message?.includes('410') ||
+                  res.message?.toLowerCase().includes('scaduto');
+                setSyncAlert({
+                  visible: true,
+                  title: isExpired ? 'CODICE QR SCADUTO' : 'CONNESSIONE FALLITA',
+                  message: isExpired
+                    ? 'Il codice QR è scaduto o è già stato utilizzato. Generane uno nuovo dalla console Web.'
+                    : res.message || 'Connessione fallita',
+                });
+              } else {
+                setSyncAlert({
+                  visible: true,
+                  title: 'KUROSYNC COLLEGATO',
+                  message: 'Dispositivo collegato con successo.',
+                });
+              }
+            } catch (err: any) {
+              const isExpired =
+                err?.status === 410 ||
+                String(err?.message).includes('410') ||
+                String(err?.message).toLowerCase().includes('scaduto');
+              setSyncAlert({
+                visible: true,
+                title: isExpired ? 'CODICE QR SCADUTO' : 'ERRORE DI RETE',
+                message: isExpired
+                  ? 'Il codice QR è scaduto o è già stato utilizzato. Generane uno nuovo dalla console Web.'
+                  : err?.message || 'Errore di connessione',
+              });
+            }
+          },
+        });
+      } else if (parsed?.code) {
+        if (!SyncManager.isConnected()) {
           setSyncAlert({
             visible: true,
-            title: isExpired ? 'CODICE QR SCADUTO' : 'ERRORE DI RETE',
-            message: isExpired
-              ? 'Il codice QR è scaduto o è già stato utilizzato. Generane uno nuovo dalla console Web.'
-              : err?.message || 'Errore di connessione',
+            title: 'NON CONNESSO',
+            message: 'Devi prima collegare il tuo account KuroSync prima di poter autorizzare un Android TV.',
           });
+          return;
         }
-      } else if (parsed?.code) {
-        if (SyncManager.isConnected()) {
-          SyncManager.approveTvPairing(parsed.code).catch(() => {});
-        }
+        const tvCode = parsed.code.toUpperCase();
+        setDeepLinkPrompt({
+          type: 'pair',
+          title: 'AUTORIZZA ANDROID TV',
+          message: `Vuoi associare e autorizzare l'Android TV con codice "${tvCode}" a questo account KuroSync?`,
+          onConfirm: async () => {
+            setDeepLinkPrompt(null);
+            try {
+              const res = await SyncManager.approveTvPairing(parsed.code!);
+              setSyncAlert({
+                visible: true,
+                title: res.ok ? 'TV COLLEGATA' : 'ASSOCIAZIONE FALLITA',
+                message: res.ok
+                  ? `L'Android TV (${tvCode}) è stata autorizzata con successo.`
+                  : res.message || 'Codice non valido o scaduto.',
+              });
+            } catch (err: any) {
+              setSyncAlert({
+                visible: true,
+                title: 'ASSOCIAZIONE FALLITA',
+                message: err?.message || 'Impossibile autorizzare la TV.',
+              });
+            }
+          },
+        });
       } else if (
         url.startsWith('kurosync://') ||
         url.includes('token=') ||
         url.includes('kurosync')
       ) {
-        try {
-          const res = await SyncManager.connectFromDeepLink(url);
-          if (!res.ok) {
-            const isExpired =
-              res.isExpiredQr ||
-              res.message?.includes('410') ||
-              res.message?.toLowerCase().includes('scaduto');
-            setSyncAlert({
-              visible: true,
-              title: isExpired ? 'CODICE QR SCADUTO' : 'CONNESSIONE FALLITA',
-              message: isExpired
-                ? 'Il codice QR è scaduto o è già stato utilizzato. Generane uno nuovo dalla console Web.'
-                : res.message || 'Connessione fallita',
-            });
-          }
-        } catch (err: any) {
-          const isExpired =
-            err?.status === 410 ||
-            String(err?.message).includes('410') ||
-            String(err?.message).toLowerCase().includes('scaduto');
-          setSyncAlert({
-            visible: true,
-            title: isExpired ? 'CODICE QR SCADUTO' : 'ERRORE DI RETE',
-            message: isExpired
-              ? 'Il codice QR è scaduto o è già stato utilizzato. Generane uno nuovo dalla console Web.'
-              : err?.message || 'Errore di connessione',
-          });
-        }
+        setSyncAlert({
+          visible: true,
+          title: 'LINK NON VALIDO',
+          message: 'Il link o codice QR KuroSync non contiene token o parametri di associazione validi.',
+        });
       }
     };
 
@@ -310,6 +338,20 @@ function RootNavigation() {
         onClose={() => setIsConnectModalOpen(false)}
         onSuccess={() => setIsConnectModalOpen(false)}
       />
+      {deepLinkPrompt && (
+        <ConfirmModal
+          visible={!!deepLinkPrompt}
+          title={deepLinkPrompt.title}
+          message={deepLinkPrompt.message}
+          icon={deepLinkPrompt.type === 'pair' ? 'tv-outline' : 'sync-outline'}
+          iconColor={theme.colors.primary}
+          confirmText={deepLinkPrompt.type === 'pair' ? 'AUTORIZZA' : 'COLLEGA'}
+          cancelText="ANNULLA"
+          confirmColor={theme.colors.primary}
+          onConfirm={deepLinkPrompt.onConfirm}
+          onCancel={() => setDeepLinkPrompt(null)}
+        />
+      )}
       {syncAlert?.visible && (
         <ConfirmModal
           visible={syncAlert.visible}

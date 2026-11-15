@@ -10,6 +10,10 @@ const patches = [
     src: 'scripts/patches/expo-video/VideoMediaSessionCallback.kt',
     dest: 'node_modules/expo-video/android/src/main/java/expo/modules/video/playbackService/VideoMediaSessionCallback.kt',
   },
+  {
+    src: 'scripts/patches/MainActivity.kt',
+    dest: 'android/app/src/main/java/com/kurotv/mobile/MainActivity.kt',
+  },
 ];
 
 for (const patch of patches) {

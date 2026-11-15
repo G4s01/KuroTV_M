@@ -15,7 +15,7 @@ export interface SearchHistoryListProps {
   onClearAll: () => void;
 }
 
-export function SearchHistoryList({
+export const SearchHistoryList = React.memo(function SearchHistoryList({
   title = 'RICERCHE RECENTI',
   icon = 'time-outline',
   items,
@@ -115,4 +115,4 @@ export function SearchHistoryList({
       )}
     </ScrollView>
   );
-}
+});

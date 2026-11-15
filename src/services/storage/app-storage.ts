@@ -133,7 +133,6 @@ export const StorageKeys = {
   SYNC_PENDING_MUTATIONS: 'sync.pending_mutations',
   SYNC_PENDING_DELETIONS: 'sync.pending_deletions',
   SYNC_IS_ENABLED: 'sync.is_enabled',
-  SYNC_MASTER_PASSWORD: 'sync.master_password',
 } as const;
 
 export type ThemeMode = 'oled' | 'light' | 'custom';

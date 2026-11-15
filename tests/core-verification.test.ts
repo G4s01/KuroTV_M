@@ -4249,9 +4249,25 @@ try {
     retryCallbackCalls.push(attempt);
   });
   assert.strictEqual(retrySyncRes.ok, false, 'performFullSyncWithRetries deve fallire se tutte le chiamate falliscono');
-  assert.strictEqual(retrySyncRes.wasLoggedOut, true, 'performFullSyncWithRetries deve disconnettere l utente in caso di fallimento persistente');
+  assert.strictEqual(retrySyncRes.wasLoggedOut, false, 'performFullSyncWithRetries NON deve disconnettere l utente in caso di errore 500 transitorio per preservare l offline');
   assert.strictEqual(retryCallbackCalls.length, 2, 'performFullSyncWithRetries deve eseguire 2 retry (totale 3 tentativi)');
-  assert.strictEqual(SyncManager.isConnected(), false, 'SyncManager non deve più essere connesso dopo l auto-logout');
+  assert.strictEqual(SyncManager.isConnected(), true, 'SyncManager deve rimanere connesso preservando le credenziali offline su errore 500');
+
+  // Test disconnessione forzata (auto-logout) SOLO su HTTP 401/403 Unauthorized
+  (globalThis as any).fetch = async (url: string) => {
+    if (url.includes('/api/sync/pull')) {
+      return {
+        ok: false,
+        status: 401,
+        json: async () => ({ ok: false, error: 'Unauthorized token' }),
+      } as any;
+    }
+    return { ok: true, status: 200, json: async () => ({ ok: true }) } as any;
+  };
+  const authErrRes = await SyncManager.performFullSyncWithRetries(2);
+  assert.strictEqual(authErrRes.ok, false);
+  assert.strictEqual(authErrRes.wasLoggedOut, true, 'performFullSyncWithRetries DEVE disconnettere l utente su HTTP 401');
+  assert.strictEqual(SyncManager.isConnected(), false, 'SyncManager non deve più essere connesso dopo HTTP 401');
 } finally {
   (globalThis as any).fetch = savedFetch;
 }
@@ -4483,6 +4499,97 @@ const rootLayoutCheckSource = fs.readFileSync(path.resolve(process.cwd(), 'app/_
 assert(rootLayoutCheckSource.includes('name="settings"'), 'app/_layout.tsx deve registrare la rotta settings');
 
 console.log('✓ Riprogettazione Modulare "Impostazioni" (Hub & Spoke, 7 Sotto-pagine, Hero Card & Deep-links) verificati con successo.');
+
+// -----------------------------------------------------------------------------
+// [32/32] Verifica Audit Codebase (Hardening Deep-link, Resilienza Rete, Validazione Checksum OTA, Plugin MainActivity & De-monolizzazione Home)
+// -----------------------------------------------------------------------------
+console.log('\n[32/32] Verifica Audit Codebase (Hardening Deep-link, Resilienza Rete, Validazione Checksum OTA, Plugin MainActivity & De-monolizzazione Home)...');
+
+// 1. isSyncAuthError validation
+const { isSyncAuthError } = await import('../src/services/sync/sync-manager');
+assert.strictEqual(isSyncAuthError(null, 401), true, 'status 401 deve essere auth error');
+assert.strictEqual(isSyncAuthError(null, 403), true, 'status 403 deve essere auth error');
+assert.strictEqual(isSyncAuthError('Unauthorized token', 200), true, 'messaggio Unauthorized deve essere auth error');
+assert.strictEqual(isSyncAuthError('Forbidden access', 500), true, 'messaggio Forbidden deve essere auth error');
+assert.strictEqual(isSyncAuthError('token non valido', undefined), true, 'token non valido deve essere auth error');
+assert.strictEqual(isSyncAuthError('sessione scaduta', undefined), true, 'sessione scaduta deve essere auth error');
+assert.strictEqual(isSyncAuthError('Internal Server Error 500', 500), false, 'errore 500 generico non deve essere auth error');
+assert.strictEqual(isSyncAuthError('Network request failed', undefined), false, 'network failure non deve essere auth error');
+
+// 2. UpdaterService.verifyApkChecksum validation
+const { UpdaterService } = await import('../src/services/updater/updater-service');
+assert.strictEqual(await UpdaterService.verifyApkChecksum('/mock/test.apk', 'any-hash'), true, 'mock path deve restituire true');
+assert.strictEqual(await UpdaterService.verifyApkChecksum('/test.apk', ''), true, 'expected hash vuoto deve restituire true');
+assert.strictEqual(await UpdaterService.verifyApkChecksum('/test.apk', undefined), true, 'expected hash undefined deve restituire true');
+
+// Test actual SHA-256 calculation with simulated FileSystem.readAsStringAsync
+const sampleData = 'KuroTV Test APK Content';
+const sampleBase64 = Buffer.from(sampleData).toString('base64');
+const sampleSha256 = '11b3d3b541cfef9c759d6766fb9eb351b8bf4102306b1bec48e18637f5e285bb';
+
+const { setMockFileContent } = (await import('expo-file-system/legacy')) as any;
+try {
+  (setMockFileContent as any)(sampleBase64);
+  const validCheck = await UpdaterService.verifyApkChecksum('file:///data/app.apk', sampleSha256);
+  assert.strictEqual(validCheck, true, 'verifyApkChecksum deve validare correttamente il checksum SHA-256');
+
+  const invalidCheck = await UpdaterService.verifyApkChecksum('file:///data/app.apk', 'bad-checksum-12345');
+  assert.strictEqual(invalidCheck, false, 'verifyApkChecksum deve rifiutare un checksum non corrispondente');
+} finally {
+  (setMockFileContent as any)('');
+}
+
+// 3. Plugins: withAndroidBackPress.modifyMainActivity
+const { modifyMainActivity } = await import('../plugins/withAndroidBackPress.js');
+const sampleExpoMainActivity = `package com.kurotv.mobile
+import android.os.Bundle
+import com.facebook.react.ReactActivity
+
+class MainActivity : ReactActivity() {
+  override fun onCreate(savedInstanceState: Bundle?) {
+    super.onCreate(null)
+  }
+
+  override fun invokeDefaultOnBackPressed() {
+    if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.R) {
+      if (!moveTaskToBack(false)) {
+        super.invokeDefaultOnBackPressed()
+      }
+      return
+    }
+    super.invokeDefaultOnBackPressed()
+  }
+}
+`;
+const patchedMainActivity = modifyMainActivity(sampleExpoMainActivity);
+const invokeCount = (patchedMainActivity.match(/override fun invokeDefaultOnBackPressed/g) || []).length;
+assert.strictEqual(invokeCount, 1, 'modifyMainActivity non deve duplicare invokeDefaultOnBackPressed');
+assert(patchedMainActivity.includes('OnBackPressedCallback'), 'modifyMainActivity deve iniettare OnBackPressedCallback');
+assert(patchedMainActivity.includes('import android.os.Build'), 'modifyMainActivity deve garantire import Build');
+assert(patchedMainActivity.includes('import androidx.activity.OnBackPressedCallback'), 'modifyMainActivity deve garantire import OnBackPressedCallback');
+assert.strictEqual(modifyMainActivity(patchedMainActivity), patchedMainActivity, 'modifyMainActivity deve essere idempotente');
+
+// 4. app.json Hardening verification
+const auditAppJsonRaw = fs.readFileSync(path.resolve(process.cwd(), 'app.json'), 'utf-8');
+const auditAppJson = JSON.parse(auditAppJsonRaw);
+assert.strictEqual(auditAppJson.expo?.android?.allowBackup, false, 'app.json deve impostare android.allowBackup=false');
+assert(!auditAppJson.expo?.android?.permissions?.includes('android.permission.SYSTEM_ALERT_WINDOW'), 'SYSTEM_ALERT_WINDOW deve essere rimosso da app.json');
+assert(auditAppJson.expo?.plugins?.includes('./plugins/withAndroidBackPress.js'), 'plugins deve includere withAndroidBackPress.js');
+
+// 5. sanitizeFileName edge cases
+const { sanitizeFileName: sanitizeTest } = await import('../src/services/downloads/download-service');
+assert.notStrictEqual(sanitizeTest('..'), '..', 'sanitizeFileName non deve restituire ..');
+assert.notStrictEqual(sanitizeTest('.'), '.', 'sanitizeFileName non deve restituire .');
+assert.notStrictEqual(sanitizeTest('../../etc/passwd'), '../../etc/passwd', 'sanitizeFileName deve prevenire directory traversal');
+assert.strictEqual(sanitizeTest(''), 'unknown', 'sanitizeFileName stringa vuota deve restituire unknown');
+assert.strictEqual(sanitizeTest('Attack on Titan: Final Season!'), 'Attack_on_Titan__Final_Season_', 'sanitizeFileName deve preservare nomi validi');
+
+// 6. Home modular components
+const homeBarrel = await import('../src/components/home');
+assert(typeof homeBarrel.HeroBannerSection === 'object' || typeof homeBarrel.HeroBannerSection === 'function', 'HeroBannerSection deve essere esportato');
+assert(typeof homeBarrel.RecommendedCarouselSection === 'object' || typeof homeBarrel.RecommendedCarouselSection === 'function', 'RecommendedCarouselSection deve essere esportato');
+
+console.log('✓ Audit Codebase (Hardening Deep-link, Resilienza Rete, Validazione Checksum OTA, Plugin MainActivity & De-monolizzazione Home) verificati con successo.');
 
 // -----------------------------------------------------------------------------
 // Fine Test

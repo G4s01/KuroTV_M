@@ -12,7 +12,7 @@ export interface ContinueWatchingSectionProps {
   onRemoveItem: (item: ContinueWatchingItem) => void;
 }
 
-export function ContinueWatchingSection({
+export const ContinueWatchingSection = React.memo(function ContinueWatchingSection({
   items,
   onItemPress,
   onRemoveItem,
@@ -141,4 +141,4 @@ export function ContinueWatchingSection({
       </ScrollView>
     </View>
   );
-}
+});

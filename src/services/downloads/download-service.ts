@@ -4,7 +4,7 @@ import * as Network from 'expo-network';
 import * as Haptics from 'expo-haptics';
 import { AppStorage } from '../storage';
 import { AnimeWorldScraper, ProviderRegistry } from '../scraper';
-import type { AnimeDetail, Episode } from '@/types';
+import type { Episode } from '@/types';
 import type {
   DownloadItem,
   DownloadSettings,
@@ -33,7 +33,14 @@ export function formatBytes(bytes: number): string {
 }
 
 export function sanitizeFileName(name: string): string {
-  return name.replace(/[^a-zA-Z0-9_\-\.]/g, '_').slice(0, 80);
+  let sanitized = (name || '').replace(/[^a-zA-Z0-9_\-\.]/g, '_');
+  sanitized = sanitized.replace(/\.{2,}/g, '_');
+  sanitized = sanitized.replace(/^\.+/, '');
+  sanitized = sanitized.slice(0, 80);
+  if (!sanitized || sanitized === '.' || sanitized === '..') {
+    return 'unknown';
+  }
+  return sanitized;
 }
 
 class DownloadManager {

@@ -1,6 +1,6 @@
 # 🎬 Video Player Mobile — Specifiche & Architettura
 
-Il video player di Kuro Mobile ([`app/player/[id].tsx`](file:///home/g4s/VSCode/KuroM/app/player/[id].tsx)) è il cuore pulsante dell'applicazione, progettato per offrire un'esperienza multimediale touch cinematografica, reattiva e ottimizzata per display AMOLED.
+Il video player di Kuro Mobile ([`app/player/[id].tsx`](../app/player/[id].tsx)) è il cuore pulsante dell'applicazione, progettato per offrire un'esperienza multimediale touch cinematografica, reattiva e ottimizzata per display AMOLED.
 
 ---
 
@@ -39,7 +39,7 @@ Il player integra gesture native ad altissima fluidità tramite `react-native-ge
 
 ## 🎞️ Timeline con Anteprima dei Frame Reali (Live Scrubbing)
 
-La barra di avanzamento ([`src/components/player/PlayerTimeline.tsx`](file:///home/g4s/VSCode/KuroM/src/components/player/PlayerTimeline.tsx)) include un sistema di anteprima reattiva a 60 FPS:
+La barra di avanzamento ([`src/components/player/PlayerTimeline.tsx`](../src/components/player/PlayerTimeline.tsx)) include un sistema di anteprima reattiva a 60 FPS:
 
 1. **Estrazione Fotogrammi Video**: Durante lo scrub, il player interroga le API native di decodifica `player.generateThumbnailsAsync([targetSecond], { maxWidth: 160 })`.
 2. **Cache in Memoria & Proximity Matching**: I frame decodificati vengono memorizzati in una `thumbnailCache` locale. L'algoritmo `getClosestCachedFrame` individua istantaneamente il fotogramma più vicino (entro 12 secondi), garantendo una risposta visiva immediata durante lo scorrimento continuo delle dita.
@@ -50,7 +50,7 @@ La barra di avanzamento ([`src/components/player/PlayerTimeline.tsx`](file:///ho
 
 ## ⏭️ Integrazione AniSkip con Bordo Temporizzato, Durata Configurabile & Passaggio a `'PROSSIMO'`
 
-Il player si interfaccia in background con il servizio **AniSkip** ([`src/services/aniskip/index.ts`](file:///home/g4s/VSCode/KuroTV_M/src/services/aniskip/index.ts), [`src/components/AniSkipButton.tsx`](file:///home/g4s/VSCode/KuroTV_M/src/components/AniSkipButton.tsx)):
+Il player si interfaccia in background con il servizio **AniSkip** ([`src/services/aniskip/index.ts`](../src/services/aniskip/index.ts), [`src/components/AniSkipButton.tsx`](../src/components/AniSkipButton.tsx)):
 
 1. **Recupero Timestamp & Tipi Supportati**: Rilevamento automatico degli intervalli per sigla d'apertura (`op`, `mixed-op`), chiusura (`ed`, `mixed-ed`) e `recap`.
 2. **Etichette `'SALTA'` e `'PROSSIMO'`**:
@@ -76,18 +76,18 @@ Tutti i menù secondari sfruttano modali touch-native basati su React Native `Mo
 - **Centratura Ottica & Dimensioni Responsive (Nessun Taglio ai Lati)**:
   - Applicato padding orizzontale simmetrico `horizontalPadding = Math.max(16, safeHorizontalInset)` su entrambi i lati.
   - Testi degli header e sottotitoli vincolati con `flexShrink: 1`, `numberOfLines={1}` ed `ellipsizeMode="tail"` per prevenire sbordamenti o tagli visivi a destra e a sinistra su display verticali o stretti.
-- **Carosello Episodi Virtualizzato** ([`PlayerEpisodesCarouselSheet.tsx`](file:///home/g4s/VSCode/KuroM/src/components/player/PlayerEpisodesCarouselSheet.tsx)):
+- **Carosello Episodi Virtualizzato** ([`PlayerEpisodesCarouselSheet.tsx`](../src/components/player/PlayerEpisodesCarouselSheet.tsx)):
   - Icona intuitiva `list-outline` nel footer del player.
   - Virtualizzazione orizzontale con `@shopify/flash-list` (`FlashList`), layout stabile con `maintainVisibleContentPosition={{ disabled: true }}` per azzerare i crash nativi Fabric/Hermes.
   - Larghezza card scalata su orientamento (`cardWidth = isLandscape ? 170 : 152`) con padding simmetrico direttamente su `contentContainerStyle`.
   - Scorrimento programmatico sicuro all'episodio attivo (`initialScrollIndex` e `scrollToIndex` protetto da try/catch).
   - Navigazione asincrona differita di 60ms alla selezione per concedere al Dialog nativo Android il tempo di chiusura.
-- **Scheda Dettagli & Trama** ([`PlayerInfoSheet.tsx`](file:///home/g4s/VSCode/KuroM/src/components/player/PlayerInfoSheet.tsx)):
+- **Scheda Dettagli & Trama** ([`PlayerInfoSheet.tsx`](../src/components/player/PlayerInfoSheet.tsx)):
   - Tasto `information-circle-outline` nell'header OSD.
   - Badge episodio formattato rigorosamente come `'EPISODIO X/TOT'` (es. `'EPISODIO 1/170'`, `'EPISODIO 1/??'`), pulito da suffissi titolo puntata ridondanti.
   - Normalizzazione difensiva di generi (`Array.isArray(genres)`), etichette con `numberOfLines={1}` e testi maiuscoli.
   - Locandina anime e placeholder ridimensionati dinamicamente (`76x108` in portrait, `84x120` in landscape), metadati con `minWidth: 0` e sinossi completa in un riquadro scrollabile.
-- **Opzioni di Riproduzione & Velocità** ([`ServerBottomSheet.tsx`](file:///home/g4s/VSCode/KuroM/src/components/ServerBottomSheet.tsx)):
+- **Opzioni di Riproduzione & Velocità** ([`ServerBottomSheet.tsx`](../src/components/ServerBottomSheet.tsx)):
   - Centratura ottica dei selettori di velocità ($0.75\times, 1.0\times, 1.25\times, 1.5\times, 2.0\times$) con gap responsive (`isLandscape ? 8 : 4`) e selezione server video con troncamento automatico del testo lungo.
   - `maxHeight` responsivo in base all'orientamento dello schermo (`Math.min(380, windowHeight * 0.55)` in portrait, 240dp in landscape).
 
@@ -116,7 +116,7 @@ Per azzerare i blocchi dell'interfaccia utente durante la risoluzione e l'avvio 
    - Il metodo standard sincrono `player.replace(url)` effettua l'inizializzazione dell'asset (`AVPlayerItem` / ExoPlayer) direttamente sul thread UI principale, causando micro-freeze dell'interfaccia (warning ufficiale: *`WARN On iOS VideoPlayer.replace loads the asset data synchronously on the main thread, which can lead to UI freezes and will be deprecated in a future release`*).
    - Kuro Mobile adotta `await player.replaceAsync(directUrl)`, spostando la risoluzione dell'asset nativo e il buffering su background thread.
 2. **Resilienza ai Cambi Rapidi di Episodio**:
-   - In [`app/player/[id].tsx`](file:///home/g4s/VSCode/KuroM/app/player/[id].tsx), la chiamata asincrona è incapsulata con protezione dagli errori:
+   - In [`app/player/[id].tsx`](../app/player/[id].tsx), la chiamata asincrona è incapsulata con protezione dagli errori:
      ```tsx
      if (typeof player.replaceAsync === 'function') {
        await player.replaceAsync(directUrl).catch((err) => {

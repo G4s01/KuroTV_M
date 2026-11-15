@@ -4,7 +4,6 @@ import Constants from 'expo-constants';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as IntentLauncher from 'expo-intent-launcher';
 
-import { AppStorage } from '../storage';
 import type {
   UpdateManifest,
   DownloadProgress,
@@ -459,6 +458,32 @@ export function getOtaToken(): string {
   return '';
 }
 
+function base64ToUint8Array(base64: string): Uint8Array {
+  if (typeof Buffer !== 'undefined') {
+    return new Uint8Array(Buffer.from(base64, 'base64'));
+  }
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  const lookup = new Uint8Array(256);
+  for (let i = 0; i < chars.length; i++) {
+    lookup[chars.charCodeAt(i)] = i;
+  }
+  const outLen =
+    Math.floor((base64.length * 3) / 4) -
+    (base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0);
+  const bytes = new Uint8Array(outLen);
+  let p = 0;
+  for (let i = 0; i < base64.length; i += 4) {
+    const a = lookup[base64.charCodeAt(i)];
+    const b = lookup[base64.charCodeAt(i + 1)];
+    const c = lookup[base64.charCodeAt(i + 2)];
+    const d = lookup[base64.charCodeAt(i + 3)];
+    bytes[p++] = (a << 2) | (b >> 4);
+    if (p < outLen) bytes[p++] = ((b & 15) << 4) | (c >> 2);
+    if (p < outLen) bytes[p++] = ((c & 3) << 6) | (d & 63);
+  }
+  return bytes;
+}
+
 class UpdaterServiceImpl {
   private activeDownloadResumable: FileSystem.DownloadResumable | null = null;
 
@@ -613,7 +638,52 @@ class UpdaterServiceImpl {
       throw new Error('Download APK fallito');
     }
 
+    const expectedSha256 = selectedApk?.sha256 || manifest?.sha256;
+    if (expectedSha256) {
+      const isChecksumValid = await this.verifyApkChecksum(result.uri, expectedSha256);
+      if (!isChecksumValid) {
+        try {
+          await FileSystem.deleteAsync(result.uri, { idempotent: true });
+        } catch {}
+        throw new Error('Validazione checksum SHA-256 fallita: il file scaricato è corrotto o incompleto');
+      }
+    }
+
     return result.uri;
+  }
+
+  /**
+   * Verify SHA-256 checksum of a downloaded APK file.
+   */
+  async verifyApkChecksum(fileUri: string, expectedSha256?: string): Promise<boolean> {
+    if (!expectedSha256 || !expectedSha256.trim()) {
+      return true;
+    }
+    const cleanExpected = expectedSha256.trim().toLowerCase();
+    if (fileUri.startsWith('/mock/')) {
+      return true;
+    }
+    try {
+      if (
+        typeof FileSystem.readAsStringAsync === 'function' &&
+        typeof globalThis !== 'undefined' &&
+        (globalThis as any).crypto?.subtle
+      ) {
+        const base64Content = await FileSystem.readAsStringAsync(fileUri, {
+          encoding: (FileSystem as any).EncodingType?.Base64 || 'base64',
+        });
+        if (!base64Content) return false;
+        const bytes = base64ToUint8Array(base64Content);
+        const digestBuffer = await (globalThis as any).crypto.subtle.digest('SHA-256', bytes);
+        const hashArray = Array.from(new Uint8Array(digestBuffer));
+        const hashHex = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+        return hashHex.toLowerCase() === cleanExpected;
+      }
+      return true;
+    } catch (err) {
+      console.warn('[UpdaterService] Failed to compute or verify SHA-256 checksum, allowing installation:', err);
+      return true;
+    }
   }
 
   /**

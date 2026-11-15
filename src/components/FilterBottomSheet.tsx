@@ -1,6 +1,5 @@
 import React from 'react';
 import {
-  StyleSheet,
   Text,
   View,
   Pressable,
@@ -13,9 +12,10 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
-import { oledTheme, useTheme, getContrastTextColor } from '@/theme';
+import { useTheme, getContrastTextColor } from '@/theme';
 import { useResponsiveLayout } from '@/hooks';
 import { useBottomSheetDragDismiss } from './useBottomSheetDragDismiss';
+import { filterBottomSheetStyles as styles } from './home/filter-bottom-sheet.styles';
 
 export interface FilterState {
   genres?: string[]; // IDs dei generi multipli, es. ['1', '9']
@@ -521,175 +521,3 @@ export const FilterBottomSheet: React.FC<FilterBottomSheetProps> = ({
     </Modal>
   );
 };
-
-const styles = StyleSheet.create({
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0, 0, 0, 0.65)',
-  },
-  backdrop: {
-    ...StyleSheet.absoluteFill,
-  },
-  container: {
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    borderTopWidth: 1,
-    borderLeftWidth: 1,
-    borderRightWidth: 1,
-    paddingTop: 8,
-    width: '100%',
-    maxWidth: 680,
-    alignSelf: 'center',
-  },
-  dragStripArea: {
-    width: '100%',
-    minHeight: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 10,
-  },
-  dragIndicator: {
-    width: 38,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: 'rgba(255, 255, 255, 0.25)',
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  headerTitleGroup: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  headerCountBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: 10,
-    minWidth: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerCountBadgeText: {
-    fontSize: 10,
-    fontWeight: '800',
-    fontFamily: oledTheme.typography.caption.fontFamily,
-  },
-  headerRightActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  title: {
-    fontSize: 15,
-    fontWeight: '800',
-    fontFamily: oledTheme.typography.title.fontFamily,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  resetBtn: {
-    minHeight: 44,
-    justifyContent: 'center',
-    paddingHorizontal: 8,
-  },
-  resetText: {
-    fontSize: 12,
-    fontWeight: '700',
-    fontFamily: oledTheme.typography.caption.fontFamily,
-    textTransform: 'uppercase',
-  },
-  closeBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sectionTitle: {
-    fontSize: 11,
-    fontWeight: '700',
-    fontFamily: oledTheme.typography.caption.fontFamily,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginTop: 12,
-    marginBottom: 8,
-  },
-  sectionHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 14,
-    marginBottom: 8,
-  },
-  clearSectionText: {
-    fontSize: 11,
-    fontWeight: '700',
-    fontFamily: oledTheme.typography.caption.fontFamily,
-    textTransform: 'uppercase',
-  },
-  row: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 8,
-  },
-  chip: {
-    minHeight: 44,
-    paddingHorizontal: 8,
-    paddingVertical: 10,
-    borderRadius: oledTheme.radius.md,
-    borderWidth: 1,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  chipCheckIcon: {
-    marginRight: 6,
-  },
-  chipText: {
-    fontSize: 12,
-    fontWeight: '600',
-    fontFamily: oledTheme.typography.caption.fontFamily,
-    textTransform: 'uppercase',
-  },
-  chipTextActive: {
-    fontWeight: '800',
-  },
-  genresGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    rowGap: 8,
-  },
-  genreCard: {
-    width: '48.8%',
-    minHeight: 44,
-    paddingHorizontal: 10,
-    paddingVertical: 10,
-    borderRadius: oledTheme.radius.md,
-    borderWidth: 1,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  footer: {
-    marginTop: 14,
-  },
-  applyBtn: {
-    minHeight: oledTheme.spacing.minTouchTarget,
-    borderRadius: oledTheme.radius.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  applyBtnText: {
-    fontSize: 14,
-    fontWeight: '800',
-    fontFamily: oledTheme.typography.caption.fontFamily,
-    textTransform: 'uppercase',
-  },
-});

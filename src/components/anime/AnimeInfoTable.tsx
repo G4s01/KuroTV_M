@@ -10,7 +10,7 @@ import * as Linking from 'expo-linking';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
-import { oledTheme, getContrastTextColor, type Theme } from '@/theme';
+import { oledTheme, type Theme } from '@/theme';
 import type { AnimeDetail } from '@/types';
 
 import youtubeSvg from '../../../assets/icons/youtube.svg';
@@ -24,8 +24,6 @@ export interface AnimeInfoTableProps {
 
 export const AnimeInfoTable = React.memo<AnimeInfoTableProps>(
   function AnimeInfoTable({ anime, theme }) {
-    const primaryContrast = getContrastTextColor(theme.colors.primary);
-
     // Metadata field values
     const audioText = anime.audio ? anime.audio.toUpperCase() : 'GIAPPONESE';
     const releaseText = anime.releaseDate
@@ -71,6 +69,14 @@ export const AnimeInfoTable = React.memo<AnimeInfoTableProps>(
         ? anime.state.toUpperCase()
         : 'IN CORSO';
 
+    const safeOpenUrl = (url: string) => {
+      if (!url || typeof url !== 'string') return;
+      const trimmed = url.trim();
+      if (/^https?:\/\//i.test(trimmed)) {
+        Linking.openURL(trimmed).catch(() => {});
+      }
+    };
+
     // Actions
     const handleOpenTrailer = () => {
       Haptics.selectionAsync().catch(() => {});
@@ -78,7 +84,7 @@ export const AnimeInfoTable = React.memo<AnimeInfoTableProps>(
         anime.trailer ||
         anime.trailerUrl ||
         `https://www.youtube.com/results?search_query=${encodeURIComponent(`${anime.title} trailer official`)}`;
-      Linking.openURL(url).catch(() => {});
+      safeOpenUrl(url);
     };
 
     const handleOpenMal = () => {
@@ -88,7 +94,7 @@ export const AnimeInfoTable = React.memo<AnimeInfoTableProps>(
         (anime.malId
           ? `https://myanimelist.net/anime/${anime.malId}`
           : `https://myanimelist.net/anime.php?q=${encodeURIComponent(anime.title)}`);
-      Linking.openURL(url).catch(() => {});
+      safeOpenUrl(url);
     };
 
     const handleOpenAnilist = () => {
@@ -98,7 +104,7 @@ export const AnimeInfoTable = React.memo<AnimeInfoTableProps>(
         (anime.anilistId
           ? `https://anilist.co/anime/${anime.anilistId}`
           : `https://anilist.co/search/anime?search=${encodeURIComponent(anime.title)}`);
-      Linking.openURL(url).catch(() => {});
+      safeOpenUrl(url);
     };
 
     return (

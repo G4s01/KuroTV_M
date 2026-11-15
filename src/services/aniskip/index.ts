@@ -206,13 +206,29 @@ export const AniSkipService = {
     const typesQuery = types.map((t) => `types=${t}`).join('&');
     const url = `${ANISKIP_API_BASE}/skip-times/${cleanMalId}/${epNum}?${typesQuery}&episodeLength=${cleanDuration}`;
 
+    let customTimer: ReturnType<typeof setTimeout> | null = null;
+    let effectiveSignal = signal;
+    if (!effectiveSignal) {
+      if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+        effectiveSignal = AbortSignal.timeout(12000);
+      } else {
+        const controller = new AbortController();
+        customTimer = setTimeout(() => {
+          try {
+            controller.abort();
+          } catch {}
+        }, 12000);
+        effectiveSignal = controller.signal;
+      }
+    }
+
     try {
       const response = await fetch(url, {
         method: 'GET',
         headers: {
           Accept: 'application/json',
         },
-        signal,
+        signal: effectiveSignal,
       });
 
       if (response.status === 404) {
@@ -255,6 +271,10 @@ export const AniSkipService = {
         err,
       );
       return [];
+    } finally {
+      if (customTimer) {
+        clearTimeout(customTimer);
+      }
     }
   },
 };
@@ -264,7 +284,7 @@ export const aniSkipModeSteps: {
   title: string;
   subLabel: string;
 }[] = [
-  { mode: 'manual', title: 'MANUALE', subLabel: 'TASTO OK' },
+  { mode: 'manual', title: 'MANUALE', subLabel: 'TOUCH' },
   { mode: 'auto', title: 'AUTOMATICO', subLabel: 'AUTO' },
   { mode: 'disabled', title: 'DISATTIVATO', subLabel: 'OFF' },
 ];

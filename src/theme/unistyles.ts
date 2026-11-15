@@ -473,14 +473,20 @@ export const StyleSheet = {
         (...args: any[]) => (fn as any)(...args),
         { __builder: fn, __isUnistyles: true }
       );
+      let cachedThemeName: string | null = null;
+      let cachedEvaluated: any = null;
+
       return new Proxy(targetObj as any, {
         get(target, prop, receiver) {
           if (prop === '__builder' || prop === '__isUnistyles') {
             return fn;
           }
-          const activeTheme = appThemes[currentThemeName] || oledTheme;
-          const evaluated = RNStyleSheet.create(fn(activeTheme, UnistylesRuntime));
-          return Reflect.get(evaluated, prop, receiver);
+          if (cachedThemeName !== currentThemeName || !cachedEvaluated) {
+            cachedThemeName = currentThemeName;
+            const activeTheme = appThemes[currentThemeName] || oledTheme;
+            cachedEvaluated = RNStyleSheet.create(fn(activeTheme, UnistylesRuntime));
+          }
+          return Reflect.get(cachedEvaluated, prop, receiver);
         },
       });
     }

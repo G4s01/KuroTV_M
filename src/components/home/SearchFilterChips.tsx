@@ -18,7 +18,7 @@ export interface SearchFilterChipsProps {
   onRemoveGenre: (genreId: string) => void;
 }
 
-export function SearchFilterChips({
+export const SearchFilterChips = React.memo(function SearchFilterChips({
   filterState,
   activeGenres,
   onRemoveFilter,
@@ -91,4 +91,4 @@ export function SearchFilterChips({
       </ScrollView>
     </View>
   );
-}
+});

@@ -1,0 +1,26 @@
+module.exports = {
+  extends: ['expo'],
+  ignorePatterns: [
+    'node_modules/',
+    'dist/',
+    '.expo/',
+    'android/',
+    'ios/',
+    'scripts/',
+    'tests/',
+    '*.config.js',
+    'plugins/',
+  ],
+  rules: {
+    'react-hooks/refs': 'off',
+    'react-hooks/set-state-in-effect': 'off',
+    'react-hooks/preserve-manual-memoization': 'off',
+    'react-hooks/immutability': 'off',
+    'react-hooks/exhaustive-deps': 'warn',
+    '@typescript-eslint/array-type': 'off',
+    '@typescript-eslint/no-explicit-any': 'off',
+    '@typescript-eslint/no-require-imports': 'off',
+    '@typescript-eslint/no-unused-vars': 'warn',
+    'react/display-name': 'off',
+  },
+};

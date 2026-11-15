@@ -24,6 +24,20 @@ export interface SyncStatus {
   pendingCount: number;
 }
 
+export function isSyncAuthError(err?: string | null, status?: number): boolean {
+  if (status === 401 || status === 403) return true;
+  if (!err) return false;
+  const lower = err.toLowerCase();
+  return (
+    lower.includes('401') ||
+    lower.includes('403') ||
+    lower.includes('unauthorized') ||
+    lower.includes('forbidden') ||
+    lower.includes('token non valido') ||
+    lower.includes('sessione scaduta')
+  );
+}
+
 export function parseKuroSyncDeepLink(deepLink: string): {
   url?: string;
   token?: string;
@@ -337,6 +351,16 @@ class SyncManagerClass {
       serverUrl &&
       serverUrl.trim().length > 0
     );
+  }
+
+  getServerUrl(): string {
+    this.ensureClientConfigured();
+    return (
+      AppStorage.getString(StorageKeys.SYNC_SERVER_URL) ||
+      this.lastKnownServerUrl ||
+      this.client.getBaseUrl() ||
+      DEFAULT_SYNC_SERVER_URL
+    ).trim();
   }
 
   getClient(): KuroSyncClient {
@@ -783,7 +807,6 @@ class SyncManagerClass {
       if (loginRes.deviceId) {
         AppStorage.setString(StorageKeys.SYNC_DEVICE_ID, loginRes.deviceId);
       }
-      AppStorage.setString(StorageKeys.SYNC_MASTER_PASSWORD, password.trim());
       AppStorage.setString(StorageKeys.SYNC_PROFILE_ID, activeProfileId);
       AppStorage.setString(StorageKeys.SYNC_PROFILE_NAME, activeProfileName);
       AppStorage.setBoolean(StorageKeys.SYNC_IS_ENABLED, true);
@@ -875,7 +898,6 @@ class SyncManagerClass {
 
       AppStorage.setString(StorageKeys.SYNC_SERVER_URL, cleanUrl);
       AppStorage.setString(StorageKeys.SYNC_DEVICE_TOKEN, token);
-      AppStorage.setString(StorageKeys.SYNC_MASTER_PASSWORD, password.trim());
       if (activeProfileId) AppStorage.setString(StorageKeys.SYNC_PROFILE_ID, activeProfileId);
       if (activeProfileName) AppStorage.setString(StorageKeys.SYNC_PROFILE_NAME, activeProfileName);
       AppStorage.setBoolean(StorageKeys.SYNC_IS_ENABLED, true);
@@ -915,7 +937,7 @@ class SyncManagerClass {
       AppStorage.remove(StorageKeys.SYNC_LAST_TIMESTAMP);
       AppStorage.remove(StorageKeys.SYNC_LAST_TIME);
       AppStorage.remove(StorageKeys.SYNC_IS_ENABLED);
-      AppStorage.remove(StorageKeys.SYNC_MASTER_PASSWORD);
+      AppStorage.remove('sync.master_password');
       AppStorage.clearPendingSyncMutations();
       AppStorage.clearPendingSyncDeletions();
 
@@ -957,6 +979,7 @@ class SyncManagerClass {
     this.ensureClientConfigured();
 
     let lastError = '';
+    let lastStatus: number | undefined;
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       if (attempt > 0) {
         if (onRetry) {
@@ -973,16 +996,28 @@ class SyncManagerClass {
         return { ok: true, profiles };
       } catch (err: any) {
         lastError = err?.message || 'Impossibile recuperare i profili';
+        lastStatus = err?.status;
+        if (isSyncAuthError(lastError, lastStatus)) {
+          break;
+        }
       }
     }
 
-    // All retries failed -> auto-logout
-    await this.disconnect();
+    if (isSyncAuthError(lastError, lastStatus)) {
+      await this.disconnect();
+      return {
+        ok: false,
+        profiles: [],
+        error: lastError || 'Sessione o token KuroSync non autorizzati',
+        wasLoggedOut: true,
+      };
+    }
+
     return {
       ok: false,
       profiles: [],
       error: lastError || 'Connessione a KuroSync fallita dopo diversi tentativi',
-      wasLoggedOut: true,
+      wasLoggedOut: false,
     };
   }
 
@@ -1316,7 +1351,8 @@ class SyncManagerClass {
       this.isSyncing = false;
       this.lastError = err?.message || 'Sincronizzazione fallita';
       this.notify();
-      return { ok: false, upserts: 0, deletions: 0, error: this.lastError || undefined };
+      const status = err?.status;
+      return { ok: false, upserts: 0, deletions: 0, error: this.lastError || undefined, status } as any;
     }
   }
 
@@ -1345,8 +1381,21 @@ class SyncManagerClass {
     }
 
     let lastError = syncRes.error || 'Errore di sincronizzazione';
+    let lastStatus: number | undefined = (syncRes as any).status;
 
-    // If initial sync failed, retry up to maxRetries times with visual feedback and delay
+    // If initial sync failed due to authentication / revoked token, disconnect immediately without useless retries
+    if (isSyncAuthError(lastError, lastStatus)) {
+      await this.disconnect();
+      return {
+        ok: false,
+        upserts: 0,
+        deletions: 0,
+        error: lastError,
+        wasLoggedOut: true,
+      };
+    }
+
+    // If initial sync failed due to network / transient error, retry up to maxRetries times with visual feedback and delay
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       if (onRetry) {
         onRetry(attempt, maxRetries, lastError);
@@ -1362,17 +1411,27 @@ class SyncManagerClass {
         return syncRes;
       }
       lastError = syncRes.error || lastError;
+      lastStatus = (syncRes as any).status;
+
+      if (isSyncAuthError(lastError, lastStatus)) {
+        await this.disconnect();
+        return {
+          ok: false,
+          upserts: 0,
+          deletions: 0,
+          error: lastError,
+          wasLoggedOut: true,
+        };
+      }
     }
 
-    // After all retries failed, log out locally to protect state and propose re-login
-    await this.disconnect();
-
+    // After all retries failed due to network / offline / 500 error, preserve local credentials and token!
     return {
       ok: false,
       upserts: 0,
       deletions: 0,
       error: lastError || 'Impossibile connettersi a KuroSync dopo diversi tentativi',
-      wasLoggedOut: true,
+      wasLoggedOut: false,
     };
   }
 

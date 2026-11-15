@@ -188,7 +188,7 @@ La schermata Palinsesto visualizza la programmazione delle uscite anime settiman
 
 ## 🎨 Motore dei Temi & Reattività Istantanea
 
-Il motore dei temi (in [`src/theme/unistyles.ts`](file:///home/g4s/VSCode/KuroM/src/theme/unistyles.ts)) combina le specifiche di un design token moderno con la reattività immediata di React Context:
+Il motore dei temi (in [`src/theme/unistyles.ts`](../src/theme/unistyles.ts)) combina le specifiche di un design token moderno con la reattività immediata di React Context:
 
 1. **Clonazione dell'Oggetto Tema**: Quando l'utente seleziona un nuovo tema, `ThemeProvider` clona l'oggetto tema `{ ...newTheme, colors: { ...newTheme.colors } }`. Questo genera una nuova referenza in memoria, forzando il re-render istantaneo di tutti i componenti registrati con `useTheme()`.
 2. **Hook Flessibile `useTheme()`**: Supporta sia l'accesso diretto (`theme.colors.primary`) che la destrutturazione (`const { theme } = useTheme()`).
@@ -197,7 +197,7 @@ Il motore dei temi (in [`src/theme/unistyles.ts`](file:///home/g4s/VSCode/KuroM/
 
 ## 💀 Sistema di Animazioni Skeleton & Zero Layout Shift (CLS)
 
-Il sistema di skeleton loading in [`src/components/skeleton/`](file:///home/g4s/VSCode/KuroM/src/components/skeleton) sostituisce completamente gli spinner generici bloccanti con placeholder animati fedeli alle geometrie native dei componenti reali:
+Il sistema di skeleton loading in [`src/components/skeleton/`](../src/components/skeleton/) sostituisce completamente gli spinner generici bloccanti con placeholder animati fedeli alle geometrie native dei componenti reali:
 
 1. **Primitiva `Skeleton`**:
    - Gestisce un loop infinito di opacità (tra $0.35$ e $0.85$, frequenza 850ms) eseguito sul thread UI nativo tramite `useNativeDriver: true`.
@@ -218,7 +218,7 @@ Il sistema di skeleton loading in [`src/components/skeleton/`](file:///home/g4s/
 
 ## 🛡️ Componente Unificato `ConfirmModal` & Divieto Assoluto di `Alert.alert`
 
-Per eliminare qualsiasi discontinuità visiva tra Android nativo e l'interfaccia dell'applicazione, il codebase adotta il componente unificato [`ConfirmModal`](file:///home/g4s/VSCode/KuroM/src/components/ConfirmModal.tsx):
+Per eliminare qualsiasi discontinuità visiva tra Android nativo e l'interfaccia dell'applicazione, il codebase adotta il componente unificato [`ConfirmModal`](../src/components/ConfirmModal.tsx):
 
 1. **Divieto Assoluto di Alert di Sistema**:
    - È severamente vietato l'import di `Alert` da `react-native` e l'uso di `Alert.alert(...)`.
@@ -235,7 +235,7 @@ Per eliminare qualsiasi discontinuità visiva tra Android nativo e l'interfaccia
 
 ## 📜 Gestione Cronologia, Retention Policy Dinamica & Eliminazione Touch
 
-La gestione dello storico di visione in [`app/(tabs)/history.tsx`](file:///home/g4s/VSCode/KuroM/app/(tabs)/history.tsx) e [`src/services/storage/`](file:///home/g4s/VSCode/KuroM/src/services/storage/index.ts) offre il massimo controllo sulla privacy e sull'ergonomia touch:
+La gestione dello storico di visione in [`app/(tabs)/history.tsx`](../app/(tabs)/history.tsx) e [`src/services/storage/`](../src/services/storage/index.ts) offre il massimo controllo sulla privacy e sull'ergonomia touch:
 
 1. **Retention Slider Reattivo in Impostazioni (`HistorySlider.tsx`)**:
    - Slider a 5 livelli discreti: `'OFF'` (valore `-1`), `30gg`, `60gg`, `90gg` e `'ON'` (`0`, illimitato).
@@ -249,7 +249,7 @@ La gestione dello storico di visione in [`app/(tabs)/history.tsx`](file:///home/
 
 ## 📋 Scheda Tecnica & Metadati Estesi Anime (`AnimeInfoTable`, `AnimeHeaderBackdrop`)
 
-La schermata Dettaglio Anime arricchisce la consultazione con i componenti [`AnimeInfoTable`](file:///home/g4s/VSCode/KuroM/src/components/anime/AnimeInfoTable.tsx) e [`AnimeHeaderBackdrop`](file:///home/g4s/VSCode/KuroM/src/components/anime/AnimeHeaderBackdrop.tsx):
+La schermata Dettaglio Anime arricchisce la consultazione con i componenti [`AnimeInfoTable`](../src/components/anime/AnimeInfoTable.tsx) e [`AnimeHeaderBackdrop`](../src/components/anime/AnimeHeaderBackdrop.tsx):
 
 1. **Header Pulito, Spacing Iniziale & Copertina Espandibile a Schermo Intero**:
    - Intestazione ripulita dalla vecchia immagine di backdrop ingrandita a 260dp.
@@ -274,7 +274,7 @@ La schermata Dettaglio Anime arricchisce la consultazione con i componenti [`Ani
 
 ## 🎬 Video Player & Streaming Asincrono (`replaceAsync`)
 
-Il sottosistema video ([`app/player/[id].tsx`](file:///home/g4s/VSCode/KuroM/app/player/[id].tsx)) adotta la gestione asincrona delle sorgenti multimediali:
+Il sottosistema video ([`app/player/[id].tsx`](../app/player/[id].tsx)) adotta la gestione asincrona delle sorgenti multimediali:
 - **`replaceAsync` off-thread**: Sostituisce il metodo deprecato `player.replace` per prevenire il blocco del Main Thread durante l'inizializzazione dei formati video su iOS e Android.
 - **Gestione Stream & Ripresa**: Mantiene sincronizzato il `playbackRate` e applica il punto di ripresa memorizzato in MMKV al completamento della risoluzione della risorsa, senza glitch visivi.
 - **Feedback Visivo di Caricamento Integrato**: Durante il recupero del flusso o il buffering, l'animazione di caricamento (`ActivityIndicator` con contrasto YIQ) è integrata direttamente all'interno del pulsante circolare Play/Pausa (e al centro dello schermo a controlli nascosti), azzerando overlay scuri o box oscuranti che coprono la visione.
@@ -292,7 +292,7 @@ Per massimizzare la resa visiva sui display AMOLED ed eliminare sovrapposizioni 
    - Può essere richiamata in qualsiasi momento con un semplice swipe verso l'alto dal bordo inferiore e scompare nuovamente in automatico dopo l'uso.
    - Sincronizzazione dinamica dello stato su `AppState` (ripristino automatico al ritorno da background).
 2. **Adattamento Dinamico Safe Area sui Tab**:
-   - `tabBarStyle` in [`app/(tabs)/_layout.tsx`](file:///home/g4s/VSCode/KuroM/app/(tabs)/_layout.tsx) calcola l'altezza come `56 + insets.bottom` e il padding inferiore come `insets.bottom`.
+   - `tabBarStyle` in [`app/(tabs)/_layout.tsx`](../app/(tabs)/_layout.tsx) calcola l'altezza come `56 + insets.bottom` e il padding inferiore come `insets.bottom`.
    - Se la navbar a 3 pulsanti è visibile o l'utente seleziona la modalità `SEMPRE VISIBILE` in Impostazioni, la barra delle tab espande un cuscinetto inferiore OLED evitando qualsiasi collisione con le icone.
 3. **Configurazione Utente in Impostazioni**:
    - Selezione istantanea tra `NASCONDI (SWIPE)` (default consigliato, a scomparsa con swipe dal basso) e `SEMPRE VISIBILE` (sempre fissa e visibile in-app), con descrizione snellita ed essenziale, persistita in MMKV (`AppStorage.setNavBarMode`).

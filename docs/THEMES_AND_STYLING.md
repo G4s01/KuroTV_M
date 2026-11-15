@@ -25,7 +25,7 @@ Tutti i temi mantengono il background nero OLED puro, variando il colore primari
 | **Rainbow** | `rainbow` | `#73FEC8` (Turchese Menta) | `theme-rainbow.svg` | Tinta pastello ad alto contrasto |
 | **Personalizzato** | `custom` | Configurabile | `theme-custom.svg` | Scelto dall'utente |
 
-Le icone SVG ufficiali risiedono in [`assets/icons/`](file:///home/g4s/VSCode/KuroM/assets/icons/) e vengono renderizzate ad alta risoluzione tramite `expo-image`.
+Le icone SVG ufficiali risiedono in [`assets/icons/`](../assets/icons/) e vengono renderizzate ad alta risoluzione tramite `expo-image`.
 
 ---
 
@@ -69,7 +69,7 @@ La schermata impostazioni è strutturata per la massima essenzialità visiva:
 
 ## ⚡ Come Usare i Temi Dinamici (`useTheme()`)
 
-I componenti React consumano il tema attivo tramite l'hook reattivo [`useTheme()`](file:///home/g4s/VSCode/KuroM/src/theme/unistyles.ts):
+I componenti React consumano il tema attivo tramite l'hook reattivo [`useTheme()`](../src/theme/unistyles.ts):
 
 ### Esempio di Utilizzo Corretto con Contrasto Dinamico
 

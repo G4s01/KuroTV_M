@@ -14,7 +14,7 @@ export interface HomeSectionProps {
   maxItems?: number;
 }
 
-export function HomeSection({
+export const HomeSection = React.memo(function HomeSection({
   title,
   items,
   onItemPress,
@@ -62,4 +62,4 @@ export function HomeSection({
       </ScrollView>
     </View>
   );
-}
+});

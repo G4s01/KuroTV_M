@@ -3,8 +3,6 @@ import type { Theme } from '@/theme';
 import type { HistoryRetentionDays } from '@/services/storage';
 import { StepSlider, type StepItem } from './StepSlider';
 
-export type { StepItem };
-
 export interface HistorySliderProps {
   value: HistoryRetentionDays;
   onChange: (newValue: HistoryRetentionDays) => void;
