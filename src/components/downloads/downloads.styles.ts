@@ -18,8 +18,23 @@ export const downloadsStyles = StyleSheet.create({
   headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 10,
     flex: 1,
+    minWidth: 0,
+  },
+  touchTarget: {
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   backButton: {
     width: 44,
@@ -28,15 +43,33 @@ export const downloadsStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerTitleWrapper: {
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     flex: 1,
+    minWidth: 0,
   },
   headerTitle: {
     fontFamily: 'monospace',
-    fontWeight: '900',
+    fontWeight: '800',
     fontSize: 18,
-    letterSpacing: 1,
+    letterSpacing: -0.5,
     textTransform: 'uppercase',
+  },
+  countBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 9999,
+    borderWidth: 1,
+  },
+  countBadgeText: {
+    fontSize: 12,
+    fontWeight: '800',
+    fontFamily: 'monospace',
+  },
+  headerTitleWrapper: {
+    flex: 1,
   },
   headerSubtitle: {
     fontFamily: 'monospace',

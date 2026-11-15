@@ -114,34 +114,56 @@ export default function ExploreScreen() {
   return (
     <View style={[styles.root, { paddingTop: insets.top, backgroundColor: theme.colors.background }]}>
       {/* App Bar */}
-      <View style={[styles.appBar, { borderBottomColor: theme.colors.border }]}>
+      <View
+        style={[
+          styles.appBar,
+          { borderBottomColor: theme.colors.border },
+          isTablet && { maxWidth: 960, width: '100%', alignSelf: 'center' },
+        ]}
+      >
         <View style={styles.appBarHeader}>
-          <View style={styles.titleRow}>
-            <Pressable
-              onPress={() => {
-                Haptics.selectionAsync().catch(() => {});
-                if (router.canGoBack()) {
-                  router.back();
-                } else {
-                  (navigation as any).navigate('index');
-                  router.replace('/(tabs)');
-                }
-              }}
-              hitSlop={12}
-              style={styles.backButton}
-              accessibilityRole="button"
-              accessibilityLabel="TORNA INDIETRO"
+          <Pressable
+            onPress={() => {
+              Haptics.selectionAsync().catch(() => {});
+              if (router.canGoBack()) {
+                router.back();
+              } else {
+                (navigation as any).navigate('index');
+                router.replace('/(tabs)');
+              }
+            }}
+            hitSlop={10}
+            style={styles.touchTarget}
+            accessibilityRole="button"
+            accessibilityLabel="TORNA INDIETRO"
+          >
+            <View
+              style={[
+                styles.iconCircle,
+                { backgroundColor: theme.colors.card, borderColor: theme.colors.border },
+              ]}
             >
-              <Ionicons name="arrow-back" size={22} color={theme.colors.text} />
-            </Pressable>
-            <Ionicons name="calendar" size={18} color={theme.colors.primary} />
-            <Text style={[styles.appBarTitle, { color: theme.colors.text }]}>PALINSESTO</Text>
+              <Ionicons name="arrow-back" size={20} color={theme.colors.text} />
+            </View>
+          </Pressable>
+
+          <View style={styles.headerTitleBlock}>
+            <View style={styles.titleRow}>
+              <Ionicons name="calendar" size={16} color={theme.colors.primary} />
+              <Text style={[styles.appBarTitle, { color: theme.colors.text }]} numberOfLines={1}>
+                PALINSESTO
+              </Text>
+            </View>
+            {scheduleData?.weekLabel ? (
+              <Text
+                style={[styles.weekSubtitle, styles.weekLabel, { color: theme.colors.textSecondary }]}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
+                {scheduleData.weekLabel.toUpperCase()}
+              </Text>
+            ) : null}
           </View>
-          {scheduleData?.weekLabel ? (
-            <Text style={[styles.weekLabel, { color: theme.colors.textMuted }]}>
-              {scheduleData.weekLabel.toUpperCase()}
-            </Text>
-          ) : null}
         </View>
       </View>
 
@@ -471,33 +493,61 @@ const styles = StyleSheet.create({
   appBarHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: 10,
+    flex: 1,
+    minWidth: 0,
   },
-  titleRow: {
-    flexDirection: 'row',
+  touchTarget: {
+    minWidth: 44,
+    minHeight: 44,
     alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   backButton: {
     width: 44,
     height: 44,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 4,
+  },
+  headerTitleBlock: {
+    flex: 1,
+    minWidth: 0,
+    justifyContent: 'center',
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   appBarTitle: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '800',
     fontFamily: 'monospace',
     textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginLeft: 8,
+    letterSpacing: 0.5,
+  },
+  weekSubtitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    marginTop: 1,
   },
   weekLabel: {
     fontSize: 11,
     fontWeight: '700',
     fontFamily: 'monospace',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.4,
   },
   contentContainer: {
     flex: 1,

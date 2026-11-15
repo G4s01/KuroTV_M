@@ -7,7 +7,7 @@ import {
   BackHandler,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter, useNavigation, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -32,6 +32,7 @@ import { ConfirmModal } from '@/components/ConfirmModal';
 
 export default function DownloadsScreen() {
   const router = useRouter();
+  const navigation = useNavigation();
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
   const { isTablet } = useResponsiveLayout();
@@ -83,13 +84,14 @@ export default function DownloadsScreen() {
         if (router.canGoBack()) {
           router.back();
         } else {
+          (navigation as any).navigate('index');
           router.replace('/(tabs)');
         }
         return true;
       });
 
       return () => backSub.remove();
-    }, [router])
+    }, [router, navigation])
   );
 
   useEffect(() => {
@@ -333,7 +335,7 @@ export default function DownloadsScreen() {
   );
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    <View style={[styles.container, { paddingTop: insets.top, backgroundColor: theme.colors.background }]}>
       <StatusBar style="light" />
 
       {/* Top Header */}
@@ -341,7 +343,6 @@ export default function DownloadsScreen() {
         style={[
           styles.header,
           {
-            paddingTop: Math.max(16, insets.top),
             borderBottomColor: theme.colors.border,
             backgroundColor: theme.colors.background,
           },
@@ -350,12 +351,13 @@ export default function DownloadsScreen() {
       >
         <View style={styles.headerLeft}>
           <Pressable
-            style={styles.backButton}
+            style={styles.touchTarget}
             onPress={() => {
               Haptics.selectionAsync().catch(() => {});
               if (router.canGoBack()) {
                 router.back();
               } else {
+                (navigation as any).navigate('index');
                 router.replace('/(tabs)');
               }
             }}
@@ -363,23 +365,41 @@ export default function DownloadsScreen() {
             accessibilityRole="button"
             accessibilityLabel="TORNA INDIETRO"
           >
-            <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
+            <View
+              style={[
+                styles.iconCircle,
+                { backgroundColor: theme.colors.card, borderColor: theme.colors.border },
+              ]}
+            >
+              <Ionicons name="arrow-back" size={20} color={theme.colors.text} />
+            </View>
           </Pressable>
 
-          <View style={styles.headerTitleWrapper}>
-            <Text style={[styles.headerTitle, { color: theme.colors.text }]}>
+          <View style={styles.titleRow}>
+            <Ionicons name="cloud-download" size={18} color={theme.colors.primary} />
+            <Text
+              style={[styles.headerTitle, { color: theme.colors.text }]}
+              numberOfLines={1}
+            >
               SCARICATI
             </Text>
-            <Text
-              style={[styles.headerSubtitle, { color: theme.colors.textSecondary }]}
-            >
-              CONTENUTI OFFLINE
-            </Text>
+            {animeGroups.length > 0 && (
+              <View
+                style={[
+                  styles.countBadge,
+                  { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+                ]}
+              >
+                <Text style={[styles.countBadgeText, { color: theme.colors.primary }]}>
+                  {animeGroups.length}
+                </Text>
+              </View>
+            )}
           </View>
         </View>
 
         <Pressable
-          style={styles.headerSettingsBtn}
+          style={styles.touchTarget}
           onPress={() => {
             Haptics.selectionAsync().catch(() => {});
             router.push({
@@ -391,7 +411,14 @@ export default function DownloadsScreen() {
           accessibilityRole="button"
           accessibilityLabel="APRI IMPOSTAZIONI SCARICATI"
         >
-          <Ionicons name="settings-outline" size={22} color={theme.colors.text} />
+          <View
+            style={[
+              styles.iconCircle,
+              { backgroundColor: theme.colors.card, borderColor: theme.colors.border },
+            ]}
+          >
+            <Ionicons name="settings-outline" size={19} color={theme.colors.text} />
+          </View>
         </Pressable>
       </View>
 
