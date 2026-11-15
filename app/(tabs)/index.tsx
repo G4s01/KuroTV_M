@@ -162,7 +162,8 @@ export default function HomeScreen() {
           setFilterState({});
           return true;
         }
-        return false;
+        BackHandler.exitApp();
+        return true;
       });
 
       return () => backSub.remove();
