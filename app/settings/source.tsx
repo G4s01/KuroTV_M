@@ -145,7 +145,7 @@ export default function SourceSettingsScreen() {
   return (
     <View style={[styles.root, { paddingTop: insets.top, backgroundColor: theme.colors.background }]}>
       <SettingsHeader
-        title="SORGENTE & RETE"
+        title="SORGENTE"
         subtitle="CONFIGURAZIONE DOMINIO ANIMEWORLD E TEST CONNESSIONE"
       />
 

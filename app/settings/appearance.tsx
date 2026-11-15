@@ -116,7 +116,7 @@ export default function AppearanceSettingsScreen() {
   return (
     <View style={[styles.root, { paddingTop: insets.top, backgroundColor: theme.colors.background }]}>
       <SettingsHeader
-        title="ASPETTO & INTERFACCIA"
+        title="APPARENZA"
         subtitle="TEMA, COLORI & BARRA ANDROID"
       />
 

@@ -117,7 +117,7 @@ export default function HistorySettingsScreen() {
   return (
     <View style={[styles.root, { paddingTop: insets.top, backgroundColor: theme.colors.background }]}>
       <SettingsHeader
-        title="CRONOLOGIA & PRIVACY"
+        title="CRONOLOGIA"
         subtitle="TEMPI DI CONSERVAZIONE E PULIZIA CRONOLOGIA VISIONI E RICERCHE"
       />
 

@@ -106,7 +106,7 @@ export default function PlaybackSettingsScreen() {
   return (
     <View style={[styles.root, { paddingTop: insets.top, backgroundColor: theme.colors.background }]}>
       <SettingsHeader
-        title="RIPRODUZIONE & ANISKIP"
+        title="PLAYER"
         subtitle="SALTO AUTOMATICO O MANUALE DI INTRO, RECAP ED ENDING"
       />
 

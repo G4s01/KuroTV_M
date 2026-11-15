@@ -35,7 +35,7 @@ export default function SyncSettingsScreen() {
   return (
     <View style={[styles.root, { paddingTop: insets.top, backgroundColor: theme.colors.background }]}>
       <SettingsHeader
-        title="KUROSYNC & PROFILI"
+        title="SINCRONIA"
         subtitle="SINCRONIZZAZIONE MULTI-DISPOSITIVO & ACCOPPIAMENTO ANDROID TV"
       />
 

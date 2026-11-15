@@ -4407,13 +4407,13 @@ assert(hubSource.includes('hubHeroStatusDot'), 'Hub settings.tsx deve includere 
 
 // 2. Hub renders all 7 Category Rows with dynamic glanceability
 const expectedCategories = [
-  'ASPETTO & INTERFACCIA',
-  'RIPRODUZIONE & ANISKIP',
-  'KUROSYNC & PROFILI',
-  'DOWNLOAD & ARCHIVIAZIONE',
-  'SORGENTE & RETE',
-  'CRONOLOGIA & PRIVACY',
-  'INFO & AGGIORNAMENTI',
+  'APPARENZA',
+  'PLAYER',
+  'SINCRONIA',
+  'DOWNLOAD',
+  'SORGENTE',
+  'CRONOLOGIA',
+  'APPLICAZIONE',
 ];
 for (const cat of expectedCategories) {
   assert(hubSource.includes(cat), `Hub settings.tsx deve contenere la riga categoria ${cat}`);

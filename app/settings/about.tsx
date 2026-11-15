@@ -209,7 +209,7 @@ export default function AboutSettingsScreen() {
   return (
     <View style={[styles.root, { paddingTop: insets.top, backgroundColor: theme.colors.background }]}>
       <SettingsHeader
-        title="INFO & AGGIORNAMENTI"
+        title="APPLICAZIONE"
         subtitle="VERSIONE APP, SPECIFICHE HARDWARE, CHANGELOG E UPDATER OTA"
       />
 

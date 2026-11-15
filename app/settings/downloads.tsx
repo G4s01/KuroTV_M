@@ -79,7 +79,7 @@ export default function DownloadsSettingsScreen() {
   return (
     <View style={[styles.root, { paddingTop: insets.top, backgroundColor: theme.colors.background }]}>
       <SettingsHeader
-        title="DOWNLOAD & ARCHIVIAZIONE"
+        title="DOWNLOAD"
         subtitle="CARTELLA SAF, DOWNLOAD SOLO WI-FI E MEMORIA OCCUPATA"
       />
 

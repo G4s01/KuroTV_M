@@ -383,13 +383,13 @@ Prima di ogni commit o push è obbligatorio verificare la conformità tramite:
      - **Hero Card KuroSync & Profilo**: In cima all'Hub, espone avatar circolare del profilo attivo con iniziale o icona di accesso, nome profilo, indicatore di stato sincrono (pallino verde `CONNESSO`, spinner `SINCRONIZZAZIONE`, grigio `OFFLINE`), nome server host, pulsante rapido `CAMBIA` (apre `SyncProfileModal`) o `ACCEDI` (`SyncConnectModal`), ed eventuale alert compatto per nuovi aggiornamenti con redirect ad `about.tsx`.
      - **Righe Categoria Ricche (`SettingsCategoryRow.tsx`)**: Lista modulare a 7 schede con icona tematica, titolo monospace, sottotitolo dinamico di stato in tempo reale da MMKV/servizi e chevron destra con touch target $\ge 56$dp.
    - **Le 7 Sotto-pagine Dedicate nello Stack Nativo (`app/settings/*`, animazione `slide_from_right`)**:
-     1. `appearance.tsx`: Tema OLED/Pikachu/Orchid/Rainbow con toggle Dark/Light al tocco e Navbar Android (Auto-hide con swipe vs Sempre visibile);
-     2. `playback.tsx`: AniSkip completo (`AniSkipSlider` per Auto/Manual/Disabled, `AniSkipDurationSlider` 5s-60s/∞, chip sezioni Intro/Recap/Outro);
-     3. `sync.tsx`: KuroSync completo (`SyncSettingsCard`, stato backend D1, pairing TV via QR/PIN, sync delta manuale);
-     4. `downloads.tsx`: Gestione download SAF personalizzato, switch Wi-Fi only, monitoraggio memoria e svuotamento con `ConfirmModal`;
-     5. `source.tsx`: TLD AnimeWorld (.ac, .so, .tv), URL personalizzato e avvisi inline;
-     6. `history.tsx`: Conservazione cronologia visioni e ricerche stile Google con `HistorySlider` e cancellazione con `ConfirmModal`;
-     7. `about.tsx`: Info app/ABI, Changelog tabs corrente/futuro, OTA Updater integrato con progress bar e installazione APK.
+     1. `appearance.tsx` (*APPARENZA*): Tema OLED/Pikachu/Orchid/Rainbow con toggle Dark/Light al tocco e Navbar Android (Auto-hide con swipe vs Sempre visibile);
+     2. `playback.tsx` (*PLAYER*): AniSkip completo (`AniSkipSlider` per Auto/Manual/Disabled, `AniSkipDurationSlider` 5s-60s/∞, chip sezioni Intro/Recap/Outro);
+     3. `sync.tsx` (*SINCRONIA*): KuroSync completo (`SyncSettingsCard`, stato backend D1, pairing TV via QR/PIN, sync delta manuale);
+     4. `downloads.tsx` (*DOWNLOAD*): Gestione download SAF personalizzato, switch Wi-Fi only, monitoraggio memoria e svuotamento con `ConfirmModal`;
+     5. `source.tsx` (*SORGENTE*): TLD AnimeWorld (.ac, .so, .tv), URL personalizzato e avvisi inline;
+     6. `history.tsx` (*CRONOLOGIA*): Conservazione cronologia visioni e ricerche stile Google con `HistorySlider` e cancellazione con `ConfirmModal`;
+     7. `about.tsx` (*APPLICAZIONE*): Info app/ABI, Changelog tabs corrente/futuro, OTA Updater integrato con progress bar e installazione APK.
    - **Barra Superiore Unificata (`SettingsHeader.tsx`) & Gestione Tasto Indietro**: Ciascuna sotto-pagina adotta `SettingsHeader` con touch target $\ge 44$dp e gestione fisica `hardwareBackPress` tramite `useFocusEffect` (ritorno prioritario all'Hub delle Impostazioni senza minimizzare l'app).
    - **Retrocompatibilità Parametri & Deep-links**: Il parametro `scrollTo: 'downloads'` da `app/downloads/index.tsx` reindirizza istantaneamente a `/settings/downloads`, mentre `scrollTo: 'update'` o `UpdateStore.isAutoDownloadRequested()` reindirizzano a `/settings/about`.
 

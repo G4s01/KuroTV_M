@@ -176,24 +176,18 @@ export default function SettingsScreen() {
   // --------------------------------------------------------------------------
   // Formatted Subtitles for Glanceability
   // --------------------------------------------------------------------------
-  const appearanceSubtitle = `TEMA: ${themeFamily.toUpperCase()} (${themeMode.toUpperCase()}) • NAVBAR: ${navBarMode === 'auto-hide' ? 'A SCOMPARSA' : 'VISIBILE'}`;
-
-  const activeAniSkipTypes = [
-    aniSkipSettings.enableOpening && 'INTRO',
-    aniSkipSettings.enableRecap && 'RECAP',
-    aniSkipSettings.enableEnding && 'OUTRO',
-  ].filter(Boolean).join(', ');
+  const appearanceSubtitle = `${themeFamily.toUpperCase()} • NAVBAR ${navBarMode === 'auto-hide' ? 'AUTO' : 'FISSA'}`;
 
   const playbackSubtitle =
     aniSkipSettings.mode === 'auto'
-      ? `AUTOMATICO • ${activeAniSkipTypes || 'NESSUNA'}`
+      ? 'ANISKIP AUTOMATICO'
       : aniSkipSettings.mode === 'manual'
-        ? `MANUALE (${aniSkipSettings.buttonDuration ?? 10}S) • ${activeAniSkipTypes || 'NESSUNA'}`
-        : 'DISATTIVATO';
+        ? `ANISKIP MANUALE (${aniSkipSettings.buttonDuration ?? 10}S)`
+        : 'ANISKIP DISATTIVATO';
 
   const syncSubtitle = syncStatus.isConnected
-    ? `CONNESSO • PROFILO: ${(syncStatus.profileName || 'PRINCIPALE').toUpperCase()}`
-    : 'NON CONNESSO • CONFIGURA KUROSYNC';
+    ? `CONNESSO • ${(syncStatus.profileName || 'PRINCIPALE').toUpperCase()}`
+    : 'NON CONNESSO';
 
   const downloadSubtitle = `${storageInfo.appDownloadsFormatted} OCCUPATI • SOLO WI-FI: ${downloadSettings.wifiOnly ? 'ON' : 'OFF'}`;
 
@@ -210,11 +204,6 @@ export default function SettingsScreen() {
   const currentVersionCode = UpdaterService.getCurrentVersionCode();
   const hasUpdateFound = Boolean(update?.isUpdateAvailable && update?.manifest);
   const aboutSubtitle = `V${currentVersion} (BUILD ${currentVersionCode}) • ${hasUpdateFound ? 'AGGIORNAMENTO DISPONIBILE' : 'AGGIORNATA'}`;
-
-  // Server hostname helper for Hero card
-  const serverHost = syncStatus.serverUrl
-    ? syncStatus.serverUrl.replace(/^https?:\/\//, '').split('/')[0]
-    : 'KUROSYNC SERVER';
 
   const profileInitial = (syncStatus.profileName || 'K').charAt(0).toUpperCase();
 
@@ -305,8 +294,8 @@ export default function SettingsScreen() {
                   numberOfLines={1}
                 >
                   {syncStatus.isConnected
-                    ? `PROFILO: ${(syncStatus.profileName || 'PRINCIPALE').toUpperCase()}`
-                    : 'KUROSYNC NON COLLEGATO'}
+                    ? (syncStatus.profileName || 'PRINCIPALE').toUpperCase()
+                    : 'KUROSYNC'}
                 </Text>
               </View>
 
@@ -341,11 +330,6 @@ export default function SettingsScreen() {
                       ? 'SINCRONIZZATO'
                       : 'OFFLINE'}
                 </Text>
-                {syncStatus.isConnected && (
-                  <Text style={[styles.hubHeroServerText, { color: theme.colors.textMuted }]} numberOfLines={1}>
-                    • {serverHost}
-                  </Text>
-                )}
               </View>
             </View>
 
@@ -419,58 +403,58 @@ export default function SettingsScreen() {
           </Text>
         </View>
 
-        {/* 1. Aspetto & Interfaccia */}
+        {/* 1. Apparenza */}
         <SettingsCategoryRow
           icon="color-palette-outline"
-          title="ASPETTO & INTERFACCIA"
+          title="APPARENZA"
           subtitle={appearanceSubtitle}
           onPress={() => router.push('/settings/appearance' as any)}
         />
 
-        {/* 2. Riproduzione & AniSkip */}
+        {/* 2. Player */}
         <SettingsCategoryRow
           icon="play-skip-forward-outline"
-          title="RIPRODUZIONE & ANISKIP"
+          title="PLAYER"
           subtitle={playbackSubtitle}
           onPress={() => router.push('/settings/playback' as any)}
         />
 
-        {/* 3. KuroSync & Profili */}
+        {/* 3. Sincronia */}
         <SettingsCategoryRow
           icon="cloud-done-outline"
-          title="KUROSYNC & PROFILI"
+          title="SINCRONIA"
           subtitle={syncSubtitle}
           onPress={() => router.push('/settings/sync' as any)}
         />
 
-        {/* 4. Download & Storage */}
+        {/* 4. Download */}
         <SettingsCategoryRow
           icon="cloud-download-outline"
-          title="DOWNLOAD & ARCHIVIAZIONE"
+          title="DOWNLOAD"
           subtitle={downloadSubtitle}
           onPress={() => router.push('/settings/downloads' as any)}
         />
 
-        {/* 5. Sorgente & Connessione */}
+        {/* 5. Sorgente */}
         <SettingsCategoryRow
           icon="globe-outline"
-          title="SORGENTE & RETE"
+          title="SORGENTE"
           subtitle={sourceSubtitle}
           onPress={() => router.push('/settings/source' as any)}
         />
 
-        {/* 6. Cronologia & Privacy */}
+        {/* 6. Cronologia */}
         <SettingsCategoryRow
           icon="time-outline"
-          title="CRONOLOGIA & PRIVACY"
+          title="CRONOLOGIA"
           subtitle={historySubtitle}
           onPress={() => router.push('/settings/history' as any)}
         />
 
-        {/* 7. Info & Aggiornamenti */}
+        {/* 7. Applicazione */}
         <SettingsCategoryRow
           icon="information-circle-outline"
-          title="INFO & AGGIORNAMENTI"
+          title="APPLICAZIONE"
           subtitle={aboutSubtitle}
           badge={hasUpdateFound ? { text: `V${update?.manifest?.version}`, color: primaryContrast, bgColor: theme.colors.primary } : undefined}
           onPress={() => router.push('/settings/about' as any)}
