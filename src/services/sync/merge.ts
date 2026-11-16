@@ -23,9 +23,18 @@ export function mergeLocalAndRemote(
   local: LocalStorageState,
   remote: RemotePullResponse,
   localDeletions?: Array<{ type: string; key: string; deletedAt?: number }>,
-  localPendingMutations?: Record<string, any>
+  localPendingMutations?: Record<string, any>,
+  knownTombstones?: Array<{ type: string; key: string; deletedAt?: number }>
 ): MergeResult {
   const tombstoneMap = new Map<string, number>();
+  for (const t of knownTombstones || []) {
+    if (t?.type && t?.key) {
+      tombstoneMap.set(`${t.type}:${t.key}`, t.deletedAt || 0);
+      if (t.type === 'search_history') {
+        tombstoneMap.set(`search_history:${t.key.trim().toLowerCase()}`, t.deletedAt || 0);
+      }
+    }
+  }
   for (const t of remote.tombstones || []) {
     tombstoneMap.set(`${t.type}:${t.key}`, t.deletedAt);
     if (t.type === 'search_history') {

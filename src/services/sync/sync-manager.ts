@@ -211,6 +211,33 @@ function sanitizePushPayload(payload: DeltaPushRequest): DeltaPushRequest {
     }));
   }
 
+  if (Array.isArray(sanitized.searchHistory)) {
+    sanitized.searchHistory = sanitized.searchHistory
+      .filter((s) => s && typeof s.query === 'string' && s.query.trim().length > 0)
+      .map((s) => ({
+        query: s.query.trim(),
+        timestamp: typeof s.timestamp === 'number' && s.timestamp > 0 ? s.timestamp : Date.now(),
+      }));
+  }
+
+  if (Array.isArray(sanitized.deletions)) {
+    const validTypes = new Set([
+      'favorite',
+      'continue_watching',
+      'watch_history',
+      'watch_progress',
+      'shared_settings',
+      'search_history',
+    ]);
+    sanitized.deletions = sanitized.deletions
+      .filter((d) => d && typeof d.key === 'string' && validTypes.has(d.type))
+      .map((d) => ({
+        type: d.type,
+        key: d.key,
+        deletedAt: typeof d.deletedAt === 'number' && d.deletedAt > 0 ? d.deletedAt : Date.now(),
+      }));
+  }
+
   return sanitized;
 }
 
@@ -440,6 +467,25 @@ class SyncManagerClass {
   }
 
   // --------------------------------------------------------------------------
+  // Profile-Scoped Sync Cursor Management
+  // --------------------------------------------------------------------------
+
+  getLastSyncTimestamp(profileId?: string): number {
+    const targetId = profileId || AppStorage.getString(StorageKeys.SYNC_PROFILE_ID) || '';
+    return AppStorage.getProfileLastSyncTimestamp(targetId);
+  }
+
+  setLastSyncTimestamp(timestamp: number, profileId?: string): void {
+    const targetId = profileId || AppStorage.getString(StorageKeys.SYNC_PROFILE_ID) || '';
+    AppStorage.setProfileLastSyncTimestamp(targetId, timestamp);
+  }
+
+  resetLastSyncTimestamp(profileId?: string): void {
+    const targetId = profileId || AppStorage.getString(StorageKeys.SYNC_PROFILE_ID) || '';
+    AppStorage.clearProfileLastSyncTimestamp(targetId);
+  }
+
+  // --------------------------------------------------------------------------
   // Connection Methods
   // --------------------------------------------------------------------------
 
@@ -633,7 +679,7 @@ class SyncManagerClass {
       AppStorage.setString(StorageKeys.SYNC_PROFILE_ID, profileId);
       AppStorage.setString(StorageKeys.SYNC_PROFILE_NAME, activeName);
       AppStorage.setBoolean(StorageKeys.SYNC_IS_ENABLED, true);
-      AppStorage.setNumber(StorageKeys.SYNC_LAST_TIMESTAMP, 0);
+      this.resetLastSyncTimestamp(profileId);
 
       // Trigger initial full sync
       const syncRes = await this.performFullSync(0);
@@ -787,7 +833,7 @@ class SyncManagerClass {
       if (activeProfileId) AppStorage.setString(StorageKeys.SYNC_PROFILE_ID, activeProfileId);
       if (activeProfileName) AppStorage.setString(StorageKeys.SYNC_PROFILE_NAME, activeProfileName);
       AppStorage.setBoolean(StorageKeys.SYNC_IS_ENABLED, true);
-      AppStorage.setNumber(StorageKeys.SYNC_LAST_TIMESTAMP, 0);
+      this.resetLastSyncTimestamp(activeProfileId);
 
       // Trigger initial full sync
       const syncRes = await this.performFullSync(0);
@@ -881,7 +927,7 @@ class SyncManagerClass {
       AppStorage.setString(StorageKeys.SYNC_PROFILE_ID, activeProfileId);
       AppStorage.setString(StorageKeys.SYNC_PROFILE_NAME, activeProfileName);
       AppStorage.setBoolean(StorageKeys.SYNC_IS_ENABLED, true);
-      AppStorage.setNumber(StorageKeys.SYNC_LAST_TIMESTAMP, 0);
+      this.resetLastSyncTimestamp(activeProfileId);
 
       this.client.setDeviceToken(token);
 
@@ -972,7 +1018,7 @@ class SyncManagerClass {
       if (activeProfileId) AppStorage.setString(StorageKeys.SYNC_PROFILE_ID, activeProfileId);
       if (activeProfileName) AppStorage.setString(StorageKeys.SYNC_PROFILE_NAME, activeProfileName);
       AppStorage.setBoolean(StorageKeys.SYNC_IS_ENABLED, true);
-      AppStorage.setNumber(StorageKeys.SYNC_LAST_TIMESTAMP, 0);
+      this.resetLastSyncTimestamp(activeProfileId);
 
       this.client.setDeviceToken(token);
 
@@ -1005,7 +1051,8 @@ class SyncManagerClass {
       AppStorage.remove(StorageKeys.SYNC_DEVICE_ID);
       AppStorage.remove(StorageKeys.SYNC_PROFILE_ID);
       AppStorage.remove(StorageKeys.SYNC_PROFILE_NAME);
-      AppStorage.remove(StorageKeys.SYNC_LAST_TIMESTAMP);
+      this.resetLastSyncTimestamp();
+      AppStorage.clearKnownTombstones();
       AppStorage.remove(StorageKeys.SYNC_LAST_TIME);
       AppStorage.remove(StorageKeys.SYNC_IS_ENABLED);
       AppStorage.remove('sync.master_password');
@@ -1148,7 +1195,7 @@ class SyncManagerClass {
         AppStorage.saveSettings(mergedState.sharedSettings);
       }
 
-      AppStorage.setNumber(StorageKeys.SYNC_LAST_TIMESTAMP, pullRes.serverTime);
+      this.setLastSyncTimestamp(pullRes.serverTime, profileId);
       AppStorage.setNumber(StorageKeys.SYNC_LAST_TIME, Date.now());
       AppStorage.notifyStorageChanged();
 
@@ -1301,10 +1348,16 @@ class SyncManagerClass {
       const since =
         forcedSince !== undefined
           ? forcedSince
-          : AppStorage.getNumber(StorageKeys.SYNC_LAST_TIMESTAMP) || 0;
+          : this.getLastSyncTimestamp();
 
       // 1. Pull deltas from server
       const remotePull = await this.client.pullDelta(since);
+
+      // Record incoming remote tombstones and prune superseded local mutations
+      if (Array.isArray(remotePull.tombstones) && remotePull.tombstones.length > 0) {
+        AppStorage.recordKnownTombstones(remotePull.tombstones);
+        AppStorage.prunePendingMutationsAgainstTombstones(remotePull.tombstones);
+      }
 
       // 2. Read local MMKV state
       const settings = AppStorage.getSettings();
@@ -1333,12 +1386,14 @@ class SyncManagerClass {
       // 3. Merge local and remote
       const pendingDeletionsBeforeMerge = AppStorage.getPendingSyncDeletions();
       const pendingMutationsBeforeMerge = AppStorage.getPendingSyncMutations();
+      const knownTombstones = AppStorage.getKnownTombstones();
 
       const { state: mergedState, appliedDeletions, appliedUpserts } = mergeLocalAndRemote(
         localState,
         remotePull,
         pendingDeletionsBeforeMerge,
-        pendingMutationsBeforeMerge
+        pendingMutationsBeforeMerge,
+        knownTombstones
       );
 
       // 4. Save merged results atomically back to MMKV
@@ -1411,7 +1466,7 @@ class SyncManagerClass {
         AppStorage.removePendingSyncMutations(pushPayload);
       }
 
-      AppStorage.setNumber(StorageKeys.SYNC_LAST_TIMESTAMP, newServerTime);
+      this.setLastSyncTimestamp(newServerTime);
       AppStorage.setNumber(StorageKeys.SYNC_LAST_TIME, Date.now());
 
       this.isSyncing = false;

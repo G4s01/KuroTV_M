@@ -133,6 +133,7 @@ export const StorageKeys = {
   SYNC_PENDING_MUTATIONS: 'sync.pending_mutations',
   SYNC_PENDING_DELETIONS: 'sync.pending_deletions',
   SYNC_IS_ENABLED: 'sync.is_enabled',
+  SYNC_KNOWN_TOMBSTONES: 'sync.known_tombstones',
 } as const;
 
 export type ThemeMode = 'oled' | 'light' | 'custom';
@@ -1566,6 +1567,7 @@ export const AppStorage = {
       }
       const updated = Array.from(map.values()).slice(-200);
       AppStorage.setObject(StorageKeys.SYNC_PENDING_DELETIONS, updated);
+      AppStorage.recordKnownTombstones(items);
 
       // Reconcile pending mutations: remove any pending mutations for deleted items
       const pendingMutations =
@@ -1650,6 +1652,190 @@ export const AppStorage = {
     }
   },
 
+  // ----------------------------------------------------
+  // Known Tombstones Cache (Anti-Resurrection)
+  // ----------------------------------------------------
+  getKnownTombstones: (): Array<{ type: string; key: string; deletedAt: number }> => {
+    const data = AppStorage.getObject<Array<{ type: string; key: string; deletedAt: number }>>(
+      StorageKeys.SYNC_KNOWN_TOMBSTONES
+    );
+    return Array.isArray(data) ? data : [];
+  },
+
+  recordKnownTombstones: (
+    tombstones: Array<{ type: string; key: string; deletedAt?: number }>
+  ): void => {
+    if (!Array.isArray(tombstones) || tombstones.length === 0) return;
+    try {
+      const current = AppStorage.getKnownTombstones();
+      const tombMap = new Map<string, number>();
+      for (const t of current) {
+        if (t?.type && t?.key) {
+          tombMap.set(`${t.type}:${t.key.toLowerCase()}`, t.deletedAt);
+        }
+      }
+      for (const t of tombstones) {
+        if (!t?.type || !t?.key) continue;
+        const time = t.deletedAt || Date.now();
+        const k = `${t.type}:${t.key.toLowerCase()}`;
+        const existing = tombMap.get(k);
+        tombMap.set(k, Math.max(existing || 0, time));
+      }
+      const updated = Array.from(tombMap.entries())
+        .map(([compoundKey, deletedAt]) => {
+          const colonIdx = compoundKey.indexOf(':');
+          return {
+            type: compoundKey.slice(0, colonIdx),
+            key: compoundKey.slice(colonIdx + 1),
+            deletedAt,
+          };
+        })
+        .sort((a, b) => b.deletedAt - a.deletedAt)
+        .slice(0, 500);
+
+      AppStorage.setObject(StorageKeys.SYNC_KNOWN_TOMBSTONES, updated);
+    } catch {
+      // Safe fallback
+    }
+  },
+
+  removeKnownTombstone: (type: string, key: string): void => {
+    if (!type || !key) return;
+    try {
+      const current = AppStorage.getKnownTombstones();
+      if (current.length === 0) return;
+      const target = `${type}:${key.toLowerCase()}`;
+      const filtered = current.filter((t) => `${t.type}:${t.key.toLowerCase()}` !== target);
+      if (filtered.length === 0) {
+        AppStorage.remove(StorageKeys.SYNC_KNOWN_TOMBSTONES);
+      } else if (filtered.length !== current.length) {
+        AppStorage.setObject(StorageKeys.SYNC_KNOWN_TOMBSTONES, filtered);
+      }
+    } catch {
+      // Safe fallback
+    }
+  },
+
+  clearKnownTombstones: (): void => {
+    AppStorage.remove(StorageKeys.SYNC_KNOWN_TOMBSTONES);
+  },
+
+  prunePendingMutationsAgainstTombstones: (
+    tombstones: Array<{ type: string; key: string; deletedAt?: number }>
+  ): void => {
+    if (!Array.isArray(tombstones) || tombstones.length === 0) return;
+    try {
+      const current = AppStorage.getPendingSyncMutations();
+      if (Object.keys(current).length === 0) return;
+      const tombMap = new Map<string, number>();
+      for (const t of tombstones) {
+        if (t?.type && t?.key) {
+          tombMap.set(`${t.type}:${t.key.toLowerCase()}`, t.deletedAt || Date.now());
+        }
+      }
+
+      let changed = false;
+      if (Array.isArray(current.favorites)) {
+        const filtered = current.favorites.filter((f: any) => {
+          const t = tombMap.get(`favorite:${String(f.id).toLowerCase()}`);
+          return t === undefined || (f.updatedAt || 0) > t;
+        });
+        if (filtered.length !== current.favorites.length) {
+          changed = true;
+          if (filtered.length > 0) current.favorites = filtered;
+          else delete current.favorites;
+        }
+      }
+
+      if (Array.isArray(current.continueWatching)) {
+        const filtered = current.continueWatching.filter((c: any) => {
+          const t = tombMap.get(`continue_watching:${String(c.animeId).toLowerCase()}`);
+          return t === undefined || (c.updatedAt || 0) > t;
+        });
+        if (filtered.length !== current.continueWatching.length) {
+          changed = true;
+          if (filtered.length > 0) current.continueWatching = filtered;
+          else delete current.continueWatching;
+        }
+      }
+
+      if (Array.isArray(current.watchHistory)) {
+        const filtered = current.watchHistory.filter((h: any) => {
+          const t = tombMap.get(`watch_history:${String(h.animeId).toLowerCase()}:${h.episodeNumber}`);
+          return t === undefined || (h.updatedAt || 0) > t;
+        });
+        if (filtered.length !== current.watchHistory.length) {
+          changed = true;
+          if (filtered.length > 0) current.watchHistory = filtered;
+          else delete current.watchHistory;
+        }
+      }
+
+      if (Array.isArray(current.watchProgress)) {
+        const filtered = current.watchProgress.filter((p: any) => {
+          const t = tombMap.get(`watch_progress:${String(p.animeId).toLowerCase()}:${p.episodeNumber}`);
+          return t === undefined || (p.updatedAt || 0) > t;
+        });
+        if (filtered.length !== current.watchProgress.length) {
+          changed = true;
+          if (filtered.length > 0) current.watchProgress = filtered;
+          else delete current.watchProgress;
+        }
+      }
+
+      if (Array.isArray(current.searchHistory)) {
+        const filtered = current.searchHistory.filter((s: any) => {
+          const q = (s.query || '').trim().toLowerCase();
+          const t = tombMap.get(`search_history:${q}`);
+          return t === undefined || (s.timestamp || 0) > t;
+        });
+        if (filtered.length !== current.searchHistory.length) {
+          changed = true;
+          if (filtered.length > 0) current.searchHistory = filtered;
+          else delete current.searchHistory;
+        }
+      }
+
+      if (changed) {
+        if (Object.keys(current).length === 0) {
+          AppStorage.remove(StorageKeys.SYNC_PENDING_MUTATIONS);
+        } else {
+          AppStorage.setObject(StorageKeys.SYNC_PENDING_MUTATIONS, current);
+        }
+      }
+    } catch {
+      // Safe fallback
+    }
+  },
+
+  // ----------------------------------------------------
+  // Profile-Scoped Sync Timestamps
+  // ----------------------------------------------------
+  getProfileLastSyncTimestamp: (profileId: string): number => {
+    if (!profileId) return AppStorage.getNumber(StorageKeys.SYNC_LAST_TIMESTAMP) || 0;
+    const profileSpecific = AppStorage.getNumber(`sync.last_timestamp.${profileId}`);
+    if (typeof profileSpecific === 'number' && profileSpecific >= 0) {
+      return profileSpecific;
+    }
+    return 0;
+  },
+
+  setProfileLastSyncTimestamp: (profileId: string, timestamp: number): void => {
+    if (profileId) {
+      AppStorage.setNumber(`sync.last_timestamp.${profileId}`, timestamp);
+    }
+    AppStorage.setNumber(StorageKeys.SYNC_LAST_TIMESTAMP, timestamp);
+  },
+
+  clearProfileLastSyncTimestamp: (profileId?: string): void => {
+    if (profileId) {
+      AppStorage.remove(`sync.last_timestamp.${profileId}`);
+    } else {
+      AppStorage.remove(StorageKeys.SYNC_LAST_TIMESTAMP);
+    }
+    AppStorage.setNumber(StorageKeys.SYNC_LAST_TIMESTAMP, 0);
+  },
+
   recordSyncMutation: (
     type:
       | 'favorites'
@@ -1662,31 +1848,53 @@ export const AppStorage = {
   ): void => {
     if (!type || !item) return;
     try {
-      // Reconcile pending deletions: remove tombstone if re-adding/updating
-      const existingDeletions =
-        AppStorage.getObject<Array<{ type: string; key: string; deletedAt: number }>>(
-          StorageKeys.SYNC_PENDING_DELETIONS
-        );
-      if (Array.isArray(existingDeletions) && existingDeletions.length > 0) {
-        let tombType: string | null = null;
-        let tombKey: string | null = null;
-        if (type === 'favorites') {
-          tombType = 'favorite';
-          tombKey = item.id;
-        } else if (type === 'continueWatching') {
-          tombType = 'continue_watching';
-          tombKey = item.animeId;
-        } else if (type === 'watchHistory') {
-          tombType = 'watch_history';
-          tombKey = `${item.animeId}:${item.episodeNumber}`;
-        } else if (type === 'watchProgress') {
-          tombType = 'watch_progress';
-          tombKey = `${item.animeId}:${item.episodeNumber}`;
-        } else if (type === 'searchHistory') {
-          tombType = 'search_history';
-          tombKey = item.query;
+      let tombType: string | null = null;
+      let tombKey: string | null = null;
+      if (type === 'favorites') {
+        tombType = 'favorite';
+        tombKey = String(item.id);
+      } else if (type === 'continueWatching') {
+        tombType = 'continue_watching';
+        tombKey = String(item.animeId);
+      } else if (type === 'watchHistory') {
+        tombType = 'watch_history';
+        tombKey = `${item.animeId}:${item.episodeNumber}`;
+      } else if (type === 'watchProgress') {
+        tombType = 'watch_progress';
+        tombKey = `${item.animeId}:${item.episodeNumber}`;
+      } else if (type === 'searchHistory') {
+        tombType = 'search_history';
+        tombKey = (item.query || '').trim();
+      }
+
+      if (tombType && tombKey) {
+        const hasExplicitTime =
+          typeof item.updatedAt === 'number' || typeof item.timestamp === 'number';
+        const itemTime =
+          typeof item.updatedAt === 'number'
+            ? item.updatedAt
+            : typeof item.timestamp === 'number'
+            ? item.timestamp
+            : Date.now();
+        const knownTombs = AppStorage.getKnownTombstones();
+        const targetK = `${tombType}:${tombKey.toLowerCase()}`;
+        const existingTomb = knownTombs.find((t) => `${t.type}:${t.key.toLowerCase()}` === targetK);
+
+        // Tombstone dominance: if item has an explicit past timestamp <= existing tombstone, ignore it
+        if (existingTomb && hasExplicitTime && itemTime <= existingTomb.deletedAt) {
+          return;
         }
-        if (tombType && tombKey) {
+
+        // Legitimate re-addition: mutation has no past timestamp or is newer than tombstone
+        if (existingTomb) {
+          AppStorage.removeKnownTombstone(tombType, tombKey);
+        }
+
+        const existingDeletions =
+          AppStorage.getObject<Array<{ type: string; key: string; deletedAt: number }>>(
+            StorageKeys.SYNC_PENDING_DELETIONS
+          );
+        if (Array.isArray(existingDeletions) && existingDeletions.length > 0) {
           const filteredTombstones = existingDeletions.filter(
             (d) => !(d.type === tombType && d.key.toLowerCase() === tombKey!.toLowerCase())
           );

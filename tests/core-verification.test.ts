@@ -68,6 +68,7 @@ import {
   computeAniSkipOverlayState,
 } from '../src/services/aniskip/index';
 import type { AniSkipResult, AniSkipSettings } from '../src/types/index';
+import type { LocalStorageState, RemotePullResponse } from '../src/services/sync/index';
 import {
   SyncManager,
   DEFAULT_SYNC_SERVER_URL,
@@ -4801,6 +4802,123 @@ assert(serverSyncSrc.includes('item.title || "Anime"'), 'KuroTV_S deve applicare
 assert(serverSyncSrc.includes('item.episodeId || ""'), 'KuroTV_S deve applicare fallback non-null per episodeId');
 
 console.log('✓ Sincronizzazione Avanzata: Riprendi a Guardare, Preferiti & Cronologia verificati con successo.');
+
+// -----------------------------------------------------------------------------
+// 35. Verifica Allineamento Client KuroSync: Cursori di Replica, Anti-Resurrezione Tombstones & Robustezza Payload
+// -----------------------------------------------------------------------------
+console.log('\n[35/35] Verifica Allineamento Client KuroSync: Cursori di Replica, Anti-Resurrezione Tombstones & Robustezza Payload...');
+
+// 1. Gestione Rigorosa Cursori per Profilo
+SyncManager.resetLastSyncTimestamp('prof-scoping-1');
+SyncManager.resetLastSyncTimestamp('prof-scoping-2');
+assert.strictEqual(SyncManager.getLastSyncTimestamp('prof-scoping-1'), 0, 'Timestamp iniziale per nuovo profilo deve essere 0');
+assert.strictEqual(SyncManager.getLastSyncTimestamp('prof-scoping-2'), 0, 'Timestamp iniziale per secondo profilo deve essere 0');
+
+SyncManager.setLastSyncTimestamp(50000, 'prof-scoping-1');
+assert.strictEqual(SyncManager.getLastSyncTimestamp('prof-scoping-1'), 50000, 'prof-scoping-1 deve riflettere il suo watermark');
+assert.strictEqual(SyncManager.getLastSyncTimestamp('prof-scoping-2'), 0, 'prof-scoping-2 deve rimanere isolato a 0');
+
+SyncManager.setLastSyncTimestamp(75000, 'prof-scoping-2');
+assert.strictEqual(SyncManager.getLastSyncTimestamp('prof-scoping-2'), 75000, 'prof-scoping-2 deve salvare il suo timestamp');
+assert.strictEqual(SyncManager.getLastSyncTimestamp('prof-scoping-1'), 50000, 'prof-scoping-1 deve preservare 50000 inalterato');
+
+// 2. Anti-Resurrezione Tombstones & Pruning Pending Mutations
+AppStorage.clearKnownTombstones();
+AppStorage.clearPendingSyncMutations();
+
+AppStorage.recordKnownTombstones([
+  { type: 'favorite', key: 'tomb-anime-1', deletedAt: 1000 },
+  { type: 'continue_watching', key: 'tomb-anime-2', deletedAt: 1500 },
+]);
+const knownTombs = AppStorage.getKnownTombstones();
+assert.strictEqual(knownTombs.length, 2, 'Devono essere presenti 2 tombstones noti');
+assert(knownTombs.some((t) => t.key === 'tomb-anime-1' && t.deletedAt === 1000));
+
+// Simula mutazioni locali pre-esistenti prima della ricezione di tombstones
+AppStorage.setObject(StorageKeys.SYNC_PENDING_MUTATIONS, {
+  favorites: [
+    { id: 'tomb-anime-1', title: 'Old Ghost Title', updatedAt: 800 },
+    { id: 'legit-anime-3', title: 'Legit Anime', updatedAt: 2000 },
+  ],
+  continueWatching: [
+    { animeId: 'tomb-anime-2', episodeNumber: 1, updatedAt: 1200 },
+  ],
+});
+
+AppStorage.prunePendingMutationsAgainstTombstones(AppStorage.getKnownTombstones());
+const prunedMuts = AppStorage.getPendingSyncMutations();
+assert(
+  !prunedMuts.favorites || !prunedMuts.favorites.some((f: any) => f.id === 'tomb-anime-1'),
+  'tomb-anime-1 con updatedAt <= deletedAt deve essere eliminato da pending mutations'
+);
+assert(
+  !prunedMuts.continueWatching || !prunedMuts.continueWatching.some((c: any) => c.animeId === 'tomb-anime-2'),
+  'tomb-anime-2 con updatedAt <= deletedAt deve essere eliminato da continueWatching pending'
+);
+assert(
+  prunedMuts.favorites && prunedMuts.favorites.some((f: any) => f.id === 'legit-anime-3'),
+  'legit-anime-3 senza tombstone deve essere preservato intatto'
+);
+
+// Verifica che una chiamata a recordSyncMutation con timestamp vecchio venga scartata all'origine
+AppStorage.recordSyncMutation('favorites', { id: 'tomb-anime-1', title: 'Old Rejected', updatedAt: 700 });
+const mutsAfterOldCall = AppStorage.getPendingSyncMutations();
+assert(
+  !mutsAfterOldCall.favorites || !mutsAfterOldCall.favorites.some((f: any) => f.id === 'tomb-anime-1'),
+  'recordSyncMutation con updatedAt <= deletedAt deve essere scartata all origine per tombstone dominance'
+);
+
+// Simula ri-aggiunta legittima da parte dell utente (updatedAt > deletedAt): deve rimuovere il tombstone
+AppStorage.recordSyncMutation('favorites', { id: 'tomb-anime-1', title: 'Restored Title', updatedAt: 2500 });
+const tombsAfterRestore = AppStorage.getKnownTombstones();
+assert(
+  !tombsAfterRestore.some((t) => t.key === 'tomb-anime-1'),
+  'Ri-aggiunta di tomb-anime-1 deve rimuovere il tombstone corrispondente'
+);
+
+// 3. Verifica Merge Local & Remote con Known Tombstones
+const localStateTest: LocalStorageState = {
+  favorites: [
+    { id: 'fav-kept', title: 'Fav Kept', thumbnail: '', link: '', updatedAt: 500, genres: [] },
+    { id: 'fav-purged', title: 'Fav Purged', thumbnail: '', link: '', updatedAt: 400, genres: [] },
+  ],
+  continueWatching: [],
+  watchHistory: [],
+  watchProgress: [],
+  sharedSettings: {},
+  searchHistory: [],
+};
+const remotePullTest: RemotePullResponse = {
+  serverTime: 60000,
+  profile: { id: 'p1', name: 'Main' },
+  deltas: {
+    favorites: [{ id: 'fav-kept', title: 'Fav Kept Updated', thumbnail: '', link: '', updatedAt: 800, genres: [] }],
+    continueWatching: [],
+    watchHistory: [],
+    watchProgress: [],
+    sharedSettings: {},
+    searchHistory: [],
+  },
+  tombstones: [],
+};
+const externalKnownTombs = [{ type: 'favorite', key: 'fav-purged', deletedAt: 600 }];
+const mergeResult = mergeLocalAndRemote(
+  localStateTest,
+  remotePullTest,
+  [],
+  {},
+  externalKnownTombs
+);
+assert.strictEqual(mergeResult.state.favorites.length, 1, 'Solo fav-kept deve essere presente');
+assert.strictEqual(mergeResult.state.favorites[0].id, 'fav-kept');
+assert.strictEqual(mergeResult.state.favorites[0].title, 'Fav Kept Updated', 'LWW deve adottare il titolo remoto piu recente');
+
+// Cleanup
+AppStorage.clearKnownTombstones();
+AppStorage.clearPendingSyncMutations();
+AppStorage.clearPendingSyncDeletions();
+
+console.log('✓ Allineamento Client KuroSync: Cursori di Replica, Anti-Resurrezione Tombstones & Robustezza Payload verificati con successo.');
 
 // -----------------------------------------------------------------------------
 // Fine Test
