@@ -13,7 +13,7 @@ export interface HomeSearchHeaderProps {
   onOpenFilters: () => void;
 }
 
-export function HomeSearchHeader({
+export const HomeSearchHeader = React.memo(function HomeSearchHeader({
   searchQuery,
   onSearchChange,
   onSubmitSearch,
@@ -22,6 +22,67 @@ export function HomeSearchHeader({
   onOpenFilters,
 }: HomeSearchHeaderProps) {
   const { theme } = useTheme();
+  const inputRef = React.useRef<React.ComponentRef<typeof TextInput>>(null);
+  const [localText, setLocalText] = React.useState(searchQuery);
+  const lastNativeTextRef = React.useRef(searchQuery);
+  const debounceTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Synchronize with external query mutations (history selection, clear/close)
+  React.useEffect(() => {
+    if (searchQuery !== lastNativeTextRef.current) {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
+      }
+      lastNativeTextRef.current = searchQuery;
+      setLocalText(searchQuery);
+    }
+  }, [searchQuery]);
+
+  React.useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, []);
+
+  const handleChangeText = React.useCallback(
+    (text: string) => {
+      lastNativeTextRef.current = text;
+      setLocalText(text);
+
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+      // Debounce propagating text to parent to prevent full-screen re-renders while typing,
+      // which destroys composing spans (SPAN_COMPOSING) in Fleksy, SwiftKey & Emoji Keyboard (Ekatox).
+      debounceTimerRef.current = setTimeout(() => {
+        onSearchChange(text);
+      }, 150);
+    },
+    [onSearchChange]
+  );
+
+  const handleClear = React.useCallback(() => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+    lastNativeTextRef.current = '';
+    setLocalText('');
+    onSearchChange('');
+    inputRef.current?.clear();
+  }, [onSearchChange]);
+
+  const handleSubmit = React.useCallback(() => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+    onSearchChange(localText);
+    onSubmitSearch?.(localText);
+  }, [onSubmitSearch, onSearchChange, localText]);
 
   return (
     <View style={[styles.searchHeader, { backgroundColor: theme.colors.background, borderBottomColor: theme.colors.border }]}>
@@ -38,19 +99,28 @@ export function HomeSearchHeader({
       <View style={[styles.searchBar, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
         <Ionicons name="search" size={18} color={theme.colors.textMuted} />
         <TextInput
+          ref={inputRef}
           style={[styles.searchInput, { color: theme.colors.text }]}
           placeholder="CERCA ANIME, SERIE, FILM..."
           placeholderTextColor={theme.colors.textMuted}
-          value={searchQuery}
-          onChangeText={onSearchChange}
-          onSubmitEditing={() => onSubmitSearch?.(searchQuery)}
+          value={localText}
+          onChangeText={handleChangeText}
+          onSubmitEditing={handleSubmit}
           returnKeyType="search"
+          inputMode="search"
+          keyboardType="default"
           autoFocus={true}
+          autoCapitalize="none"
           autoCorrect={false}
+          spellCheck={false}
+          autoComplete="off"
+          textContentType="none"
+          importantForAutofill="no"
+          disableFullscreenUI={true}
         />
-        {searchQuery.length > 0 && (
+        {localText.length > 0 && (
           <Pressable
-            onPress={() => onSearchChange('')}
+            onPress={handleClear}
             hitSlop={12}
             style={styles.clearBtn}
             accessibilityRole="button"
@@ -87,7 +157,7 @@ export function HomeSearchHeader({
       </Pressable>
     </View>
   );
-}
+});
 
 export interface HomeAppBarProps {
   onSearchPress: () => void;

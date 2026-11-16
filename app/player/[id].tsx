@@ -50,6 +50,7 @@ import type { AniSkipResult, AnimeDetail, Episode } from '@/types';
 
 const SPEED_OPTIONS = [0.75, 1.0, 1.25, 1.5, 2.0];
 let isNavigatingToEpisode = false;
+let lastPlayerOrientation: 'landscape' | 'portrait' | null = null;
 
 export default function VideoPlayerScreen() {
   const router = useRouter();
@@ -71,6 +72,7 @@ export default function VideoPlayerScreen() {
     offline?: string;
     localUri?: string;
     episode?: string;
+    orientation?: 'landscape' | 'portrait';
   }>();
 
   const episodeId = params.id || '';
@@ -569,9 +571,26 @@ export default function VideoPlayerScreen() {
 
   // Open in full horizontal screen (landscape) on start & respond to device rotation
   React.useEffect(() => {
+    const wasNavigating = isNavigatingToEpisode;
     isNavigatingToEpisode = false;
-    // 1. Immediately request landscape fullscreen
-    ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE).catch(() => {});
+
+    // Determine target orientation:
+    // If transitioning within player (wasNavigating or params.orientation), preserve active orientation.
+    // If opening fresh from outside the player, lock to LANDSCAPE.
+    const targetOrientation =
+      params.orientation || (wasNavigating ? lastPlayerOrientation : null);
+
+    if (targetOrientation === 'portrait') {
+      lastPlayerOrientation = 'portrait';
+      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
+    } else if (targetOrientation === 'landscape') {
+      lastPlayerOrientation = 'landscape';
+      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE).catch(() => {});
+    } else {
+      // 1. Immediately request landscape fullscreen on fresh open from outside
+      lastPlayerOrientation = 'landscape';
+      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE).catch(() => {});
+    }
 
     if (Platform.OS === 'android') {
       NavigationBar.setVisibilityAsync('hidden').catch(() => {});
@@ -579,9 +598,11 @@ export default function VideoPlayerScreen() {
 
     return () => {
       if (hasNavigatedRef.current || isNavigatingToEpisode) {
-        // Episode transition within player: retain landscape fullscreen and hidden navbar
+        // Episode transition within player: retain active orientation and hidden navbar
         return;
       }
+      lastPlayerOrientation = null;
+      isNavigatingToEpisode = false;
       const { width: curW, height: curH } = Dimensions.get('window');
       const isTabletDevice = Math.min(curW, curH) >= 600;
       if (isTabletDevice) {
@@ -607,8 +628,10 @@ export default function VideoPlayerScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     try {
       if (isLandscape) {
+        lastPlayerOrientation = 'portrait';
         await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
       } else {
+        lastPlayerOrientation = 'landscape';
         await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
       }
     } catch (err) {
@@ -730,6 +753,19 @@ export default function VideoPlayerScreen() {
 
   // Reset player and metadata states when navigating to a different episode
   React.useEffect(() => {
+    hasNavigatedRef.current = false;
+    isNavigatingToEpisode = false;
+
+    // Enforce preserved orientation on in-place episode route updates
+    const targetOrientation = params.orientation || lastPlayerOrientation;
+    if (targetOrientation === 'portrait') {
+      lastPlayerOrientation = 'portrait';
+      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
+    } else if (targetOrientation === 'landscape') {
+      lastPlayerOrientation = 'landscape';
+      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE).catch(() => {});
+    }
+
     hasResumedRef.current = false;
     hasEndedRef.current = false;
     userWantsPlaybackRef.current = true;
@@ -751,7 +787,7 @@ export default function VideoPlayerScreen() {
     autoNavigatedEpisodeRef.current = false;
     autoSkippedIdsRef.current.clear();
     skipTriggeredTimeRef.current = 0;
-  }, [episodeId, episodeNumber]);
+  }, [episodeId, episodeNumber, params.orientation]);
 
   // Fetch AniSkip timestamps & episode batch metadata for advancing next episode
   React.useEffect(() => {
@@ -926,6 +962,10 @@ export default function VideoPlayerScreen() {
     ) => {
       isNavigatingToEpisode = true;
       hasNavigatedRef.current = true;
+      const { width: curW, height: curH } = Dimensions.get('window');
+      const activeOrientation: 'landscape' | 'portrait' =
+        lastPlayerOrientation || (curW > curH ? 'landscape' : 'portrait');
+      lastPlayerOrientation = activeOrientation;
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
       const savePos =
         options?.markCurrentCompleted && durationRef.current > 0
@@ -954,6 +994,7 @@ export default function VideoPlayerScreen() {
           thumbnail: nextThumb,
           position: String(savedProg && !savedProg.isCompleted ? savedProg.currentTime : 0),
           totalEpisodes: String(totalEpisodesRef.current ?? (episodesList.length || '')),
+          orientation: activeOrientation,
         },
       });
     },

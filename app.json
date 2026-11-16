@@ -2,7 +2,7 @@
   "expo": {
     "name": "KuroTV",
     "slug": "kurotv-mobile",
-    "version": "1.0.1",
+    "version": "1.0.0",
     "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": [
@@ -12,7 +12,7 @@
     "userInterfaceStyle": "automatic",
     "android": {
       "package": "com.kurotv.mobile",
-      "versionCode": 56,
+      "versionCode": 58,
       "adaptiveIcon": {
         "backgroundColor": "#000000",
         "foregroundImage": "./assets/images/android-icon-foreground.png"

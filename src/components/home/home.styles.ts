@@ -135,7 +135,6 @@ export const homeStyles = StyleSheet.create({
     flex: 1,
     fontSize: 13,
     fontFamily: 'monospace',
-    textTransform: 'uppercase',
     paddingVertical: 0,
   },
   clearBtn: {

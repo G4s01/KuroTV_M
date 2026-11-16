@@ -4924,6 +4924,50 @@ AppStorage.clearPendingSyncDeletions();
 console.log('✓ Allineamento Client KuroSync: Cursori di Replica, Anti-Resurrezione Tombstones & Robustezza Payload verificati con successo.');
 
 // -----------------------------------------------------------------------------
+// [36/36] Verifica Preservazione Orientamento Player & Contromisure Anti-Duplicazione Tastiere Terze
+// -----------------------------------------------------------------------------
+console.log('\n[36/36] Verifica Preservazione Orientamento Player & Contromisure Anti-Duplicazione Tastiere Terze...');
+
+// 1. Verifica Player: Preservazione Orientamento tra Episodi (Landscape & Portrait)
+const playerOrientationSrc = fs.readFileSync(path.resolve(process.cwd(), 'app/player/[id].tsx'), 'utf-8');
+assert(playerOrientationSrc.includes('lastPlayerOrientation'), 'Il player deve tracciare lastPlayerOrientation a livello di modulo');
+assert(playerOrientationSrc.includes("orientation?: 'landscape' | 'portrait'"), 'I parametri rotta del player devono supportare orientation');
+assert(playerOrientationSrc.includes('targetOrientation === \'portrait\''), 'Il player deve preservare la modalita verticale (PORTRAIT_UP) se l\'utente era in portrait');
+assert(playerOrientationSrc.includes('targetOrientation === \'landscape\''), 'Il player deve preservare la modalita orizzontale (LANDSCAPE) se l\'utente era in landscape');
+assert(playerOrientationSrc.includes('lastPlayerOrientation = activeOrientation'), 'handleNavigateToEpisode deve aggiornare lastPlayerOrientation');
+assert(playerOrientationSrc.includes('orientation: activeOrientation'), 'handleNavigateToEpisode deve passare orientation nei parametri di navigazione');
+assert(playerOrientationSrc.includes('toggleOrientationFullscreen'), 'toggleOrientationFullscreen deve aggiornare lastPlayerOrientation');
+assert(playerOrientationSrc.includes('hasNavigatedRef.current = false'), 'Il player deve resettare hasNavigatedRef al cambio episodio per preservare la corretta uscita su unmount');
+assert(playerOrientationSrc.includes('lastPlayerOrientation || (curW > curH ? \'landscape\' : \'portrait\')'), 'handleNavigateToEpisode deve dare precedenza all\'orientamento esplicito lastPlayerOrientation');
+
+// 2. Verifica Search: Contromisure Anti-Duplicazione Tastiere Terze (Fleksy, SwiftKey, Emoji Keyboard / Ekatox)
+const homeSearchHeaderSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/components/home/HomeSearchHeader.tsx'), 'utf-8');
+const homeStylesSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/components/home/home.styles.ts'), 'utf-8');
+
+// A. Assenza di textTransform su TextInput per prevenire desincronizzazione del buffer di composizione
+const searchInputStyleMatch = homeStylesSrc.match(/searchInput:\s*\{([^}]+)\}/);
+assert(searchInputStyleMatch, 'searchInput style deve essere presente in home.styles.ts');
+assert(!searchInputStyleMatch[1].includes('textTransform'), 'searchInput NON deve contenere textTransform per evitare conflitti con IME Android');
+
+// B. Parametri TextInput nativi anti-conflitto per IME Android
+assert(homeSearchHeaderSrc.includes('autoCapitalize="none"'), 'TextInput deve avere autoCapitalize="none" per prevenire duplicazione prime lettere su SwiftKey');
+assert(homeSearchHeaderSrc.includes('autoCorrect={false}'), 'TextInput deve avere autoCorrect={false}');
+assert(homeSearchHeaderSrc.includes('spellCheck={false}'), 'TextInput deve avere spellCheck={false}');
+assert(homeSearchHeaderSrc.includes('autoComplete="off"'), 'TextInput deve avere autoComplete="off"');
+assert(homeSearchHeaderSrc.includes('textContentType="none"'), 'TextInput deve avere textContentType="none"');
+assert(homeSearchHeaderSrc.includes('importantForAutofill="no"'), 'TextInput deve avere importantForAutofill="no"');
+assert(homeSearchHeaderSrc.includes('inputMode="search"'), 'TextInput deve specificare inputMode="search"');
+assert(homeSearchHeaderSrc.includes('disableFullscreenUI={true}'), 'TextInput deve disabilitare la fullscreen UI su Android');
+
+// C. Sincronizzazione locale e buffering con React.memo per eliminare il feedback loop asincrono
+assert(homeSearchHeaderSrc.includes('React.memo'), 'HomeSearchHeader deve essere memoizzato con React.memo');
+assert(homeSearchHeaderSrc.includes('lastNativeTextRef'), 'HomeSearchHeader deve tracciare il testo nativo con lastNativeTextRef');
+assert(homeSearchHeaderSrc.includes('localText'), 'HomeSearchHeader deve gestire il testo locale separato dal rendering della Home');
+assert(homeSearchHeaderSrc.includes('debounceTimerRef'), 'HomeSearchHeader deve disaccoppiare la digitazione dal rendering genitore tramite debounceTimerRef');
+
+console.log('✓ Preservazione Orientamento Player & Contromisure Anti-Duplicazione Tastiere Terze verificate con successo.');
+
+// -----------------------------------------------------------------------------
 // Fine Test
 // -----------------------------------------------------------------------------
 console.log('\n==============================================');
