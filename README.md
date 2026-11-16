@@ -2,7 +2,7 @@
 
 # 📱 KuroTV Mobile (KuroTV_M)
 
-### *Client Android touch-native per lo streaming anime, ad altissime prestazioni e nero assoluto OLED.*
+### _Client Android touch-native per lo streaming anime, ad altissime prestazioni e nero assoluto OLED._
 
 [![Expo SDK 58](https://img.shields.io/badge/Expo-SDK%2058-000000?style=for-the-badge&logo=expo&logoColor=white)](https://expo.dev/)
 [![React Native 0.88](https://img.shields.io/badge/React%20Native-0.88-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://reactnative.dev/)
@@ -35,24 +35,25 @@ Kuro è una suite completa e sincronizzata per lo streaming anime concepita per 
                    ┌─────────────────────┴─────────────────────┐
                    ▼                                           ▼
       ┌─────────────────────────┐                 ┌─────────────────────────┐
-      │   📱 KuroTV_M (Mobile)   │                 │     📺 KuroTV (TV)      │
+      │   📱 KuroTV_M (Mobile)  │                 │     📺 KuroTV (TV)      │
       │   Smartphone & Tablet   │  ◄── QR Pair ─► │       Android TV        │
       │   100% Touch-Native     │                 │   100% Leanback D-Pad   │
       │   Visione Offline & SAF │                 │  Navigazione Spaziale   │
       └─────────────────────────┘                 └─────────────────────────┘
 ```
 
-| Progetto | Piattaforma | Focus & Caratteristiche Chiave | Repository |
-| :--- | :--- | :--- | :--- |
-| **📱 KuroTV_M** *(questo repo)* | **Smartphone & Tablet Android** | Interfaccia touch-first a 60/120 FPS, Live Frame Scrubbing, download offline SAF, AniSkip, layout responsive adattivo per tablet (`sw600dp`). | [*Sei qui*](https://github.com/G4s01/KuroTV_M) |
-| **📺 KuroTV** | **Android TV / Google TV** | Esperienza leanback da salotto, navigazione spaziale 2D fluida per telecomando D-Pad, zero cursori virtuali, ExoPlayer TV pro. | [**G4s01/KuroTV**](https://github.com/G4s01/KuroTV) |
-| **⚡ KuroTV_S** | **Cloudflare Workers + D1** | Backend di sincronizzazione self-hosted serverless (100% Free Plan), delta sync deterministico, profili stile Netflix, TV pairing QR/PIN. | [**G4s01/KuroTV_S**](https://github.com/G4s01/KuroTV_S) |
+| Progetto                        | Piattaforma                     | Focus & Caratteristiche Chiave                                                                                                                | Repository                                              |
+| :------------------------------ | :------------------------------ | :-------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------ |
+| **📱 KuroTV_M** _(questo repo)_ | **Smartphone & Tablet Android** | Interfaccia touch-first a 60/120 FPS, Live Frame Scrubbing, download offline SAF, AniSkip, layout responsive adattivo per tablet (`sw600dp`). | [_Sei qui_](https://github.com/G4s01/KuroTV_M)          |
+| **📺 KuroTV**                   | **Android TV / Google TV**      | Esperienza leanback da salotto, navigazione spaziale 2D fluida per telecomando D-Pad, zero cursori virtuali, ExoPlayer TV pro.                | [**G4s01/KuroTV**](https://github.com/G4s01/KuroTV)     |
+| **⚡ KuroTV_S**                 | **Cloudflare Workers + D1**     | Backend di sincronizzazione self-hosted serverless (100% Free Plan), delta sync deterministico, profili stile Netflix, TV pairing QR/PIN.     | [**G4s01/KuroTV_S**](https://github.com/G4s01/KuroTV_S) |
 
 ---
 
 ## 📸 Galleria Screenshot
 
 ### 📱 Esperienza Smartphone
+
 <p align="center">
   <img src="docs/assets/screenshots/mobile-home.jpg" width="32%" alt="Home Screen & Hero Spotlight" />
   <img src="docs/assets/screenshots/mobile-player.jpg" width="32%" alt="Video Player & OSD Touch" />
@@ -69,6 +70,7 @@ Kuro è una suite completa e sincronizzata per lo streaming anime concepita per 
 </p>
 
 ### 💻 Esperienza Tablet & Grandi Schermi (≥ 600dp)
+
 <p align="center">
   <img src="docs/assets/screenshots/tablet-landscape.jpg" width="55%" alt="Tablet UI - Left Navigation Rail & Responsive Layout" />
 </p>
@@ -81,29 +83,34 @@ Kuro è una suite completa e sincronizzata per lo streaming anime concepita per 
 ## ✨ Funzionalità Chiave
 
 ### 🎬 Player Video Touch di Nuova Generazione
+
 - **🎞️ Live Real-Frame Scrubbing**: Trascina la timeline per visualizzare in tempo reale i fotogrammi estratti dallo stream video (`expo-video`), senza interruzioni e a 60 FPS.
 - **⏭️ AniSkip Intelligente (`SALTA` / `PROSSIMO`)**: Rilevamento automatico delle sigle (`OP`/`ED`/`Recap`) con durata configurabile (`5s`–`60s` o `∞`). Passaggio automatico e intelligente a `'PROSSIMO'` all'ending o alla scena post-credit.
 - **⏩ Gesture Seeking Asimmetrico**: Doppio tocco $\pm 10$s cumulativo (`+20s`, `+30s`...) e HUD verticali per volume (destra) e luminosità (sinistra).
 - **📺 Picture-in-Picture & MediaStyle Notification**: Supporto nativo PiP senza pause e controlli multimediali in notifica a 5 pulsanti (`KuroForwardingPlayer`) con artwork JPEG ad alta risoluzione nei Quick Settings di Android 13+.
 
 ### 📥 Download Offline & Storage SAF
+
 - **⚡ Coda Sequenziale FIFO**: Download a velocità massima su singolo thread per azzerare rate limiting e rendere fruibile il primo episodio nel minor tempo possibile.
-- **📁 Storage Access Framework (SAF)**: Supporto flessibile alla memoria interna dell'app, alla cartella *Download* di sistema o a schede MicroSD esterne.
+- **📁 Storage Access Framework (SAF)**: Supporto flessibile alla memoria interna dell'app, alla cartella _Download_ di sistema o a schede MicroSD esterne.
 - **📶 Vincolo Solo Wi-Fi**: Protezione opzionale per evitare il consumo involontario di dati mobili.
 - **🎬 Modalità Offline Resiliente**: Riproduzione locale verificata con badge `LOCALE / OFFLINE` e zero richieste di rete durante il playback.
 
 ### ☁️ Sincronizzazione Self-Hosted KuroSync & TV Pairing
+
 - **🔄 Delta Sync Deterministico & Cursori Scoped per Profilo**: Sincronizzazione incrementale disaccoppiata dall'orologio locale (zero Delta Miss), con cursori `since` gestiti per profilo da server time monotono, cache persistente dei tombstones noti (`SYNC_KNOWN_TOMBSTONES`), pruning atomico anti-resurrezione delle mutazioni pendenti e dominanza assoluta delle cancellazioni su preferiti, cronologia, stato `"IN PARI"`, ricerche recenti e progressi episodio.
 - **⏱️ Cloudflare D1 Optimization**: Debounce del playback a 45-60s per rispettare i limiti del piano gratuito di Cloudflare, con flush immediato su pausa, chiusura o completamento, e push payload difensivi con validazione tipi e `updatedAt`.
 - **📺 Accoppiamento TV Istantaneo**: Autorizza la tua Android TV in 1 secondo scansionando il QR visualizzato sullo schermo della TV con la fotocamera dello smartphone o inserendo il codice a 6 cifre.
 - **👥 Profili Multipli Stile Netflix**: Cambio rapido del profilo direttamente dalla barra di navigazione o tramite selettore touch dedicato senza disconnessione e con switch atomico su backend D1.
 
 ### 📅 Palinsesto & Programmazione Settimanale
+
 - **🗓️ Calendario Uscite in Tempo Reale**: Programmazione settimanale completa con gli orari di pubblicazione delle puntate.
 - **🔥 Hero Card "Prossima Uscita"**: Card in evidenza con countdown e accesso diretto alla serie in procinto di uscire.
 - **⏱️ Timeline Virtualizzata**: Visualizzazione fluida dei giorni della settimana con chip touch e badge di stato cromatici (`USCITO`, `IN PAUSA`, `PROGRAMMATO`).
 
 ### 🖤 Design System OLED & Ottimizzazioni Native
+
 - **Nero Assoluto (`#000000`)**: Spegnimento completo dei pixel sui display AMOLED per il massimo risparmio energetico.
 - **Tipografia Tecnica Monospace**: Stile distintivo coerente con testi in maiuscolo e contrasto dinamico YIQ.
 - **Skeleton Animati a Zero CLS**: Nessun salto visivo di layout durante il caricamento grazie a geometrie placeholder speculari ai componenti reali.
@@ -113,28 +120,30 @@ Kuro è una suite completa e sincronizzata per lo streaming anime concepita per 
 
 ## 🛠️ Stack Tecnologico
 
-| Componente | Tecnologia | Ruolo & Motivazione |
-| :--- | :--- | :--- |
-| **Framework** | **Expo SDK 58** & **React Native 0.88** | TurboModules nativi & nuova architettura Fabric |
-| **Runtime JS** | **Hermes Engine** | Esecuzione bytecode precompilato ultra-rapida a basso consumo RAM |
-| **Routing** | **Expo Router v58** | File-based routing dichiarativo con Stack e Bottom Tabs |
-| **Virtualizzazione** | **@shopify/flash-list v2** | Liste e griglie infinite a 60/120 FPS costanti |
-| **Storage Locale** | **react-native-mmkv v3** | Key-value store sincrono C++ ad alte prestazioni |
-| **Player Multimediale** | **expo-video** | Player HLS moderno, PiP, stream asincrono e gesture touch |
-| **Data Fetching** | **@tanstack/react-query v5** | Caching, deduplicazione delle richieste e reattività |
-| **Scraper Core** | **cheerio/slim** + **htmlparser2** | Parser HTML 100% puro JavaScript compatibile con Hermes |
-| **Fotocamera** | **expo-camera (CameraView)** | Scansione QR per accoppiamento TV senza permessi audio invasivi |
+| Componente              | Tecnologia                              | Ruolo & Motivazione                                               |
+| :---------------------- | :-------------------------------------- | :---------------------------------------------------------------- |
+| **Framework**           | **Expo SDK 58** & **React Native 0.88** | TurboModules nativi & nuova architettura Fabric                   |
+| **Runtime JS**          | **Hermes Engine**                       | Esecuzione bytecode precompilato ultra-rapida a basso consumo RAM |
+| **Routing**             | **Expo Router v58**                     | File-based routing dichiarativo con Stack e Bottom Tabs           |
+| **Virtualizzazione**    | **@shopify/flash-list v2**              | Liste e griglie infinite a 60/120 FPS costanti                    |
+| **Storage Locale**      | **react-native-mmkv v3**                | Key-value store sincrono C++ ad alte prestazioni                  |
+| **Player Multimediale** | **expo-video**                          | Player HLS moderno, PiP, stream asincrono e gesture touch         |
+| **Data Fetching**       | **@tanstack/react-query v5**            | Caching, deduplicazione delle richieste e reattività              |
+| **Scraper Core**        | **cheerio/slim** + **htmlparser2**      | Parser HTML 100% puro JavaScript compatibile con Hermes           |
+| **Fotocamera**          | **expo-camera (CameraView)**            | Scansione QR per accoppiamento TV senza permessi audio invasivi   |
 
 ---
 
 ## 🚀 Guida Rapida per Sviluppatori
 
 ### 1. Prerequisiti
+
 - **Node.js** $\ge 18$
 - **Android Studio** & Android SDK (API 34+)
 - Dispositivo Android fisico o emulatore con architettura `arm64-v8a`
 
 ### 2. Installazione
+
 ```bash
 # Clona il repository
 git clone https://github.com/G4s01/KuroTV_M.git
@@ -144,13 +153,16 @@ cd KuroTV_M
 npm install
 ```
 
-### 3. Suite di Test Qualitativa (35 Stadi)
-Il progetto include una suite esaustiva di 35 stadi che convalida regole OLED, storage MMKV, AniSkip, gesture, compatibilità tablet, resilienza offline, sicurezza e sincronizzazione replica cursori:
+### 3. Suite di Test Qualitativa (37 Stadi)
+
+Il progetto include una suite esaustiva di 37 stadi che convalida regole OLED, storage MMKV, AniSkip, gesture, compatibilità tablet, resilienza offline, sicurezza e sincronizzazione replica cursori:
+
 ```bash
 npm test
 ```
 
 ### 4. Avvio su Dispositivo Android
+
 ```bash
 # Genera ed esegue il client su dispositivo/emulatore Android collegato
 npm run android
@@ -178,6 +190,7 @@ Gli script in [`scripts/`](./scripts) automatizzano il processo di build, firma 
 ## 📚 Documentazione di Dettaglio
 
 Per esplorare l'architettura tecnica e le decisioni di design:
+
 - 🏛️ [**Architettura del Progetto**](./docs/ARCHITECTURE.md) — Dettagli su moduli, routing e lifecycle
 - 🎬 [**Specifiche Video Player**](./docs/VIDEO_PLAYER.md) — Funzionamento scrubbing, AniSkip e PiP
 - 🎨 [**Temi & Design System**](./docs/THEMES_AND_STYLING.md) — Token OLED, palette e contrasto dinamico YIQ
@@ -195,6 +208,6 @@ Questo software è distribuito esclusivamente per scopi didattici, di ricerca e 
 
 <div align="center">
 
-*Sviluppato con passione per l'ecosistema Kuro • Mobile-First & Touch-Native*
+_Sviluppato con passione per l'ecosistema Kuro • Mobile-First & Touch-Native_
 
 </div>

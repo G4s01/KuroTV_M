@@ -430,6 +430,69 @@ EOF
 
   ok "CHANGELOG.md aggiornato."
 
+  # Aggiornamento src/constants/changelog.ts (Changelog in-app esclusivo da build-release.sh)
+  CHANGELOG_TS="${ROOT_DIR}/src/constants/changelog.ts"
+  node -e '
+    const fs = require("fs");
+    const changelogTsPath = process.argv[1];
+    const notes = fs.readFileSync(process.argv[2], "utf8").trim();
+    const newVersion = process.argv[3];
+    const newCode = parseInt(process.argv[4], 10);
+    const releaseDate = process.argv[5];
+
+    const lines = notes.split("\n");
+    const highlights = [];
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
+        highlights.push(trimmed.slice(2).trim());
+      }
+    }
+    if (highlights.length === 0) {
+      highlights.push("RELEASE UFFICIALE V" + newVersion + " (BUILD " + newCode + ")");
+    }
+
+    const content = `/**
+ * KuroTV Mobile — Changelog & Release Notes Constants
+ * Aggiornato automaticamente da build-release.sh durante il rilascio.
+ */
+
+export interface ChangelogEntry {
+  version: string;
+  versionCode: number;
+  releaseDate: string;
+  title: string;
+  highlights: string[];
+  releaseNotes?: string;
+}
+
+export const CURRENT_CHANGELOG: ChangelogEntry = {
+  version: ${JSON.stringify(newVersion)},
+  versionCode: ${newCode},
+  releaseDate: ${JSON.stringify(releaseDate)},
+  title: "RELEASE UFFICIALE KUROTV MOBILE",
+  highlights: ${JSON.stringify(highlights, null, 2)},
+  releaseNotes: ${JSON.stringify(notes)},
+};
+
+export function formatChangelog(entry: ChangelogEntry): string {
+  if (entry.releaseNotes && entry.releaseNotes.trim().length > 0) {
+    return entry.releaseNotes.trim().toUpperCase();
+  }
+  const lines: string[] = [
+    \`=== \${entry.title} (V\${entry.version} BUILD \${entry.versionCode}) ===\`,
+    \`DATA DI RILASCIO: \${entry.releaseDate}\`,
+    "",
+    ...entry.highlights.map((h, i) => \`\${i + 1}. \${h}\`),
+  ];
+  return lines.join("\\n");
+}
+`;
+    fs.writeFileSync(changelogTsPath, content);
+  ' "${CHANGELOG_TS}" "${TMP_NOTES}" "${NEW_VERSION}" "${NEW_VERSION_CODE}" "${RELEASE_DATE}"
+
+  ok "src/constants/changelog.ts aggiornato con le note di rilascio correnti."
+
   # ── 5. Version Bump ────────────────────────────────────────────────────────
   step "Version Bump"
 

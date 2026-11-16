@@ -8,6 +8,33 @@ e questo progetto aderisce al [Semantic Versioning](https://semver.org/lang/it/)
 ## [Unreleased]
 
 ### Aggiunto
+- **TextInput Decoupled Anti-Drop per Digitazione Veloce su Tastiere Terze Android**:
+  - Risolto il problema della cancellazione/perdita improvvisa di caratteri quando si digita o si spamma velocemente nel campo di ricerca con tastiere non-Gboard (SwiftKey, Fleksy, Samsung Keyboard, Ekatox).
+  - Eliminazione del vincolo forzato `value={localText}` su `<TextInput>` a favore di `defaultValue={lastNativeTextRef.current}`, azzerando i comandi Fabric `setText` che sovrascrivevano il buffer nativo cancellando i tasti premuti in sequenza rapida.
+  - Sincronizzazione delle transizioni vuoto/non-vuoto su `setLocalText` (`(prev.length === 0 && text.length > 0) || (prev.length > 0 && text.length === 0)`), con rimozione della chiamata spuria a `setLocalText` nel timer di debounce, azzerando completamente i re-render del componente durante la digitazione continua.
+  - Introduzione di `lastPropagatedQueryRef` e guardia sincrona `isTypingRef`: quando la notifica debounced viene recepita dal genitore `HomeScreen` e riflessa come prop `searchQuery`, il componente rileva che il cambiamento è un'eco interna della digitazione attiva e inibisce qualsiasi sovrascrittura del buffer nativo o rimontaggio spurio.
+  - Introduzione di `key={inputKey}` incrementato esclusivamente in caso di mutazione esterna della query (`searchQuery !== lastNativeTextRef.current && searchQuery !== lastPropagatedQueryRef.current`, come al tocco di una voce nella cronologia ricerche) e gestione `autoFocus` sicuro disattivato dopo il montaggio iniziale per preservare il dismiss della tastiera.
+- **Changelog In-App Esclusivo Generato da `build-release.sh`**:
+  - Integrazione dell'aggiornamento automatico di `src/constants/changelog.ts` all'interno della pipeline `scripts/build-release.sh`: il testo e le note di rilascio inserite durante la build (`TMP_NOTES`) vengono scritte direttamente in `CURRENT_CHANGELOG` (`releaseNotes`, `highlights`, `version`, `versionCode`, `releaseDate`).
+  - Eliminazione definitiva del testo statico/descrittivo ereditato dalla documentazione interna (`docs/`), garantendo che l'unico changelog visibile in-app (sia nella scheda "CORRENTE" di Impostazioni -> Informazioni sia in "NUOVO" / `UpdateModal`) sia quello effettivo di rilascio.
+- **Risoluzione Errore Push Delta KuroSync (HTTP 500: D1_ERROR: table tombstones has no column named server_deleted_at)**:
+  - Applicata ed eseguita sul database remoto Cloudflare D1 (`kurosync-db`) la migrazione `0002_server_replication_cursor.sql` che aggiunge `server_deleted_at` alla tabella `tombstones` e `server_updated_at` a tutte le tabelle di sincronizzazione (`favorites`, `continue_watching`, `watch_history`, `watch_progress`, `shared_settings`).
+  - Ricompilato e distribuito il worker `kurotv-s` (KuroTV_S) su Cloudflare con supporto completo ai cursori di replica monotoni del server.
+- **Suite di Test Estesa a 37 Stadi**:
+  - Test suite `tests/core-verification.test.ts` estesa a **37 stadi** completi (`[1/7]` fino a `[37/37]`), validata con codice 0.
+- **Preservazione Orientamento Player tra Episodi (Landscape & Portrait)**:
+  - Sincronizzazione fedele dell'orientamento attivo (sia orizzontale/landscape che verticale/portrait) al cambio sequenziale dell'episodio (`handleNavigateToEpisode`, tasti OSD, carousel puntate, AniSkip e controlli multimediali di notifica).
+  - Parametro esplicito di rotta `orientation?: 'landscape' | 'portrait'` e tracking a livello di modulo `lastPlayerOrientation` con precedenza assoluta sulle dimensioni finestra grezze.
+  - Guardia di transizione `isNavigatingToEpisode` e `hasNavigatedRef` per disabilitare reset asincroni all'unmount ed evitare sfarfallii o passaggi momentanei all'orientamento opposto.
+- **Watchdog Buffering e Rilevamento Blocchi di Rete nel Player**:
+  - Tracciamento attivo di `isBuffering` e disaccoppiamento tra intenzione di riproduzione utente (`userWantsPlaybackRef`) e stato stall nativo di ExoPlayer.
+  - Watchdog di avanzamento temporale a 1.2s su `timeUpdate` per rilevare attivamente blocchi di rete o buffering a metà episodio quando il player è in stallo, visualizzando l'indicatore di caricamento centrale `ActivityIndicator` (size="large", contrasto YIQ) coerentemente con l'avvio.
+- **Contromisure Anti-Duplicazione Testo per Tastiere Terze Android in Ricerca**:
+  - Eliminazione di `textTransform: 'uppercase'` dallo stile nativo del `TextInput` (`home.styles.ts`), prevenendo la desincronizzazione del buffer di composizione `SPAN_COMPOSING` di Android che induceva Fleksy, SwiftKey ed Emoji Keyboard (Ekatox) a duplicare i caratteri o le prime lettere.
+  - Configurazione dei parametri nativi anti-conflitto sul `TextInput` (`autoCapitalize="none"`, `autoCorrect={false}`, `spellCheck={false}`, `autoComplete="off"`, `textContentType="none"`, `importantForAutofill="no"`, `disableFullscreenUI={true}`, `inputMode="search"`).
+  - Disaccoppiamento dello stato di digitazione locale (`localText`), tracking nativo (`lastNativeTextRef`) e propagazione debounced (150ms via `debounceTimerRef`) in `HomeSearchHeader` memoizzato con `React.memo`, azzerando il feedback loop asincrono tra Fabric e il thread JS e prevenendo i massivi re-render genitore di `HomeScreen` durante la digitazione.
+- **Suite di Test Estesa a 36 Stadi**:
+  - Test suite `tests/core-verification.test.ts` estesa a **36 stadi** completi (`[1/7]` fino a `[36/36]`), validata con codice 0.
 - **Allineamento Client KuroSync con Backend KuroTV_S: Cursori di Replica, Anti-Resurrezione Tombstones & Robustezza Payload**:
   - Gestione rigorosa del cursore delta `since` valorizzato esclusivamente con `serverTime` restituito dal server monotono `KuroTV_S` all'ultimo pull con successo, azzerando i rischi di *Delta Miss* da clock skew locale.
   - Scoping per profilo del cursore di sincronizzazione in MMKV (`getProfileLastSyncTimestamp`, `setProfileLastSyncTimestamp`, `clearProfileLastSyncTimestamp`), con azzeramento a `0` al cambio profilo o disconnessione per forzare un bootstrap delta pulito (`pullDelta(0)`).
@@ -148,4 +175,4 @@ e questo progetto aderisce al [Semantic Versioning](https://semver.org/lang/it/)
 
 Minor Player Fixes
 
-## [1.0.0] - 2026-11-16
+## [1.0.0] - 2026-11-17

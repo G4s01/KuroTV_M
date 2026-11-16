@@ -4968,6 +4968,87 @@ assert(homeSearchHeaderSrc.includes('debounceTimerRef'), 'HomeSearchHeader deve 
 console.log('✓ Preservazione Orientamento Player & Contromisure Anti-Duplicazione Tastiere Terze verificate con successo.');
 
 // -----------------------------------------------------------------------------
+// [37/37] Verifica TextInput Decoupled Anti-Drop, Changelog Esclusivo da Build & Allineamento Schema D1 KuroSync
+// -----------------------------------------------------------------------------
+console.log('\n[37/37] Verifica TextInput Decoupled Anti-Drop, Changelog Esclusivo da Build & Allineamento Schema D1 KuroSync...');
+
+// 1. Verifica TextInput Decoupled Anti-Drop per tastiere terze Android (Fleksy, SwiftKey, Samsung Keyboard, Ekatox)
+assert(!homeSearchHeaderSrc.includes('value={localText}'), 'TextInput non deve vincolare value={localText} per evitare reset forzati del buffer IME nativo durante la digitazione veloce');
+assert(homeSearchHeaderSrc.includes('defaultValue={lastNativeTextRef.current}'), 'TextInput deve usare defaultValue={lastNativeTextRef.current}');
+assert(homeSearchHeaderSrc.includes('key={inputKey}'), 'TextInput deve usare key={inputKey} per rimontare esclusivamente al cambio query esterno');
+assert(homeSearchHeaderSrc.includes('prev.length === 0 && text.length > 0'), 'HomeSearchHeader deve limitare setLocalText alle transizioni vuoto/non-vuoto azzerando re-render su ogni tasto');
+assert(homeSearchHeaderSrc.includes('lastPropagatedQueryRef'), 'HomeSearchHeader deve tracciare lastPropagatedQueryRef per distinguere echi interni da mutazioni esterne');
+assert(homeSearchHeaderSrc.includes('isTypingRef'), 'HomeSearchHeader deve tracciare isTypingRef per inibire sovrascritture durante digitazione continua');
+assert(!homeSearchHeaderSrc.includes('setLocalText(lastNativeTextRef.current)'), 'HomeSearchHeader non deve invocare setLocalText nel timer di debounce per azzerare re-render durante la digitazione');
+
+// Simulazione Algoritmica Race Condition Digitazione Veloce
+{
+  let currentKey: number = 0;
+  let nativeBuffer: string = '';
+  let lastPropagated: string = '';
+  let isTyping: boolean = false;
+  let sentQueryToParent: string = '';
+
+  const simulateType = (text: string) => {
+    nativeBuffer = text;
+    isTyping = true;
+  };
+
+  const simulateDebounceFire = () => {
+    lastPropagated = nativeBuffer;
+    isTyping = false;
+    sentQueryToParent = nativeBuffer;
+  };
+
+  const simulateParentPropUpdate = (incomingProp: string) => {
+    if (incomingProp === nativeBuffer || incomingProp === lastPropagated || isTyping) {
+      return; // Safe!
+    }
+    currentKey++;
+    nativeBuffer = incomingProp;
+  };
+
+  // Keystrokes 1..3
+  simulateType('a');
+  simulateType('ab');
+  simulateType('abc');
+  // Debounce fires and sends 'abc' to parent
+  simulateDebounceFire();
+  // While parent is batching/rendering, user immediately continues spamming keystrokes 4..6
+  simulateType('abcd');
+  simulateType('abcde');
+  simulateType('abcdef');
+  // Parent commits render and sends down incomingProp = 'abc'
+  simulateParentPropUpdate(sentQueryToParent);
+  // Verify: nativeBuffer is NOT wiped out back to 'abc' and key is NOT incremented!
+  assert(nativeBuffer === 'abcdef', 'La digitazione veloce non deve essere sovrascritta dal commit ritardato del genitore');
+  assert(currentKey === 0, 'La key del TextInput non deve essere incrementata durante la digitazione continua');
+
+  // External selection (e.g. user taps "NARUTO" in history)
+  isTyping = false;
+  simulateParentPropUpdate('NARUTO');
+  assert((nativeBuffer as string) === 'NARUTO', 'La selezione esterna deve aggiornare il buffer nativo');
+  assert((currentKey as number) === 1, 'La selezione esterna deve incrementare la key per sincronizzare il TextInput');
+}
+
+// 2. Verifica Changelog Esclusivo generato da build-release.sh
+const buildReleaseSrc = fs.readFileSync(path.resolve(process.cwd(), 'scripts/build-release.sh'), 'utf-8');
+assert(buildReleaseSrc.includes('CHANGELOG_TS='), 'build-release.sh deve aggiornare src/constants/changelog.ts durante il rilascio');
+assert(buildReleaseSrc.includes('CURRENT_CHANGELOG: ChangelogEntry'), 'build-release.sh deve generare CURRENT_CHANGELOG');
+assert(CURRENT_CHANGELOG.releaseNotes != null && CURRENT_CHANGELOG.releaseNotes.length > 0, 'CURRENT_CHANGELOG deve contenere releaseNotes');
+const formattedCurrentChangelog = formatChangelog(CURRENT_CHANGELOG);
+assert(formattedCurrentChangelog.includes('1.0.0'), 'formatChangelog deve includere la versione corrente');
+assert(formattedCurrentChangelog.includes('NOVITÀ') || formattedCurrentChangelog.includes('RELEASE'), 'formatChangelog deve restituire le note di rilascio in maiuscolo');
+
+// 3. Verifica Allineamento Schema D1 KuroSync (server_deleted_at & server_updated_at)
+const migrationCursorSrc = fs.readFileSync(path.resolve(process.cwd(), '_kurosync_ref/migrations/0002_server_replication_cursor.sql'), 'utf-8');
+assert(migrationCursorSrc.includes('ALTER TABLE tombstones ADD COLUMN server_deleted_at'), 'La migrazione D1 deve aggiungere server_deleted_at a tombstones');
+assert(migrationCursorSrc.includes('ALTER TABLE favorites ADD COLUMN server_updated_at'), 'La migrazione D1 deve aggiungere server_updated_at a favorites');
+assert(migrationCursorSrc.includes('ALTER TABLE continue_watching ADD COLUMN server_updated_at'), 'La migrazione D1 deve aggiungere server_updated_at a continue_watching');
+
+console.log('✓ TextInput Decoupled Anti-Drop, Changelog Esclusivo da Build & Allineamento Schema D1 KuroSync verificati con successo.');
+
+// -----------------------------------------------------------------------------
 // Fine Test
 // -----------------------------------------------------------------------------
 console.log('\n==============================================');

@@ -321,7 +321,7 @@ Kuro Mobile è un'applicazione concepita **esclusivamente per smartphone Android
 ## 🧪 7. Standard di Test & Verifica Qualità
 
 Prima di ogni commit o push è obbligatorio verificare la conformità tramite:
-1. `npm test`: Suite di test automatizzata a **35 stadi**:
+1. `npm test`: Suite di test automatizzata a **37 stadi**:
    - SemVer e Updater Service.
    - Regole di Stile Mobile & conformità OLED.
    - Storage MMKV (preferiti, cronologia visione).
@@ -357,6 +357,8 @@ Prima di ogni commit o push è obbligatorio verificare la conformità tramite:
    - Player Fix: Orientamento Orizzontale Stabile, Download Source Error & Riprova Sbloccato.
    - Sincronizzazione Avanzata: Riprendi a Guardare, Preferiti & Cronologia (Riconciliazione atomica code mutazioni/delezioni con `removePendingSyncMutations` e `removePendingSyncDeletions`, salvataggio `continueWatching` e tombstones serie concluse, guard `hasNavigatedRef` per unmount player, trigger `pullDeltaIfNeeded` on focus).
    - Allineamento Client KuroSync: Cursori di Replica, Anti-Resurrezione Tombstones & Robustezza Payload (scoping per profilo di `since` / `lastSyncTimestamp`, cache `SYNC_KNOWN_TOMBSTONES`, pruning anti-resurrezione delle mutazioni pendenti, dominanza tombstones su `recordSyncMutation`, validazione e sanitizzazione completa di payload push, deletions e ricerche recenti).
+   - Preservazione Orientamento Player (Landscape & Portrait tra episodi su `handleNavigateToEpisode`, OSD e notifiche, parametro di rotta `orientation` e `lastPlayerOrientation`), Rilevamento Buffering/Stall con Watchdog su `timeUpdate` (1.2s) e Contromisure Anti-Duplicazione Tastiere Terze Android (Fleksy, SwiftKey, Emoji Keyboard / Ekatox: rimozione `textTransform`, flag IME nativi, memoizzazione e disaccoppiamento debounced di `HomeSearchHeader`).
+   - TextInput Decoupled Anti-Drop per Digitazione Veloce su Tastiere Terze Android (`defaultValue` non controllato per eliminare i reset forzati da `value={localText}`, `setLocalText` limitato alle sole transizioni vuoto/non-vuoto con 0 re-render su digitazione continua, tracking sincrono `isTypingRef` e `lastPropagatedQueryRef` per inibire i reset spuri al commit asincrono del genitore durante lo spamming veloce, `autoFocus` condizionato, rimontaggio `key={inputKey}` circoscritto alle sole selezioni esterne da cronologia), Generazione Automatica ed Esclusiva del Changelog da `build-release.sh` in `src/constants/changelog.ts` (con eliminazione delle note descrittive statiche e visualizzazione esclusiva delle release notes) e Allineamento Migrazioni D1 Cloudflare KuroSync (`0002_server_replication_cursor.sql` con applicazione colonne `server_deleted_at` e `server_updated_at` risolvendo l'errore SQLite 500 su push delta).
 2. `npx expo export --platform android`: Verifica dell'assenza di errori di bundle e corretta generazione del bytecode Hermes.
 
 ---
