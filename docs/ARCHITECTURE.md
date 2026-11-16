@@ -65,7 +65,7 @@ KuroTV_M/
 │   └── types/                   # Definizioni TypeScript condivise
 ├── workers/                     # Cloudflare Worker unificato per OTA
 ├── scripts/                     # Tooling DevOps, release pipeline & patch native (apply-patches, build-release, backup-secrets)
-└── tests/                       # Suite di verifica qualità a 32 stadi
+└── tests/                       # Suite di verifica qualità a 35 stadi
 ```
 
 ---
@@ -393,15 +393,35 @@ Kuro Mobile integra un'architettura completa di sincronizzazione self-hosted mul
   - In `app/_layout.tsx`, al passaggio in stato `active` viene eseguito `SyncManager.pullDelta()` inviando il timestamp `since` dell'ultimo sync;
   - Al passaggio in stato `background` o `inactive`, viene eseguito `SyncManager.pushPending(true)` per flushare atomicamente mutazioni e delezioni pendenti.
 
-### 3. Storage Bridge con MMKV (`app-storage.ts`) & Riconciliazione
+### 3. Storage Bridge con MMKV (`app-storage.ts`), Tombstones & Riconciliazione
 - Tutte le modifiche locali ai Preferiti, Continua a guardare, Cronologia, Ricerche e Impostazioni invocano automaticamente `recordSyncMutation` o `recordSyncDeletion`.
-- **Riconciliazione Automatica delle Code**:
-  - L'aggiunta di una mutation rimuove l'eventuale tombstone pendente per la medesima chiave;
+- **Riconciliazione Automatica & Pruning Atomico delle Code**:
+  - `removePendingSyncMutations` e `removePendingSyncDeletions` rimuovono atomicamente voci riconciliate o in conflitto;
+  - L'aggiunta di una mutation fresca rimuove l'eventuale tombstone pendente e il tombstone noto (`removeKnownTombstone`) per la medesima chiave;
   - L'aggiunta di una deletion rimuove l'eventuale mutation pendente;
   - La rimozione wildcard dell'intera cronologia di una serie genera tombstones `watch_progress` dedicati per ciascuna puntata memorizzata su MMKV (`user.progress.<animeId>.<ep>`).
+  - `prunePendingMutationsAgainstTombstones` epura atomicamente qualsiasi mutazione pendente locale con timestamp $\le$ ai tombstones noti.
 - Al completamento del merge delta, `AppStorage.notifyStorageChanged()` risveglia in tempo reale i listener registrati nelle schermate attive (es. Preferiti) senza ricaricamenti manuali.
 
-### 4. UI Impostazioni, Selettore Profili Netflix & Tab Profilo Rapido
+### 4. Cursori di Replica Scoped per Profilo & Disaccoppiamento Clock Locale
+- **Gestione Cursore `since`**: Inviato a `GET /api/sync/pull?since=${cursor}`, il cursore delta riflette fedelmente il `serverTime` restituito dal backend `KuroTV_S` e mai l'orologio locale del dispositivo (`Date.now()`), azzerando il rischio di *Delta Miss* da clock skew.
+- **Scoping per Profilo**: Cursori isolati memorizzati in MMKV tramite `getProfileLastSyncTimestamp(profileId)` e `setProfileLastSyncTimestamp(profileId, timestamp)`. Al cambio profilo o logout, il cursore viene azzerato (`clearProfileLastSyncTimestamp`) per innescare il bootstrap completo (`pullDelta(0)`).
+- **Preservazione Watermark su Push**: `SyncManager.pushPending()` aggiorna solo la data visiva `SYNC_LAST_TIME` senza sovrascrivere `SYNC_LAST_TIMESTAMP`, preservando il cursore per il successivo pull incrementale.
+
+### 5. Cache dei Tombstones Noti (`SYNC_KNOWN_TOMBSTONES`) & Dominanza Assoluta
+- Mappa persistente `SYNC_KNOWN_TOMBSTONES` in `AppStorage` (`getKnownTombstones`, `recordKnownTombstones`, `removeKnownTombstone`, `clearKnownTombstones`).
+- La funzione pura `mergeLocalAndRemote()` applica la dominanza assoluta dei tombstones: qualsiasi record locale o remoto con timestamp $\le$ al rispettivo tombstone viene categoricamente eliminato, impedendo la "resurrezione" dei dati cancellati su altri dispositivi.
+
+### 6. Sanitizzazione e Robustezza dei Payload di Push (`POST /api/sync/push`)
+- `SyncManager.pushPending()` garantisce che ogni entità (`favorites`, `continueWatching`, `watchHistory`, `watchProgress`, `sharedSettings`, `searchHistory`) contenga un valore `updatedAt: number` valido.
+- Il campo `deletions` è rigorosamente validato contro la whitelist dei 6 tipi ammessi dallo schema D1 SQLite di KuroTV_S (`'favorite' | 'continue_watching' | 'watch_history' | 'watch_progress' | 'shared_settings' | 'search_history'`).
+- La cronologia di ricerca `search_history` viene validata e inviata ordinata per `updatedAt` decrescente con limite massimo di 50 elementi.
+
+### 7. Trigger `pullDeltaIfNeeded` on Focus & Salvaguardia Navigazione Player
+- **Trigger `pullDeltaIfNeeded(15000)`**: All'apertura o rientro in primo piano delle schermate `favorites.tsx`, `history.tsx` e `index.tsx`, se sono trascorsi $\ge 15$ secondi dall'ultimo sync viene eseguita una delta pull automatica in background.
+- **Guard `hasNavigatedRef` per Player Unmount**: In `app/player/[id].tsx`, il ref `hasNavigatedRef` impedisce salvataggi spuri di progressi a 0s durante lo smontaggio del video player per navigazione verso l'indietro o episodio successivo.
+
+### 8. UI Impostazioni, Selettore Profili Netflix & Tab Profilo Rapido
 - **`SyncSettingsCard.tsx`**: Card principale nelle Impostazioni con pill di stato OLED, URL server, riga interattiva `PROFILO` con pulsante `CAMBIA` (touch target $\ge 44$dp), riga simmetrica su singola riga con *SINCRONIZZA*, *AUTORIZZA TV* e pulsante compatto di disconnessione touch-safe con sola icona `log-out-outline` ($44 \times 44$dp) protetto da `ConfirmModal`.
 - **`SyncConnectModal.tsx`**: Modale di connessione snellito con sole due modalità: `QR CODE` (apre istantaneamente la fotocamera a schermo intero) e `MANUALE` (URL + Master Password). Entrambe le modalità conducono alla schermata/selettore profili stile Netflix per finalizzare il bootstrap.
 - **`SyncProfileModal.tsx`**: Selettore profili touch-native con transizione atomica protetta (pull delta remoto prima della mutazione MMKV locale).

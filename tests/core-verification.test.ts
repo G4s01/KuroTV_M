@@ -4613,6 +4613,9 @@ assert(playerSrc.includes('!showControls && !sourceError && !isLoadingSource && 
 assert(playerSrc.includes('showControls && Boolean(videoUrl) && !sourceError && ('), 'osdOverlay deve essere inibito in presenza di sourceError');
 assert(playerSrc.includes('errorBackBtn'), 'La schermata di errore deve offrire un pulsante indietro dedicato');
 assert(playerSrc.includes('setVideoUrl(null)'), 'loadStream deve resettare videoUrl durante il ricaricamento');
+assert(playerSrc.includes('hasNavigatedRef.current || isNavigatingToEpisode'), 'Il cambio episodio non deve resettare l\'orientamento a verticale durante l\'unmount');
+assert(playerSrc.includes('isBuffering'), 'Il player deve monitorare attivamente lo stato di buffering a metà riproduzione');
+assert(playerSrc.includes('isBufferingOrLoading'), 'isBufferingOrLoading deve includere isBuffering per mostrare l\'indicatore durante i caricamenti');
 
 // 4. Verifica player.styles.ts: loadingWrapper ha zIndex elevato ed errorBackBtn è definito
 const playerStylesSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/components/player/player.styles.ts'), 'utf-8');

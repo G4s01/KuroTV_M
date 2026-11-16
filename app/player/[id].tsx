@@ -49,6 +49,7 @@ import { playerStyles as styles } from '@/components/player/player.styles';
 import type { AniSkipResult, AnimeDetail, Episode } from '@/types';
 
 const SPEED_OPTIONS = [0.75, 1.0, 1.25, 1.5, 2.0];
+let isNavigatingToEpisode = false;
 
 export default function VideoPlayerScreen() {
   const router = useRouter();
@@ -322,21 +323,47 @@ export default function VideoPlayerScreen() {
     p.staysActiveInBackground = false;
     p.showNowPlayingNotification = true;
     p.timeUpdateEventInterval = 0.5; // Starts Android IntervalUpdateClock for timeUpdate
+    p.bufferOptions = {
+      preferredForwardBufferDuration: 20,
+      minBufferForPlayback: 2,
+      waitsToMinimizeStalling: true,
+    };
     p.play();
   });
 
-  // Track player loading and playback status
+  // Track player loading, playback and active buffering status
   const [playerStatus, setPlayerStatus] = React.useState<string>('idle');
-  useEventListener(player, 'statusChange', ({ status }) => {
-    setPlayerStatus(status);
-  });
+  const [isBuffering, setIsBuffering] = React.useState(false);
+  const userWantsPlaybackRef = React.useRef(true);
+  const hasEndedRef = React.useRef(false);
+  const lastAdvanceTimeRef = React.useRef(0);
+  const lastAdvanceTimestampRef = React.useRef(Date.now());
 
-  // Track playback time
+  // Track playback time & active stall detection
   useEventListener(player, 'timeUpdate', ({ currentTime: time }) => {
     currentTimeRef.current = time;
     if (player.duration && player.duration > 0 && player.duration !== durationRef.current) {
       setDuration(player.duration);
       durationRef.current = player.duration;
+    }
+
+    // Monitor real playback progress to identify silent network stalls
+    if (userWantsPlaybackRef.current && !hasEndedRef.current) {
+      if (Math.abs(time - lastAdvanceTimeRef.current) > 0.05) {
+        lastAdvanceTimeRef.current = time;
+        lastAdvanceTimestampRef.current = Date.now();
+        if (isBuffering) {
+          setIsBuffering(false);
+        }
+      } else if (
+        !isBuffering &&
+        Date.now() - lastAdvanceTimestampRef.current > 1200 &&
+        durationRef.current > 0 &&
+        time < durationRef.current - 1
+      ) {
+        // Timeline has not advanced for >1.2s during requested playback: buffering
+        setIsBuffering(true);
+      }
     }
 
     // Periodically save progress to storage every ~4 seconds
@@ -402,19 +429,39 @@ export default function VideoPlayerScreen() {
   });
 
   useEventListener(player, 'playingChange', ({ isPlaying: playing }) => {
-    setIsPlaying(playing);
+    if (playing) {
+      setIsPlaying(true);
+      setIsBuffering(false);
+      lastAdvanceTimestampRef.current = Date.now();
+    } else {
+      // If player paused on its own while user wants playback (and hasn't ended), it is buffering
+      if (userWantsPlaybackRef.current && !hasEndedRef.current) {
+        setIsBuffering(true);
+      } else {
+        setIsPlaying(false);
+        setIsBuffering(false);
+      }
+      if (animeId) {
+        saveProgress(currentTimeRef.current, durationRef.current);
+        if (!userWantsPlaybackRef.current) {
+          SyncManager.flushPlaybackProgress().catch(() => {});
+        }
+      }
+    }
     if (isInPiPRef.current) {
       wasPlayingInPiPRef.current = playing;
-    }
-    if (!playing && animeId) {
-      saveProgress(currentTimeRef.current, durationRef.current);
-      SyncManager.flushPlaybackProgress().catch(() => {});
     }
   });
 
   useEventListener(player, 'statusChange', ({ status, error }) => {
-    if (status === 'readyToPlay') {
+    setPlayerStatus(status);
+    if (status === 'loading') {
+      setIsBuffering(true);
+    } else if (status === 'readyToPlay') {
       setSourceError(null);
+      if (player.playing) {
+        setIsBuffering(false);
+      }
       const dur = player.duration || durationRef.current;
       if (dur > 0) {
         setDuration(dur);
@@ -434,11 +481,16 @@ export default function VideoPlayerScreen() {
       }
     }
     if (error) {
+      setIsBuffering(false);
       setSourceError(`ERRORE RIPRODUZIONE: ${error.message.toUpperCase()}`);
     }
   });
 
   useEventListener(player, 'playToEnd', () => {
+    hasEndedRef.current = true;
+    userWantsPlaybackRef.current = false;
+    setIsPlaying(false);
+    setIsBuffering(false);
     if (animeId && episodeId) {
       const finalDuration = player.duration || durationRef.current;
       currentTimeRef.current = finalDuration;
@@ -463,6 +515,8 @@ export default function VideoPlayerScreen() {
         // Give Android PiP transition time to activate and fire onPictureInPictureStart
         backgroundTimer = setTimeout(() => {
           if (!isInPiPRef.current && AppState.currentState === 'background') {
+            userWantsPlaybackRef.current = false;
+            setIsBuffering(false);
             player.pause();
             player.showNowPlayingNotification = false;
             if (currentAnimeIdRef.current && currentEpisodeIdRef.current) {
@@ -484,6 +538,7 @@ export default function VideoPlayerScreen() {
         // If returning from PiP and was playing, resume playback smoothly without pausing
         if (wasPlayingInPiPRef.current) {
           wasPlayingInPiPRef.current = false;
+          userWantsPlaybackRef.current = true;
           player.play();
         }
       }
@@ -514,6 +569,7 @@ export default function VideoPlayerScreen() {
 
   // Open in full horizontal screen (landscape) on start & respond to device rotation
   React.useEffect(() => {
+    isNavigatingToEpisode = false;
     // 1. Immediately request landscape fullscreen
     ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE).catch(() => {});
 
@@ -522,6 +578,10 @@ export default function VideoPlayerScreen() {
     }
 
     return () => {
+      if (hasNavigatedRef.current || isNavigatingToEpisode) {
+        // Episode transition within player: retain landscape fullscreen and hidden navbar
+        return;
+      }
       const { width: curW, height: curH } = Dimensions.get('window');
       const isTabletDevice = Math.min(curW, curH) >= 600;
       if (isTabletDevice) {
@@ -637,6 +697,9 @@ export default function VideoPlayerScreen() {
         }
         player.playbackRate = playbackSpeedRef.current;
         player.showNowPlayingNotification = true;
+        userWantsPlaybackRef.current = true;
+        hasEndedRef.current = false;
+        lastAdvanceTimestampRef.current = Date.now();
         player.play();
 
         if (initialResumePosition > 0) {
@@ -668,8 +731,13 @@ export default function VideoPlayerScreen() {
   // Reset player and metadata states when navigating to a different episode
   React.useEffect(() => {
     hasResumedRef.current = false;
+    hasEndedRef.current = false;
+    userWantsPlaybackRef.current = true;
+    setIsBuffering(false);
     currentTimeRef.current = 0;
     durationRef.current = 0;
+    lastAdvanceTimeRef.current = 0;
+    lastAdvanceTimestampRef.current = Date.now();
     setDuration(0);
     setVideoUrl(null);
     setIsLoadingSource(true);
@@ -785,7 +853,9 @@ export default function VideoPlayerScreen() {
     };
   }, [showControls, resetControlsTimer]);
 
-  const isBufferingOrLoading = Boolean(videoUrl && (isLoadingSource || playerStatus === 'loading'));
+  const isBufferingOrLoading = Boolean(
+    videoUrl && (isLoadingSource || playerStatus === 'loading' || isBuffering)
+  );
 
   const toggleControls = () => {
     Haptics.selectionAsync().catch(() => {});
@@ -794,9 +864,16 @@ export default function VideoPlayerScreen() {
 
   const handlePlayPause = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    if (isPlaying) {
+    if (isPlaying && userWantsPlaybackRef.current) {
+      userWantsPlaybackRef.current = false;
+      setIsPlaying(false);
+      setIsBuffering(false);
       player.pause();
     } else {
+      userWantsPlaybackRef.current = true;
+      hasEndedRef.current = false;
+      lastAdvanceTimestampRef.current = Date.now();
+      setIsPlaying(true);
       player.play();
     }
     resetControlsTimer();
@@ -847,6 +924,7 @@ export default function VideoPlayerScreen() {
       targetEp: Episode | { id: string; number: number; dataId?: string; thumbnail?: string },
       options?: { markCurrentCompleted?: boolean }
     ) => {
+      isNavigatingToEpisode = true;
       hasNavigatedRef.current = true;
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
       const savePos =
@@ -1271,7 +1349,7 @@ export default function VideoPlayerScreen() {
         {!showControls && isBufferingOrLoading && !sourceError && (
           <View style={styles.loadingOverlay} pointerEvents="none">
             <View style={[styles.centerPlayBtn, { backgroundColor: `${theme.colors.primary}E0` }]}>
-              <ActivityIndicator size="small" color={getContrastTextColor(theme.colors.primary)} />
+              <ActivityIndicator size="large" color={getContrastTextColor(theme.colors.primary)} />
             </View>
           </View>
         )}
@@ -1401,7 +1479,7 @@ export default function VideoPlayerScreen() {
               >
                 {isBufferingOrLoading ? (
                   <ActivityIndicator
-                    size="small"
+                    size="large"
                     color={getContrastTextColor(theme.colors.primary)}
                   />
                 ) : (

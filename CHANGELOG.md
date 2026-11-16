@@ -8,6 +8,36 @@ e questo progetto aderisce al [Semantic Versioning](https://semver.org/lang/it/)
 ## [Unreleased]
 
 ### Aggiunto
+- **Allineamento Client KuroSync con Backend KuroTV_S: Cursori di Replica, Anti-Resurrezione Tombstones & Robustezza Payload**:
+  - Gestione rigorosa del cursore delta `since` valorizzato esclusivamente con `serverTime` restituito dal server monotono `KuroTV_S` all'ultimo pull con successo, azzerando i rischi di *Delta Miss* da clock skew locale.
+  - Scoping per profilo del cursore di sincronizzazione in MMKV (`getProfileLastSyncTimestamp`, `setProfileLastSyncTimestamp`, `clearProfileLastSyncTimestamp`), con azzeramento a `0` al cambio profilo o disconnessione per forzare un bootstrap delta pulito (`pullDelta(0)`).
+  - Cache persistente tombstones noti `StorageKeys.SYNC_KNOWN_TOMBSTONES` in `AppStorage` (`getKnownTombstones`, `recordKnownTombstones`, `removeKnownTombstone`, `clearKnownTombstones`).
+  - Pruning atomico anti-resurrezione delle mutazioni pendenti (`prunePendingMutationsAgainstTombstones`), che elimina dalla coda locale qualsiasi mutazione obsoleta precedente o contestuale a un tombstone noto.
+  - Dominanza tombstones su `recordSyncMutation`: scarta mutazioni con timestamp esplicito passato $\le$ al tombstone noto, mentre ri-aggiunte fresche con timestamp più recente eliminano il tombstone noto (`removeKnownTombstone`).
+  - Integrazione di `knownTombstones` in `mergeLocalAndRemote()` con dominanza delle cancellazioni su tutte le entità.
+  - Sanitizzazione difensiva completa dei payload di push in `SyncManager` (`POST /api/sync/push`): garanzia del campo `updatedAt: number` su tutti i record, whitelist restrittiva per `deletions` conformemente allo schema D1 e validazione/ordinamento di `search_history`.
+  - Preservazione del watermark: `pushPending` aggiorna unicamente `SYNC_LAST_TIME` per display UI senza alterare `SYNC_LAST_TIMESTAMP` né il cursore del profilo.
+- **Sincronizzazione Avanzata: Riprendi a Guardare, Preferiti & Cronologia**:
+  - Riconciliazione atomica code mutazioni e delezioni con `removePendingSyncMutations` e `removePendingSyncDeletions`.
+  - Trigger `pullDeltaIfNeeded(15000)` al ritorno del focus nelle viste principali (`FavoritesScreen`, `HistoryScreen`, `HomeScreen`).
+  - Salvaguardia `hasNavigatedRef` per l'unmount del video player in `app/player/[id].tsx`, impedendo sovrascritture di progresso a 0s durante la navigazione indietro o cambio puntata.
+- **Player Fix: Orientamento Orizzontale Stabile, Download Source Error & Riprova Sbloccato**:
+  - Apertura player con lock orizzontale (`LANDSCAPE`) e listener di orientamento condizionato in `app/_layout.tsx` (`isTablet !== wasTablet`) per azzerare loop di ritorno al verticale su rotazione schermo.
+  - Risoluzione streaming online a fallback trasparente per episodi con download in corso (`resolvePlayableLocalUri` null-safe su download non completati) azzerando il source error di ExoPlayer.
+  - Schermata di errore isolata a `zIndex: 40`, inibizione di `GestureDetector` e `osdOverlay`, tasto indietro dedicato ed errore `RIPROVA` touch-safe.
+- **Audit Codebase: Hardening Deep-link, Resilienza Rete, Validazione Checksum OTA, Plugin MainActivity & De-monolizzazione Home**:
+  - Protezione CSRF su tutti i deep link (`kurosync://pair`, `kurosync://connect`) tramite `ConfirmModal` obbligatorio prima di qualsiasi mutazione di storage o rete.
+  - Prevenzione dell'auto-logout distruttivo su dispositivi offline o errori di rete temporanei (`isSyncAuthError`: logout solo su HTTP 401/403).
+  - Verifica crittografica integrità SHA-256 su download APK OTA (`UpdaterService.verifyApkChecksum`).
+  - Config plugin Expo `plugins/withAndroidBackPress.js` per iniezione bridge `OnBackPressedCallback` in `MainActivity.kt`.
+  - De-monolizzazione schermata Home con estrazione subcomponenti e stili dedicati in `src/components/home/`.
+- **Riprogettazione Modulare "Impostazioni" — Architettura Hub & Spoke**:
+  - Hub principale snello con Hero Card KuroSync/Profilo in cima e righe categoria ricche `SettingsCategoryRow`.
+  - 7 sotto-pagine dedicate nello Stack nativo `app/settings/`: `appearance`, `playback`, `sync`, `downloads`, `source`, `history`, `about`.
+  - Barra superiore unificata `SettingsHeader` e gestione tasto indietro `useFocusEffect` (ritorno prioritario all'Hub).
+  - Supporto deep-linking retrocompatibile (`scrollTo: 'downloads'`, `scrollTo: 'update'`).
+- **Suite di Test Estesa a 35 Stadi**:
+  - Test suite `tests/core-verification.test.ts` estesa a **35 stadi** completi (`[1/7]` fino a `[35/35]`), validata con codice 0.
 - **Sincronizzazione Automatica Reattiva KuroSync per Preferiti, Cronologia, Ricerche Recenti & AniSkip**:
   - `StorageMutationListener` in `AppStorage` (`src/services/storage/app-storage.ts`): notifica istantaneamente ogni mutazione o rimozione di Preferiti, Cronologia, Ricerche, Preferenze AniSkip e Impostazioni condivise.
   - Debounce Auto-Sync (1.5s) e Polling Periodico (60s) in `SyncManager` (`src/services/sync/sync-manager.ts`): quando l'utente modifica preferiti, cronologia, ricerche o impostazioni, viene schedulato automaticamente l'invio push a KuroSync (`pushPending`) raggruppando eventuali azioni rapide multiple entro 1500ms, senza bloccare la UI e senza dipendere dall'uscita dall'app (`AppState` blur). In fase di utilizzo attivo, `startPeriodicSync(60000)` sincronizza periodicamente le novità da altri dispositivi (es. Android TV, Web).
@@ -114,19 +144,9 @@ e questo progetto aderisce al [Semantic Versioning](https://semver.org/lang/it/)
   - `app/(tabs)/settings.tsx`: ridotto da 1571 a 972 righe (-600 righe, ~38% di riduzione).
   - `HistorySlider`, `AniSkipSlider` e `AniSkipDurationSlider`: ridotti da oltre 400 righe ciascuno a ~90-100 righe delegando a `StepSlider`.
 
-## [1.0.1] - 2026-11-10
+## [1.0.1] - 2026-11-16
 
-### Aggiunto
-- **Cronologia Ricerche in Stile Google**: Sostituzione dei vecchi consigliati generici con cronologia touch-native delle ricerche recenti (icona orologio `time-outline`, testo maiuscolo monospace, tap-to-search immediato, eliminazione singola voce con `close-outline` $\ge 44$dp e cancellazione massiva protetta da `ConfirmModal`).
-- **Configurazione Ritenzione Ricerche nelle Impostazioni**: Nuovo slider discreto `HistorySlider` con preset dedicato `SEARCH_RETENTION_STEPS` (`OFF`, `30GG`, `60GG`, `90GG`, `ON` illimitato) e pulsante di svuotamento rapido della cronologia ricerche.
-- **Filtro Audio Dedicato**: Supporto completo per `TUTTI GLI AUDIO`, `DOPPIATI (ITA)` (`dub: '1'`) e `SOTTOTITOLATI (SUB)` (`dub: '0'`).
-- **Selezione Multipla Generi**: Integrazione di tutti i 46 generi del catalogo AnimeWorld con supporto a selezioni multiple e combinazione logica `genre_mode=and`.
-- **Suite di Test a 16 Stadi**: Estesa la suite di test automatizzata con verifica approfondita di storage cronologia ricerche, filtri multi-genere, audio e isolamento scraper.
-
-### Risolto
-- **Fix Risultati Spuri Categorie & Formati AnimeWorld**: Risolto il problema che mostrava 6 titoli spuri non coerenti per ricerche o filtri privi di risultati (es. Film Anime / Movies). Il selettore dello scraper esclude categoricamente i widget laterali `.simple-film-list` e `.ranking`.
-- **Mappatura Formati e Categorie**: Mappatura corretta con gli ID numerici nativi del motore AnimeWorld (`type`: `0` Serie TV, `4` Film Anime, `1` OAV, `2` ONA, `3` Special).
-- **Ordinamento per Data Reale di Uscita**: Aggiunto `sort: '5'` per ordinare in base alla data di rilascio reale delle serie (`release_date:desc`), oltre a Ultime aggiunte (`1`), Più visti (`6`), Meglio valutati (`7`), A-Z (`2`) e Z-A (`3`).
+Minor Player Fixes
 
 ## [1.0.0] - 2026-11-16
 

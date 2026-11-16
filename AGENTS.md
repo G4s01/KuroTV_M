@@ -56,9 +56,9 @@ Kuro Mobile è un'applicazione concepita **esclusivamente per smartphone Android
 - **Gestione Sistema Android & Navbar**: `expo-navigation-bar` con modalità immersiva auto-hide (`BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE`) per nascondere la barra di sistema ad app aperta e richiamarla con swipe dal basso, e `react-native-safe-area-context` per l'adattamento dinamico con la navbar a 3 pulsanti.
 - **Data Fetching & Cache Remota**: `@tanstack/react-query` v5 con stale-time ottimizzato.
 - **Storage Locale ad Alte Prestazioni & Sincronizzazione Ibrida Smart**: `react-native-mmkv` v3 (zero-latency key-value store sincrono in `src/services/storage/app-storage.ts` per preferiti, cronologia, configurazioni e preferenze AniSkip/Navbar) con modulo dedicato `continue-watching-sync.ts` per il monitoraggio a basso consumo delle serie in pari e l'avanzamento automatico alle nuove uscite, esposti tramite barrel privo di cicli `src/services/storage/index.ts`.
-- **Sincronizzazione Self-Hosted KuroSync & Bridge MMKV**: Modulo client TypeScript puro (`src/services/sync/`) compilabile al 100% su Hermes senza moduli `node:*`, per la sincronizzazione delta multi-dispositivo con backend Cloudflare Workers + D1 (`KuroTV_S`), unione deterministica con dominanza dei tombstones, debounce del playback a 45-60s per rispetto quote D1 ed accoppiamento touch con Android TV.
+- **Sincronizzazione Self-Hosted KuroSync & Bridge MMKV**: Modulo client TypeScript puro (`src/services/sync/`) compilabile al 100% su Hermes senza moduli `node:*`, per la sincronizzazione delta multi-dispositivo con backend Cloudflare Workers + D1 (`KuroTV_S`), cursori di replica scoped per profilo, cache anti-resurrezione tombstones (`SYNC_KNOWN_TOMBSTONES`), pruning atomico mutazioni pendenti, sanitizzazione payload push, unione deterministica con dominanza dei tombstones, debounce del playback a 45-60s per rispetto quote D1 ed accoppiamento touch con Android TV.
 - **Scansione QR Code & Fotocamera Touch-Native**: `expo-camera` (v17 / SDK 58, componente `CameraView`) configurato con `recordAudioAndroid: false` in `app.json` per escludere il permesso `RECORD_AUDIO` dal manifest, con gestione granulare dei permessi a runtime, fallback verso `Linking.openSettings()` e montaggio disaccoppiato a frammento React per azzerare conflitti nativi di finestre `Dialog` su Fabric.
-- **Video & Multimedialità**: `expo-video` v58 con controlli touch personalizzati, OSD immersivo, HUD luminosità/volume, AniSkip (intro, outro, recap con durata configurabile 5s-60s/∞, rewind safe e passaggio intelligente a `'PROSSIMO'` su ending/post-ending), Picture-in-Picture nativo e controlli rapidi in notifica (`MediaSession`/`MediaStyle`). Apertura del player con lock orizzontale (`LANDSCAPE`) su driver nativo protetto da listener di orientamento condizionato in `app/_layout.tsx` (`isTablet !== wasTablet`) per azzerare loop di ritorno al verticale. Streaming online trasparente a fallback per episodi con download in corso (`resolvePlayableLocalUri` null-safe su download non completati) azzerando il source error di ExoPlayer, e gestione schermata errore isolata (`zIndex: 40`, inibizione di `GestureDetector` e `osdOverlay`, tasto indietro dedicato e pulsante `RIPROVA` touch-safe).
+- **Video & Multimedialità**: `expo-video` v58 con controlli touch personalizzati, OSD immersivo, HUD luminosità/volume, AniSkip (intro, outro, recap con durata configurabile 5s-60s/∞, rewind safe e passaggio intelligente a `'PROSSIMO'` su ending/post-ending), Picture-in-Picture nativo e controlli rapidi in notifica (`MediaSession`/`MediaStyle`). Apertura del player con lock orizzontale (`LANDSCAPE`) su driver nativo protetto da listener di orientamento condizionato in `app/_layout.tsx` (`isTablet !== wasTablet`) e guardia di transizione `isNavigatingToEpisode`/`hasNavigatedRef` per azzerare sfarfallii o ritorni momentanei al verticale al passaggio all'episodio successivo/precedente. Rilevamento attivo e reattivo del buffering e dei blocchi di rete a metà riproduzione (tramite monitoraggio `isBuffering`, disaccoppiamento tra intenzione di riproduzione `userWantsPlayback` e stato stall nativo, e watchdog di avanzamento temporale a 1.2s su `timeUpdate` con visualizzazione dell'indicatore di caricamento centrale `ActivityIndicator` in formato coerente). Streaming online trasparente a fallback per episodi con download in corso (`resolvePlayableLocalUri` null-safe su download non completati) azzerando il source error di ExoPlayer, e gestione schermata errore isolata (`zIndex: 40`, inibizione di `GestureDetector` e `osdOverlay`, tasto indietro dedicato e pulsante `RIPROVA` touch-safe).
 - **Styling & Temi**: Sistema dinamico reattivo ispirato a `react-native-unistyles` con `ThemeProvider` a clonazione di riferimento per aggiornamento istantaneo al click e `getContrastTextColor` per contrasto dinamico YIQ.
 - **Animazioni Skeleton & UX Loading**: Primitive e layout skeleton dedicati in `src/components/skeleton` (`Skeleton`, `AnimeCardSkeleton`, `HomeScreenSkeleton`, `ExploreScreenSkeleton`, `ScheduleScreenSkeleton`, `AnimeDetailScreenSkeleton`, `EpisodeItemSkeleton`, `PlayerSkeleton`) con animazione pulsing via driver nativo a 60/120 FPS, sfondo OLED surface (`#161616`) e zero Cumulative Layout Shift (CLS). Cleanup automatico dei loop nativi in unmount e allo scaricamento immagini (`onLoad`) per prevenire battery drain e resource leak.
 - **Immagini & Asset SVG**: `expo-image` con cache disco/memoria e supporto SVG integrato.
@@ -315,7 +315,7 @@ Kuro Mobile è un'applicazione concepita **esclusivamente per smartphone Android
 ## 🧪 7. Standard di Test & Verifica Qualità
 
 Prima di ogni commit o push è obbligatorio verificare la conformità tramite:
-1. `npm test`: Suite di test automatizzata a 26 stadi:
+1. `npm test`: Suite di test automatizzata a **35 stadi**:
    - SemVer e Updater Service.
    - Regole di Stile Mobile & conformità OLED.
    - Storage MMKV (preferiti, cronologia visione).
@@ -342,6 +342,15 @@ Prima di ogni commit o push è obbligatorio verificare la conformità tramite:
    - AniSkip Ending `'PROSSIMO'` (sostituzione automatica sulla ending coincidente con la fine entro 5s, flusso sequenziale senza coesistenza con `'SALTA'` durante la sigla e pulsante `'PROSSIMO'` dedicato all'inizio della parte post-ending in modalità manuale e auto, durata configurabile `5s-60s / ∞` e salvataggio completamento puntata).
    - Sincronizzazione Self-Hosted KuroSync (KuroTV_S, bridge MMKV, riconciliazione code mutazioni/delezioni, dominanza tombstones, persistenza stato "IN PARI", debounce del playback a 45-60s per rispetto quote Cloudflare D1, flushes istantanei su pausa/uscita/completamento, parsing universale QR deep-link/HTTPS/JSON, autorizzazione Android TV, scansione QR con `expo-camera`, nessun URL privato esposto e link repository GitHub ufficiale).
    - Integrazione Avanzata KuroSync & Nuove Feature KuroTV_S (Rilevamento modello hardware dinamico `getDeviceName()`, Selettore profili in stile Netflix pre-login su Master Password con avatarColor e nomi, Switcher profili in-app senza logout con `POST /api/auth/switch-profile` e `pullDelta(0)` completo, Gestione single-use QR con HTTP 410 Gone esplicativo in-app, Logout e revoca sessione lato backend con `POST /api/auth/logout` e pulizia atomica storage MMKV).
+   - Riorganizzazione Palinsesto in Home, Profilo Rapido Tab Bar & Persistenza Indistruttibile SYNC_SERVER_URL.
+   - Fix Tablet Rail (Doppio Contorno & Back Gesture), Smartphone Navbar & Palinsesto.
+   - Gestures Indietro Tablet & Retry Automatici KuroSync con Auto-Logout.
+   - Auto-Sync Reattivo, Storage Mutation Listeners, AniSkip/Search Sync & Preservazione Local Deletions.
+   - Riprogettazione Modulare "Impostazioni" (Hub & Spoke, 7 Sotto-pagine, Hero Card & Deep-links).
+   - Audit Codebase (Hardening Deep-link, Resilienza Rete, Validazione Checksum OTA, Plugin MainActivity & De-monolizzazione Home).
+   - Player Fix: Orientamento Orizzontale Stabile, Download Source Error & Riprova Sbloccato.
+   - Sincronizzazione Avanzata: Riprendi a Guardare, Preferiti & Cronologia (Riconciliazione atomica code mutazioni/delezioni con `removePendingSyncMutations` e `removePendingSyncDeletions`, salvataggio `continueWatching` e tombstones serie concluse, guard `hasNavigatedRef` per unmount player, trigger `pullDeltaIfNeeded` on focus).
+   - Allineamento Client KuroSync: Cursori di Replica, Anti-Resurrezione Tombstones & Robustezza Payload (scoping per profilo di `since` / `lastSyncTimestamp`, cache `SYNC_KNOWN_TOMBSTONES`, pruning anti-resurrezione delle mutazioni pendenti, dominanza tombstones su `recordSyncMutation`, validazione e sanitizzazione completa di payload push, deletions e ricerche recenti).
 2. `npx expo export --platform android`: Verifica dell'assenza di errori di bundle e corretta generazione del bytecode Hermes.
 
 ---
@@ -458,3 +467,37 @@ Kuro Mobile integra il client nativo **KuroSync** per la sincronizzazione del ca
   - All'avvio dell'applicazione (`app/_layout.tsx`) e durante le operazioni di caricamento lista o cambio profilo (`SyncProfileModal.tsx`), le comunicazioni con il backend `KuroTV_S` adottano retry progressivi (`performFullSyncWithRetries`, `listProfilesWithRetries`, `switchProfileWithRetries` in `src/services/sync/sync-manager.ts`).
   - L'app effettua fino a 2 retry (3 tentativi totali con backoff esponenziale), esponendo un feedback visivo di caricamento e progresso dei tentativi sia in un banner/HUD all'avvio sia all'interno del selettore profili (`"Connessione a KuroSync... (tentativo X di 2)"`).
   - In caso di insuccesso persistente al termine dei tentativi, l'app esegue l'auto-logout (`await this.disconnect()`) per sanare stati inconsistenti o token revocati, e propone proattivamente il nuovo login all'utente (con `ConfirmModal` all'avvio e apertura automatica di `SyncConnectModal` per accesso via QR code o credenziali manuali).
+
+### 4. Cursori di Replica Scoped per Profilo (`lastSyncTimestamp`) & Preservazione Watermark
+- **Disaccoppiamento del Cursore di Replica dal Clock Locale**:
+  - Il cursore delta `since` inviato a `GET /api/sync/pull?since=${cursor}` **DEVE** essere esclusivamente il timestamp logico `serverTime` restituito dal server `KuroTV_S` all'ultimo pull completato con successo.
+  - È severamente vietato impostare `since` utilizzando l'orologio locale del dispositivo (`Date.now()`), poiché sfasamenti orari (clock skew) o differenze di fuso orario causerebbero la perdita permanente di delta remoti (*Delta Miss*).
+- **Scoping per Profilo nello Storage MMKV**:
+  - I cursori sono salvati per singolo profilo: `getProfileLastSyncTimestamp(profileId)`, `setProfileLastSyncTimestamp(profileId, timestamp)` e `clearProfileLastSyncTimestamp(profileId)`.
+  - Al cambio profilo o disconnessione, il cursore viene azzerato a `0` garantendo il corretto bootstrap delta completo (`pullDelta(0)`).
+- **Preservazione del Watermark nei Push**:
+  - `SyncManager.pushPending()` aggiorna unicamente `SYNC_LAST_TIME` (ad uso della UI) e **NON** sovrascrive `SYNC_LAST_TIMESTAMP` né il cursore del profilo con il `serverTime` della push. Ciò evita di avanzare il watermark di lettura prima di aver effettivamente interrogato ed estratto i delta remoti pendenti.
+
+### 5. Cache dei Tombstones Noti (`SYNC_KNOWN_TOMBSTONES`), Pruning Anti-Resurrezione & Dominanza
+- **Cache dei Tombstones Noti**:
+  - La chiave persistente `StorageKeys.SYNC_KNOWN_TOMBSTONES` memorizza la mappa di tutti i tombstones noti locali e remoti (`getKnownTombstones()`, `recordKnownTombstones(entries)`, `removeKnownTombstone(type, key)`, `clearKnownTombstones()`).
+- **Pruning Atomico Anti-Resurrezione**:
+  - `prunePendingMutationsAgainstTombstones(known)` analizza la coda di mutazioni pendenti ed elimina qualsiasi mutazione locale obsoleta il cui timestamp sia inferiore o uguale al rispettivo tombstone (`itemTime <= deletedAt`), scongiurando la resurrezione sul server di dati già cancellati da altri dispositivi.
+- **Dominanza dei Tombstones in `recordSyncMutation`**:
+  - Se un elemento in fase di registrazione possiede già un tombstone noto e presenta un timestamp esplicito passato $\le$ al tombstone, la mutazione viene scartata.
+  - Se invece l'utente aggiunge nuovamente l'elemento (azione interattiva fresca con timestamp più recente `itemTime > deletedAt` o senza timestamp esplicito), il tombstone noto viene rimosso (`removeKnownTombstone`), consentendo la ri-creazione legittima dell'entità.
+- **Merge Delta con Dominanza Tombstones**:
+  - `mergeLocalAndRemote()` riceve la mappa combinata dei `knownTombstones` e fa prevalere tassativamente le cancellazioni su entità con timestamp precedente o uguale.
+
+### 6. Sanitizzazione e Robustezza dei Payload di Push (`POST /api/sync/push`)
+- **Presenza di `updatedAt`**: Ogni record inviato nel payload di sincronizzazione verso `KuroTV_S` include tassativamente `updatedAt: number` valido (millisecondi epoch).
+- **Whitelist Tipi di Cancellazione**: Il campo `deletions` accetta unicamente i tipi riconosciuti dallo schema D1 (`'favorite' | 'continue_watching' | 'watch_history' | 'watch_progress' | 'shared_settings' | 'search_history'`).
+- **Ordinamento e Validazione Ricerche**: Le voci di `search_history` vengono validate e inviate ordinate per `updatedAt` decrescente con limite massimo di 50 voci.
+
+### 7. Trigger `pullDeltaIfNeeded` on Focus & Salvaguardia Navigazione Player
+- **Trigger `pullDeltaIfNeeded` al Focus**:
+  - Le schermate principali (`FavoritesScreen`, `HistoryScreen`, `HomeScreen`) eseguono `SyncManager.pullDeltaIfNeeded(15000)` al ritorno del focus visivo: se sono trascorsi $\ge 15$ secondi dall'ultima sincronizzazione, viene avviato un delta pull leggero in background per recepire istantaneamente modifiche fatte su altri dispositivi.
+- **Riconciliazione Atomica delle Code**:
+  - Metodi `removePendingSyncMutations` e `removePendingSyncDeletions` in `AppStorage` per epurare atomicamente mutazioni o delezioni già riconciliate o confliggenti.
+- **Salvaguardia `hasNavigatedRef` per Unmount Player**:
+  - In `app/player/[id].tsx`, il ref `hasNavigatedRef` previene il salvataggio di progressi spuri a inizio puntata (0 secondi) generati durante lo smontaggio del componente player a seguito di un'azione di navigazione ("Indietro" o passaggio alla puntata successiva).

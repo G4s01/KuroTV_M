@@ -93,10 +93,10 @@ Kuro è una suite completa e sincronizzata per lo streaming anime concepita per 
 - **🎬 Modalità Offline Resiliente**: Riproduzione locale verificata con badge `LOCALE / OFFLINE` e zero richieste di rete durante il playback.
 
 ### ☁️ Sincronizzazione Self-Hosted KuroSync & TV Pairing
-- **🔄 Delta Sync Deterministico**: Sincronizzazione in background di preferiti, cronologia, stato `"IN PARI"`, ricerche recenti e progressi episodio con dominanza dei tombstones.
-- **⏱️ Cloudflare D1 Optimization**: Debounce del playback a 45-60s per rispettare i limiti del piano gratuito di Cloudflare, con flush immediato su pausa, chiusura o completamento.
+- **🔄 Delta Sync Deterministico & Cursori Scoped per Profilo**: Sincronizzazione incrementale disaccoppiata dall'orologio locale (zero Delta Miss), con cursori `since` gestiti per profilo da server time monotono, cache persistente dei tombstones noti (`SYNC_KNOWN_TOMBSTONES`), pruning atomico anti-resurrezione delle mutazioni pendenti e dominanza assoluta delle cancellazioni su preferiti, cronologia, stato `"IN PARI"`, ricerche recenti e progressi episodio.
+- **⏱️ Cloudflare D1 Optimization**: Debounce del playback a 45-60s per rispettare i limiti del piano gratuito di Cloudflare, con flush immediato su pausa, chiusura o completamento, e push payload difensivi con validazione tipi e `updatedAt`.
 - **📺 Accoppiamento TV Istantaneo**: Autorizza la tua Android TV in 1 secondo scansionando il QR visualizzato sullo schermo della TV con la fotocamera dello smartphone o inserendo il codice a 6 cifre.
-- **👥 Profili Multipli Stile Netflix**: Cambio rapido del profilo direttamente dalla barra di navigazione o tramite selettore touch dedicato.
+- **👥 Profili Multipli Stile Netflix**: Cambio rapido del profilo direttamente dalla barra di navigazione o tramite selettore touch dedicato senza disconnessione e con switch atomico su backend D1.
 
 ### 📅 Palinsesto & Programmazione Settimanale
 - **🗓️ Calendario Uscite in Tempo Reale**: Programmazione settimanale completa con gli orari di pubblicazione delle puntate.
@@ -144,8 +144,8 @@ cd KuroTV_M
 npm install
 ```
 
-### 3. Suite di Test Qualitativa (32 Stadi)
-Il progetto include una suite esaustiva di 32 stadi che convalida regole OLED, storage MMKV, AniSkip, gesture, compatibilità tablet, resilienza offline e sicurezza:
+### 3. Suite di Test Qualitativa (35 Stadi)
+Il progetto include una suite esaustiva di 35 stadi che convalida regole OLED, storage MMKV, AniSkip, gesture, compatibilità tablet, resilienza offline, sicurezza e sincronizzazione replica cursori:
 ```bash
 npm test
 ```
