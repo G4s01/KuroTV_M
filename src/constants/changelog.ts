@@ -20,7 +20,7 @@ export const CURRENT_CHANGELOG: ChangelogEntry = {
   highlights: [
   "RELEASE UFFICIALE V1.0.0 (BUILD 61)"
 ],
-  releaseNotes: "## [1.0.0] - 2026-11-17\n\nPlayer Preview Fixed",
+  releaseNotes: "## [1.0.0] - 2026-11-17\n\nRelease: Player Preview Fixed & YouTube Chapter Markers",
 };
 
 export function formatChangelog(entry: ChangelogEntry): string {
