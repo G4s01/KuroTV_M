@@ -845,7 +845,7 @@ export function formatChangelog(entry: ChangelogEntry): string {
     # Push branch
     CURRENT_BRANCH=$(git branch --show-current 2>/dev/null || git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
     if [ -z "${CURRENT_BRANCH}" ] || [ "${CURRENT_BRANCH}" = "HEAD" ]; then
-      CURRENT_BRANCH="master"
+      CURRENT_BRANCH="main"
     fi
 
     log "Push ${BOLD}${CURRENT_BRANCH}${NC} → origin..."
