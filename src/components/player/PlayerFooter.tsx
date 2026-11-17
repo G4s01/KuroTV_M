@@ -3,6 +3,7 @@ import { StyleSheet, View, Text, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useEventListener } from 'expo';
 import { oledTheme } from '@/theme';
+import type { AniSkipResult } from '@/types';
 import { PlayerTimeline, PlayerTimeDisplay } from './PlayerTimeline';
 
 export interface PlayerFooterProps {
@@ -27,6 +28,9 @@ export interface PlayerFooterProps {
   onToggleFullscreen: () => void;
   onOpenEpisodes?: () => void;
   onScrubbingChange?: (isScrubbing: boolean) => void;
+  aniSkipResults?: AniSkipResult[];
+  isLocalSource?: boolean;
+  videoUrl?: string;
 }
 
 export const PlayerFooter = React.memo<PlayerFooterProps>(function PlayerFooter({
@@ -47,6 +51,9 @@ export const PlayerFooter = React.memo<PlayerFooterProps>(function PlayerFooter(
   onToggleFullscreen,
   onOpenEpisodes,
   onScrubbingChange,
+  aniSkipResults,
+  isLocalSource = false,
+  videoUrl,
 }) {
   const [currentTime, setCurrentTime] = React.useState<number>(() => {
     if (typeof player?.currentTime === 'number' && !isNaN(player.currentTime)) {
@@ -55,9 +62,27 @@ export const PlayerFooter = React.memo<PlayerFooterProps>(function PlayerFooter(
     return initialTime;
   });
 
+  const isScrubbingRef = React.useRef(false);
+
+  React.useEffect(() => {
+    if (typeof initialTime === 'number' && !isNaN(initialTime)) {
+      setCurrentTime(initialTime);
+    }
+  }, [initialTime]);
+
   useEventListener(player, 'timeUpdate', ({ currentTime: time }) => {
-    setCurrentTime(time);
+    if (!isScrubbingRef.current) {
+      setCurrentTime(time);
+    }
   });
+
+  const handleScrubbingChange = React.useCallback(
+    (isScrubbing: boolean) => {
+      isScrubbingRef.current = isScrubbing;
+      onScrubbingChange?.(isScrubbing);
+    },
+    [onScrubbingChange]
+  );
 
   const handleTimelineSeek = (targetTime: number) => {
     setCurrentTime(targetTime);
@@ -83,7 +108,10 @@ export const PlayerFooter = React.memo<PlayerFooterProps>(function PlayerFooter(
         currentTime={currentTime}
         initialTime={initialTime}
         thumbnail={thumbnail}
-        onScrubbingChange={onScrubbingChange}
+        onScrubbingChange={handleScrubbingChange}
+        aniSkipResults={aniSkipResults}
+        isLocalSource={isLocalSource}
+        videoUrl={videoUrl}
       />
 
       <View style={styles.footerControls}>

@@ -171,16 +171,20 @@ La ricerca catalogo è integrata direttamente nell'header della schermata Home:
   - Il selettore di parsing è circoscritto ai soli contenitori dei risultati effettivi (`#main .film-list > .item, .content .film-list > .item, .film-list > .item, #main .film-listnext > .item, .content .film-listnext > .item, .film-listnext .item`).
   - Esclusione categorica di `.simple-film-list .item, .ranking .item, aside .item, .widget.ranking .item, .widget.simple-film-list .item`: quando una ricerca non produce risultati (es. categorie particolari senza match), AnimeWorld visualizza un widget laterale/inferiore con esattamente 6 titoli consigliati. Il filtro rigoroso evita che questi 6 elementi vengano erroneamente restituiti come risultati della ricerca.
 
-### 3. Contromisure Anti-Duplicazione per Tastiere Terze Android (IME)
+### 3. Contromisure Anti-Duplicazione & Anti-Drop per Tastiere Terze Android (IME)
 - **Diagnosi della Duplicazione Input (Fleksy, SwiftKey, Emoji Keyboard / Ekatox)**: A differenza di Gboard (che gestisce internamente la correzione di stringhe con casing mismatch), le tastiere terze Android inviano batch di caratteri confrontando il buffer di composizione nativo (`SPAN_COMPOSING` / `SpannableStringBuilder`) con il testo riflesso dal thread JavaScript. La presenza di `textTransform: 'uppercase'` nello stile nativo o re-render sincroni massivi del componente genitore alteravano il buffer nativo, inducendo l'IME a ritenere il testo cancellato e reinviando le prime lettere o interi token.
+- **Diagnosi del Drop Caratteri in Digitazione Veloce**: Quando l'utente spamma o scrive molto velocemente, l'aggiornamento debounced del genitore (`HomeScreen`) ripassa la prop `searchQuery`. Se il campo di testo adotta un binding controllato forzato o incrementa la chiave del componente durante la digitazione, l'eco asincrona del genitore distrugge l'`InputConnection` nativo dell'IME e cancella i caratteri appena digitati.
 - **Eliminazione di `textTransform` da `home.styles.ts`**: Rimosso `textTransform: 'uppercase'` dallo stile nativo del `TextInput`, lasciando la manipolazione di presentazione/maiuscolo al rendering virtuale privo di interferenze con la composizione dell'IME.
 - **Configurazione Difensiva dei Flag Nativi**:
   - `autoCapitalize="none"`: azzera la duplicazione automatica delle iniziali su SwiftKey e tastiere predittive.
   - `autoCorrect={false}`, `spellCheck={false}`, `autoComplete="off"`, `textContentType="none"`, `importantForAutofill="no"`: disattivano i suggeritori intrusivi di sistema durante la ricerca rapida.
   - `inputMode="search"`, `returnKeyType="search"`, `disableFullscreenUI={true}`: ottimizzazione per layout mobile senza overlay di estrazione a schermo intero.
-- **Disaccoppiamento Digitazione Locale & Debouncing a 150ms (`HomeSearchHeader.tsx`)**:
+- **Architettura TextInput Non Controllato Anti-Drop (`HomeSearchHeader.tsx`)**:
   - `HomeSearchHeader` è incapsulato e memoizzato con `React.memo` per isolare il campo di testo dai re-render della griglia risultati.
-  - Lo stato testuale locale (`localText`) e il tracking nativo (`lastNativeTextRef`) garantiscono l'aggiornamento sincrono a 60/120 FPS per l'input utente, mentre la notifica alla schermata genitore `HomeScreen` (`debounceTimerRef`) è ritardata di 150ms, azzerando il feedback loop asincrono tra Fabric/New Architecture e il motore Hermes.
+  - Adozione di `defaultValue={lastNativeTextRef.current}` non controllato: il testo non viene reinviato continuamente da JS verso il componente nativo Android `ReactEditText`.
+  - Lo stato `localText` viene aggiornato unicamente al passaggio vuoto/non-vuoto (`text.length > 0 ? '1' : ''`) per commutare la visibilità del tasto di pulizia, garantendo **zero re-render del box model** durante la digitazione continua.
+  - Tracking sincrono `isTypingRef`, `lastPropagatedQueryRef` e `lastNativeTextRef`: all'arrivo dell'eco asincrona da `HomeScreen` (200ms di debounce), l'effetto di sincronizzazione rileva che la query corrisponde all'input o che l'utente sta ancora digitando, inibendo il rimontaggio del `TextInput`.
+  - Rimontaggio con incremento `key={inputKey}` circoscritto strettamente alle mutazioni esterne genuine (tap su un elemento della cronologia ricerche o reset programmatico).
 
 ---
 
@@ -439,6 +443,22 @@ Kuro Mobile integra un'architettura completa di sincronizzazione self-hosted mul
 - **Pulsante Profilo Rapido nella Tab Bar (`app/(tabs)/_layout.tsx`)**: Pulsante dedicato posizionato tra Cronologia e Impostazioni con icona contestuale (`person-circle` / `person`) che permette di cambiare profilo o avviare l'accoppiamento con un solo tap da qualsiasi schermata.
 - **`QrScannerModal.tsx`**: Scanner fotocamera basato su `CameraView` di `expo-camera` (v17 / SDK 58, `recordAudioAndroid: false`), mirino centrale OLED, torcia e gestione permessi con redirect a `Linking.openSettings()` se bloccati. Montato come frammento disaccoppiato per azzerare crash di finestre modali annidate su Android Fabric.
 - **`AuthorizeTvModal.tsx`**: Modale per autorizzare un dispositivo Android TV inquadrando il QR mostrato sul televisore o digitando il codice a 6 cifre (es. `K7X9P2`) tramite `client.approveTvPairing`.
+
+### 9. Schema Database D1 Cloudflare & Cursori di Replica Server (`0002_server_replication_cursor.sql`)
+- **Disaccoppiamento Orologio Logico e Cursore di Replica**: Il database relazionale Cloudflare D1 (`kurosync-db`) integra la colonna `server_deleted_at` sulla tabella `tombstones` e `server_updated_at` sulle tabelle di entità (`favorites`, `continue_watching`, `watch_history`, `watch_progress`, `shared_settings`).
+- **Eliminazione Errori SQLite 500 su Push Delta**: Le query di inserimento e aggiornamento in `KuroTV_S` (`INSERT INTO tombstones ... server_deleted_at = excluded.server_deleted_at`) e le query di recupero delta (`SELECT * FROM tombstones WHERE profile_id = ? AND (server_deleted_at > ? OR deleted_at > ?)`) si basano su questa colonna creata tramite la migrazione `migrations/0002_server_replication_cursor.sql`.
+- **Prevenzione Delta Miss**: L'assegnazione lato server di `server_deleted_at = unix_timestamp` garantisce che la propagazione delle cancellazioni verso smartphone e Android TV rimanga strettamente monotona e indipendente da derive temporali dei clock di sistema dei singoli client.
+
+---
+
+## 🚀 Pipeline DevOps di Release & Changelog In-App Esclusivo (`scripts/build-release.sh`)
+
+La pipeline di rilascio automatizzata tramite `scripts/build-release.sh` costituisce l'**unica sorgente di verità** per le note di rilascio e la cronologia delle modifiche mostrate all'utente in-app:
+- **Generazione Automatica di `src/constants/changelog.ts`**: All'atto della build di rilascio, lo script raccoglie le note inserite dall'operatore (`releaseNotes`) e rigenera `CURRENT_CHANGELOG` incorporando versione semantica (`version`), codice build nativo (`versionCode`), data e highlights.
+- **Esportazione Manifest OTA**: Contestualmente, le stesse note di rilascio vengono inviate nel file `manifest.json` ospitato sull'infrastruttura Cloudflare Workers / R2.
+- **Assenza di Dipendenze da `docs/` a Runtime**: L'applicazione non esegue letture su filesystem o importazioni da `docs/`. Sia la schermata Informazioni (`app/settings/about.tsx`) per la versione corrente (`formatChangelog(CURRENT_CHANGELOG)`), sia il modale di aggiornamento (`UpdateModal.tsx`) per la nuova versione disponibile (`updateResult.manifest.releaseNotes`) consumano direttamente ed esclusivamente le note generate dalla build.
+
+---
 
 ---
 

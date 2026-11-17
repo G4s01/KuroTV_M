@@ -477,7 +477,11 @@ export const CURRENT_CHANGELOG: ChangelogEntry = {
 
 export function formatChangelog(entry: ChangelogEntry): string {
   if (entry.releaseNotes && entry.releaseNotes.trim().length > 0) {
-    return entry.releaseNotes.trim().toUpperCase();
+    const raw = entry.releaseNotes.trim();
+    const nonHeaderLines = raw.split("\\n").filter((l) => l.trim().length > 0 && !l.trim().startsWith("## ["));
+    if (nonHeaderLines.length > 0) {
+      return raw.toUpperCase();
+    }
   }
   const lines: string[] = [
     \`=== \${entry.title} (V\${entry.version} BUILD \${entry.versionCode}) ===\`,

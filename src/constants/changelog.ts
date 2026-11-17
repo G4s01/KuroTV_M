@@ -14,18 +14,22 @@ export interface ChangelogEntry {
 
 export const CURRENT_CHANGELOG: ChangelogEntry = {
   version: "1.0.0",
-  versionCode: 59,
+  versionCode: 60,
   releaseDate: "2026-11-17",
   title: "RELEASE UFFICIALE KUROTV MOBILE",
   highlights: [
-  "RELEASE UFFICIALE V1.0.0 (BUILD 59)"
+  "Aggiornamento e miglioramenti prestazionali per Kuro Mobile."
 ],
-  releaseNotes: "## [1.0.0] - 2026-11-17",
+  releaseNotes: "## [1.0.0] - 2026-11-17\n\n- Aggiornamento e miglioramenti prestazionali per Kuro Mobile.",
 };
 
 export function formatChangelog(entry: ChangelogEntry): string {
   if (entry.releaseNotes && entry.releaseNotes.trim().length > 0) {
-    return entry.releaseNotes.trim().toUpperCase();
+    const raw = entry.releaseNotes.trim();
+    const nonHeaderLines = raw.split("\n").filter((l) => l.trim().length > 0 && !l.trim().startsWith("## ["));
+    if (nonHeaderLines.length > 0) {
+      return raw.toUpperCase();
+    }
   }
   const lines: string[] = [
     `=== ${entry.title} (V${entry.version} BUILD ${entry.versionCode}) ===`,

@@ -89,6 +89,13 @@ Kuro è una suite completa e sincronizzata per lo streaming anime concepita per 
 - **⏩ Gesture Seeking Asimmetrico**: Doppio tocco $\pm 10$s cumulativo (`+20s`, `+30s`...) e HUD verticali per volume (destra) e luminosità (sinistra).
 - **📺 Picture-in-Picture & MediaStyle Notification**: Supporto nativo PiP senza pause e controlli multimediali in notifica a 5 pulsanti (`KuroForwardingPlayer`) con artwork JPEG ad alta risoluzione nei Quick Settings di Android 13+.
 
+### 🔍 Ricerca Intelligente & Architettura Anti-Drop IME
+
+- **⌨️ Input Non Controllato Anti-Drop**: Protezione contro la perdita di caratteri in digitazione veloce e spam su tastiere terze Android (SwiftKey, Fleksy, Samsung Keyboard), grazie a `defaultValue` nativo e azzeramento dei re-render intermedi.
+- **⏱️ Sincronizzazione Asincrona Protetta**: Tracking sincrono di digitazione attiva (`isTypingRef`) e debouncing a 200ms, isolando i re-render del genitore senza distruggere gli span di composizione nativi (`SPAN_COMPOSING`).
+- **🕒 Cronologia Stile Google & Deduplicazione Prefissi**: Ricerche recenti salvate su MMKV con deduplicazione automatica dei prefissi parziali e rimozione singola o massiva via `ConfirmModal`.
+- **🎛️ Filtri Avanzati Multi-Genere & Audio**: Selezione incrociata di 46 generi con logica `AND`, distinzione audio Doppiati/Sottotitolati e ordinamento per data reale di uscita.
+
 ### 📥 Download Offline & Storage SAF
 
 - **⚡ Coda Sequenziale FIFO**: Download a velocità massima su singolo thread per azzerare rate limiting e rendere fruibile il primo episodio nel minor tempo possibile.
@@ -184,6 +191,9 @@ Gli script in [`scripts/`](./scripts) automatizzano il processo di build, firma 
 # Backup cifrato con AES-256-CBC di keystore e segreti su Cloudflare R2:
 ./scripts/backup-secrets-r2.sh
 ```
+
+> [!NOTE]
+> `build-release.sh` costituisce la **singola sorgente di verità** per le note di rilascio dell'applicazione: durante la procedura, aggiorna automaticamente `CURRENT_CHANGELOG` in `src/constants/changelog.ts` e genera il manifest OTA per Cloudflare Workers/R2, garantendo che il changelog visibile in-app (versione corrente e aggiornamento) rifletta esattamente le note scritte al rilascio senza dipendere da file `docs/` a runtime.
 
 ---
 

@@ -338,6 +338,7 @@ export default function VideoPlayerScreen() {
   const [isBuffering, setIsBuffering] = React.useState(false);
   const userWantsPlaybackRef = React.useRef(true);
   const hasEndedRef = React.useRef(false);
+  const isScrubbingRef = React.useRef(false);
   const lastAdvanceTimeRef = React.useRef(0);
   const lastAdvanceTimestampRef = React.useRef(Date.now());
 
@@ -350,7 +351,7 @@ export default function VideoPlayerScreen() {
     }
 
     // Monitor real playback progress to identify silent network stalls
-    if (userWantsPlaybackRef.current && !hasEndedRef.current) {
+    if (userWantsPlaybackRef.current && !hasEndedRef.current && !isScrubbingRef.current) {
       if (Math.abs(time - lastAdvanceTimeRef.current) > 0.05) {
         lastAdvanceTimeRef.current = time;
         lastAdvanceTimestampRef.current = Date.now();
@@ -369,12 +370,12 @@ export default function VideoPlayerScreen() {
     }
 
     // Periodically save progress to storage every ~4 seconds
-    if (animeId && Math.abs(time - lastSavedTimeRef.current) >= 4) {
+    if (animeId && !isScrubbingRef.current && Math.abs(time - lastSavedTimeRef.current) >= 4) {
       saveProgress(time, player.duration || durationRef.current);
     }
 
     // Isolated AniSkip check: handles manual buttons ('SALTA'/'PROSSIMO') & auto skipping based on user settings
-    if (aniSkipResultsRef.current.length > 0) {
+    if (!isScrubbingRef.current && aniSkipResultsRef.current.length > 0) {
       // Allow auto-skipped interval to be re-skipped if user seeks back before the interval start
       for (const res of aniSkipResultsRef.current) {
         if (time < res.interval.startTime - 2) {
@@ -436,14 +437,14 @@ export default function VideoPlayerScreen() {
       setIsBuffering(false);
       lastAdvanceTimestampRef.current = Date.now();
     } else {
-      // If player paused on its own while user wants playback (and hasn't ended), it is buffering
-      if (userWantsPlaybackRef.current && !hasEndedRef.current) {
+      // If player paused on its own while user wants playback (and hasn't ended and isn't scrubbing), it is buffering
+      if (userWantsPlaybackRef.current && !hasEndedRef.current && !isScrubbingRef.current) {
         setIsBuffering(true);
       } else {
         setIsPlaying(false);
         setIsBuffering(false);
       }
-      if (animeId) {
+      if (animeId && !isScrubbingRef.current) {
         saveProgress(currentTimeRef.current, durationRef.current);
         if (!userWantsPlaybackRef.current) {
           SyncManager.flushPlaybackProgress().catch(() => {});
@@ -849,8 +850,6 @@ export default function VideoPlayerScreen() {
     }
   }, [animeId, episodeNumber, episodeId]);
 
-  const isScrubbingRef = React.useRef(false);
-
   // Auto-hide controls after 4 seconds of inactivity
   const resetControlsTimer = React.useCallback(() => {
     if (controlsTimeoutRef.current) {
@@ -871,11 +870,18 @@ export default function VideoPlayerScreen() {
         if (controlsTimeoutRef.current) {
           clearTimeout(controlsTimeoutRef.current);
         }
+        if (isBuffering) {
+          setIsBuffering(false);
+        }
       } else {
+        lastAdvanceTimestampRef.current = Date.now();
+        if (userWantsPlaybackRef.current && !player.playing) {
+          player.play();
+        }
         resetControlsTimer();
       }
     },
-    [resetControlsTimer]
+    [player, isBuffering, resetControlsTimer]
   );
 
   React.useEffect(() => {
@@ -1571,6 +1577,9 @@ export default function VideoPlayerScreen() {
                 setIsEpisodesSheetVisible(true);
               }}
               onScrubbingChange={handleScrubbingChange}
+              aniSkipResults={aniSkipResults}
+              isLocalSource={Boolean(videoUrl && (videoUrl.startsWith('file://') || videoUrl.startsWith('content://')))}
+              videoUrl={videoUrl || undefined}
             />
           </View>
         )}

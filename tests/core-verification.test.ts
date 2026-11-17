@@ -41,6 +41,8 @@ import {
   PlayerEpisodesCarouselSheet,
   PlayerInfoSheet,
   formatTime,
+  formatDeltaTime,
+  getAniSkipChapterBadge,
 } from '../src/components/player/index';
 import {
   AnimeHeaderBackdrop,
@@ -5047,6 +5049,126 @@ assert(migrationCursorSrc.includes('ALTER TABLE favorites ADD COLUMN server_upda
 assert(migrationCursorSrc.includes('ALTER TABLE continue_watching ADD COLUMN server_updated_at'), 'La migrazione D1 deve aggiungere server_updated_at a continue_watching');
 
 console.log('✓ TextInput Decoupled Anti-Drop, Changelog Esclusivo da Build & Allineamento Schema D1 KuroSync verificati con successo.');
+
+// -----------------------------------------------------------------------------
+// [38/38] Verifica Live Keyframe Scrubbing, Time-Scrubbing HUD OLED & Quantizzazione Thumbnail
+// -----------------------------------------------------------------------------
+console.log('\n[38/38] Verifica Live Keyframe Scrubbing, Time-Scrubbing HUD OLED & Quantizzazione Thumbnail...');
+
+// 1. Verifica formatDeltaTime
+const positiveDelta = formatDeltaTime(165);
+assert(positiveDelta !== null, 'formatDeltaTime per +165s non deve essere null');
+assert.strictEqual(positiveDelta.text, '+02:45', 'formatDeltaTime(+165) deve restituire +02:45');
+assert.strictEqual(positiveDelta.color, '#4ADE80', 'formatDeltaTime positivo deve avere colore verde #4ADE80');
+
+const negativeDelta = formatDeltaTime(-70);
+assert(negativeDelta !== null, 'formatDeltaTime per -70s non deve essere null');
+assert.strictEqual(negativeDelta.text, '-01:10', 'formatDeltaTime(-70) deve restituire -01:10');
+assert.strictEqual(negativeDelta.color, '#F87171', 'formatDeltaTime negativo deve avere colore rosso #F87171');
+
+const zeroDelta = formatDeltaTime(0);
+assert.strictEqual(zeroDelta, null, 'formatDeltaTime(0) deve restituire null (nessun delta visualizzato)');
+
+const subSecondDelta = formatDeltaTime(0.4);
+assert.strictEqual(subSecondDelta, null, 'formatDeltaTime(0.4) deve restituire null');
+
+const longMovieDelta = formatDeltaTime(3665);
+assert(longMovieDelta !== null, 'formatDeltaTime per +3665s non deve essere null');
+assert.strictEqual(longMovieDelta.text, '+1:01:05', 'formatDeltaTime(+3665) deve supportare ore');
+
+// Robustezza Edge Cases formatDeltaTime & formatTime
+assert.strictEqual(formatDeltaTime(NaN), null, 'formatDeltaTime(NaN) deve restituire null');
+assert.strictEqual(formatDeltaTime(Infinity), null, 'formatDeltaTime(Infinity) deve restituire null');
+assert.strictEqual(formatDeltaTime(-Infinity), null, 'formatDeltaTime(-Infinity) deve restituire null');
+assert.strictEqual(formatTime(NaN), '00:00', 'formatTime(NaN) deve restituire 00:00');
+assert.strictEqual(formatTime(Infinity), '00:00', 'formatTime(Infinity) deve restituire 00:00');
+assert.strictEqual(formatTime(-10), '00:00', 'formatTime(-10) deve restituire 00:00');
+
+// 2. Verifica getAniSkipChapterBadge
+const testChapterSkips = [
+  {
+    skipId: 'op-1',
+    skipType: 'op' as const,
+    interval: { startTime: 0, endTime: 90 },
+    episodeLength: 1440,
+  },
+  {
+    skipId: 'recap-1',
+    skipType: 'recap' as const,
+    interval: { startTime: 90, endTime: 150 },
+    episodeLength: 1440,
+  },
+  {
+    skipId: 'ed-1',
+    skipType: 'ed' as const,
+    interval: { startTime: 1200, endTime: 1290 },
+    episodeLength: 1440,
+  },
+];
+
+const badgeOp = getAniSkipChapterBadge(45, 1440, testChapterSkips);
+assert.strictEqual(badgeOp.label, '[SIGLA INIZIALE]', 'A 45s deve restituire [SIGLA INIZIALE]');
+assert.strictEqual(badgeOp.color, '#FBBF24', 'Badge OP deve avere colore giallo #FBBF24');
+
+const badgeRecap = getAniSkipChapterBadge(120, 1440, testChapterSkips);
+assert.strictEqual(badgeRecap.label, '[RECAP]', 'A 120s deve restituire [RECAP]');
+assert.strictEqual(badgeRecap.color, '#38BDF8', 'Badge Recap deve avere colore blu #38BDF8');
+
+const badgeEp = getAniSkipChapterBadge(500, 1440, testChapterSkips);
+assert.strictEqual(badgeEp.label, '[EPISODIO]', 'A 500s deve restituire [EPISODIO]');
+
+const badgeEd = getAniSkipChapterBadge(1250, 1440, testChapterSkips);
+assert.strictEqual(badgeEd.label, '[SIGLA FINALE]', 'A 1250s deve restituire [SIGLA FINALE]');
+assert.strictEqual(badgeEd.color, '#A78BFA', 'Badge ED deve avere colore viola #A78BFA');
+
+const badgePostCredits = getAniSkipChapterBadge(1350, 1440, testChapterSkips);
+assert.strictEqual(badgePostCredits.label, '[POST-CREDITS]', 'A 1350s (dopo ED con durata 1440s) deve restituire [POST-CREDITS]');
+assert.strictEqual(badgePostCredits.color, '#34D399', 'Badge Post-credits deve avere colore verde smeraldo #34D399');
+
+const badgeNoSkips = getAniSkipChapterBadge(300, 1440, []);
+assert.strictEqual(badgeNoSkips.label, '[EPISODIO]', 'Senza intervalli registrati deve restituire [EPISODIO]');
+
+// Robustezza getAniSkipChapterBadge con input malformati o null
+const badgeWithNull = getAniSkipChapterBadge(50, 1440, [null as any, { skipId: 'x' } as any]);
+assert.strictEqual(badgeWithNull.label, '[EPISODIO]', 'Con elementi null in skips non deve crashare e deve restituire [EPISODIO]');
+const badgeWithInvalidInterval = getAniSkipChapterBadge(50, 1440, [{ skipType: 'op', interval: null } as any]);
+assert.strictEqual(badgeWithInvalidInterval.label, '[EPISODIO]', 'Con interval null non deve crashare e deve restituire [EPISODIO]');
+
+// 3. Verifica Integrazione PlayerTimeline.tsx
+const timelineSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/components/player/PlayerTimeline.tsx'), 'utf-8');
+assert(timelineSrc.includes('scrubbingModeOptions'), 'PlayerTimeline deve impostare scrubbingModeOptions su player');
+assert(timelineSrc.includes('increaseCodecOperatingRate: true'), 'PlayerTimeline deve abilitare increaseCodecOperatingRate');
+assert(timelineSrc.includes('enableDynamicScheduling: true'), 'PlayerTimeline deve abilitare enableDynamicScheduling');
+assert(timelineSrc.includes('useDecodeOnlyFlag: true'), 'PlayerTimeline deve abilitare useDecodeOnlyFlag');
+assert(timelineSrc.includes('allowSkippingMediaCodecFlush: true'), 'PlayerTimeline deve abilitare allowSkippingMediaCodecFlush');
+assert(timelineSrc.includes('toleranceBefore: 4'), 'PlayerTimeline deve impostare seekTolerance rilassata a 4s durante lo scrubbing');
+assert(timelineSrc.includes('toleranceBefore: 0'), 'PlayerTimeline deve ripristinare seekTolerance a 0s al rilascio');
+assert(timelineSrc.includes('scrubStartTimeRef'), 'PlayerTimeline deve usare scrubStartTimeRef per calcolare il vero delta relativo');
+assert(timelineSrc.includes('isLocalSource'), 'PlayerTimeline deve condizionare le thumbnail video ai soli file locali');
+assert(timelineSrc.includes('BUCKET_SIZE = 5'), 'PlayerTimeline deve quantizzare le thumbnail locali a bucket di 5 secondi');
+assert(timelineSrc.includes('thumbnailCache.current.size >= 50'), 'PlayerTimeline deve limitare la cache a 50 thumbnail con logica LRU');
+assert(timelineSrc.includes('thumbnailCache.current.clear()'), 'PlayerTimeline deve svuotare la cache thumbnail al cambio sorgente videoUrl');
+assert(!timelineSrc.includes('source={{ uri: thumbnail }}'), 'PlayerTimeline non deve mostrare la finta locandina statica durante lo scrubbing');
+assert(timelineSrc.includes('previewTimeRow') && timelineSrc.includes('chapterBadge'), 'PlayerTimeline deve renderizzare il Time-Scrubbing HUD OLED');
+
+// 4. Verifica Integrazione PlayerFooter.tsx
+const footerSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/components/player/PlayerFooter.tsx'), 'utf-8');
+assert(footerSrc.includes('aniSkipResults={aniSkipResults}'), 'PlayerFooter deve inoltrare aniSkipResults a PlayerTimeline');
+assert(footerSrc.includes('isLocalSource={isLocalSource}'), 'PlayerFooter deve inoltrare isLocalSource a PlayerTimeline');
+assert(footerSrc.includes('videoUrl={videoUrl}'), 'PlayerFooter deve inoltrare videoUrl a PlayerTimeline');
+assert(footerSrc.includes('!isScrubbingRef.current'), 'PlayerFooter deve inibire timeUpdate durante lo scrubbing per prevenire flutter');
+
+// 5. Verifica Integrazione app/player/[id].tsx
+const playerRouteSrc = fs.readFileSync(path.resolve(process.cwd(), 'app/player/[id].tsx'), 'utf-8');
+assert(playerRouteSrc.includes('aniSkipResults={aniSkipResults}'), 'app/player/[id].tsx deve passare aniSkipResults a PlayerFooter');
+assert(playerRouteSrc.includes('isLocalSource='), 'app/player/[id].tsx deve passare isLocalSource a PlayerFooter');
+assert(playerRouteSrc.includes('videoUrl={videoUrl || undefined}'), 'app/player/[id].tsx deve passare videoUrl a PlayerFooter');
+assert(playerRouteSrc.includes('!isScrubbingRef.current'), 'app/player/[id].tsx deve proteggere il watchdog di buffering durante lo scrubbing');
+assert(playerRouteSrc.includes('!isScrubbingRef.current && Math.abs(time - lastSavedTimeRef.current) >= 4'), 'app/player/[id].tsx deve inibire il salvataggio progress periodico durante lo scrubbing');
+assert(playerRouteSrc.includes('!isScrubbingRef.current && aniSkipResultsRef.current.length > 0'), 'app/player/[id].tsx deve inibire l\'auto-skip di AniSkip durante lo scrubbing');
+assert(playerRouteSrc.includes('userWantsPlaybackRef.current && !player.playing'), 'app/player/[id].tsx deve riprendere playback al rilascio se richiesto');
+
+console.log('✓ Live Keyframe Scrubbing, Time-Scrubbing HUD OLED & Quantizzazione Thumbnail verificati con successo.');
 
 // -----------------------------------------------------------------------------
 // Fine Test

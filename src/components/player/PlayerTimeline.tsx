@@ -3,11 +3,13 @@ import { StyleSheet, View, Text } from 'react-native';
 import { Image } from 'expo-image';
 import { useEventListener } from 'expo';
 import * as Haptics from 'expo-haptics';
-import { Ionicons } from '@expo/vector-icons';
 import { oledTheme } from '@/theme';
+import type { AniSkipResult } from '@/types';
 
 export function formatTime(seconds: number): string {
-  if (isNaN(seconds) || seconds < 0) return '00:00';
+  if (typeof seconds !== 'number' || isNaN(seconds) || !isFinite(seconds) || seconds < 0) {
+    return '00:00';
+  }
   const mins = Math.floor(seconds / 60);
   const secs = Math.floor(seconds % 60);
   const hrs = Math.floor(mins / 60);
@@ -19,6 +21,103 @@ export function formatTime(seconds: number): string {
   return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 }
 
+export function formatDeltaTime(
+  deltaSeconds: number
+): { text: string; color: string } | null {
+  if (typeof deltaSeconds !== 'number' || isNaN(deltaSeconds) || !isFinite(deltaSeconds)) {
+    return null;
+  }
+  const rounded = Math.round(deltaSeconds);
+  if (Math.abs(rounded) < 1) {
+    return null;
+  }
+  const sign = rounded > 0 ? '+' : '-';
+  const formattedTime = formatTime(Math.abs(rounded));
+  return {
+    text: `${sign}${formattedTime}`,
+    color: rounded > 0 ? '#4ADE80' : '#F87171',
+  };
+}
+
+export function getAniSkipChapterBadge(
+  targetTime: number,
+  duration: number,
+  aniSkipResults?: AniSkipResult[]
+): { label: string; color: string; borderColor: string; bgColor: string } {
+  if (
+    typeof targetTime === 'number' &&
+    !isNaN(targetTime) &&
+    isFinite(targetTime) &&
+    Array.isArray(aniSkipResults) &&
+    aniSkipResults.length > 0
+  ) {
+    // 1. Check if targetTime falls inside an active AniSkip interval
+    for (const skip of aniSkipResults) {
+      if (
+        skip &&
+        skip.interval &&
+        typeof skip.interval.startTime === 'number' &&
+        typeof skip.interval.endTime === 'number' &&
+        targetTime >= skip.interval.startTime &&
+        targetTime <= skip.interval.endTime
+      ) {
+        if (skip.skipType === 'op' || skip.skipType === 'mixed-op') {
+          return {
+            label: '[SIGLA INIZIALE]',
+            color: '#FBBF24',
+            borderColor: 'rgba(251, 191, 36, 0.45)',
+            bgColor: 'rgba(251, 191, 36, 0.12)',
+          };
+        }
+        if (skip.skipType === 'ed' || skip.skipType === 'mixed-ed') {
+          return {
+            label: '[SIGLA FINALE]',
+            color: '#A78BFA',
+            borderColor: 'rgba(167, 139, 250, 0.45)',
+            bgColor: 'rgba(167, 139, 250, 0.12)',
+          };
+        }
+        if (skip.skipType === 'recap') {
+          return {
+            label: '[RECAP]',
+            color: '#38BDF8',
+            borderColor: 'rgba(56, 189, 248, 0.45)',
+            bgColor: 'rgba(56, 189, 248, 0.12)',
+          };
+        }
+      }
+    }
+
+    // 2. Check if targetTime is after the ending (post-credits)
+    const endingSkip = aniSkipResults.find(
+      (s) => s && (s.skipType === 'ed' || s.skipType === 'mixed-ed')
+    );
+    if (
+      endingSkip &&
+      endingSkip.interval &&
+      typeof endingSkip.interval.endTime === 'number' &&
+      targetTime > endingSkip.interval.endTime &&
+      duration > 0 &&
+      endingSkip.interval.endTime < duration - 5
+    ) {
+      return {
+        label: '[POST-CREDITS]',
+        color: '#34D399',
+        borderColor: 'rgba(52, 211, 153, 0.45)',
+        bgColor: 'rgba(52, 211, 153, 0.12)',
+      };
+    }
+  }
+
+  // 3. Default: standard episode segment
+  return {
+    label: '[EPISODIO]',
+    color: '#D1D5DB',
+    borderColor: 'rgba(255, 255, 255, 0.18)',
+    bgColor: 'rgba(255, 255, 255, 0.06)',
+  };
+}
+
 export interface PlayerTimelineProps {
   player: any;
   duration: number;
@@ -28,9 +127,12 @@ export interface PlayerTimelineProps {
   currentTime?: number;
   thumbnail?: string;
   onScrubbingChange?: (isScrubbing: boolean) => void;
+  aniSkipResults?: AniSkipResult[];
+  isLocalSource?: boolean;
+  videoUrl?: string;
 }
 
-const PREVIEW_WIDTH = 120;
+const PREVIEW_WIDTH = 136;
 const PREVIEW_HALF = PREVIEW_WIDTH / 2;
 
 export const PlayerTimeline = React.memo<PlayerTimelineProps>(function PlayerTimeline({
@@ -42,6 +144,9 @@ export const PlayerTimeline = React.memo<PlayerTimelineProps>(function PlayerTim
   currentTime: controlledTime,
   thumbnail,
   onScrubbingChange,
+  aniSkipResults,
+  isLocalSource = false,
+  videoUrl,
 }) {
   const [internalTime, setInternalTime] = React.useState<number>(() => {
     if (typeof controlledTime === 'number' && !isNaN(controlledTime)) {
@@ -56,7 +161,7 @@ export const PlayerTimeline = React.memo<PlayerTimelineProps>(function PlayerTim
   const [isScrubbing, setIsScrubbing] = React.useState(false);
   const [scrubPosition, setScrubPosition] = React.useState<{ time: number; x: number } | null>(null);
 
-  // Real frame thumbnail extraction during scrubbing
+  // Real frame thumbnail extraction during scrubbing (local sources only)
   const [frameThumbnail, setFrameThumbnail] = React.useState<any>(null);
   const thumbnailCache = React.useRef<Map<number, any>>(new Map());
   const isGeneratingRef = React.useRef(false);
@@ -65,6 +170,30 @@ export const PlayerTimeline = React.memo<PlayerTimelineProps>(function PlayerTim
 
   const isScrubbingRef = React.useRef(false);
   const scrubPositionRef = React.useRef<{ time: number; x: number } | null>(null);
+  const scrubStartTimeRef = React.useRef(0);
+  const lastSeekTimestampRef = React.useRef(0);
+  const pendingSeekTimeRef = React.useRef<number | null>(null);
+  const seekThrottleTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  React.useEffect(() => {
+    thumbnailCache.current.clear();
+    setFrameThumbnail(null);
+  }, [videoUrl]);
+
+  React.useEffect(() => {
+    return () => {
+      if (seekThrottleTimerRef.current) {
+        clearTimeout(seekThrottleTimerRef.current);
+        seekThrottleTimerRef.current = null;
+      }
+      if (isScrubbingRef.current && player) {
+        try {
+          player.scrubbingModeOptions = { scrubbingModeEnabled: false };
+          player.seekTolerance = { toleranceBefore: 0, toleranceAfter: 0 };
+        } catch {}
+      }
+    };
+  }, [player]);
 
   useEventListener(player, 'timeUpdate', ({ currentTime: time }) => {
     if (controlledTime === undefined && !isScrubbingRef.current) {
@@ -77,7 +206,7 @@ export const PlayerTimeline = React.memo<PlayerTimelineProps>(function PlayerTim
   // Find nearest cached thumbnail frame for instant responsive scrubbing
   const getClosestCachedFrame = React.useCallback((targetSec: number): any | null => {
     let bestThumb: any = null;
-    let minDiff = 12; // within 12 seconds
+    let minDiff = 15; // within 15 seconds
     for (const [cachedTime, thumb] of thumbnailCache.current.entries()) {
       const diff = Math.abs(cachedTime - targetSec);
       if (diff < minDiff) {
@@ -88,49 +217,58 @@ export const PlayerTimeline = React.memo<PlayerTimelineProps>(function PlayerTim
     return bestThumb;
   }, []);
 
-  // Request actual video frame at target time from video player
+  // Request actual video frame at target time from video player (local downloads only)
   const requestFrameAtTime = React.useCallback(
     (targetSeconds: number) => {
-      if (!player || typeof player.generateThumbnailsAsync !== 'function') return;
+      if (!isLocalSource || !player || typeof player.generateThumbnailsAsync !== 'function') return;
 
-      const rounded = Math.max(0, Math.round(targetSeconds));
-      latestRequestedTimeRef.current = rounded;
+      // 5-second bucket quantization to prevent overloading the decoder
+      const BUCKET_SIZE = 5;
+      const bucket = Math.max(0, Math.round(targetSeconds / BUCKET_SIZE) * BUCKET_SIZE);
+      latestRequestedTimeRef.current = bucket;
 
-      if (thumbnailCache.current.has(rounded)) {
-        setFrameThumbnail(thumbnailCache.current.get(rounded));
+      if (thumbnailCache.current.has(bucket)) {
+        setFrameThumbnail(thumbnailCache.current.get(bucket));
         return;
       }
 
       // Check nearest cached frame for instant feedback while fetching exact frame
-      const closest = getClosestCachedFrame(rounded);
+      const closest = getClosestCachedFrame(bucket);
       if (closest) {
         setFrameThumbnail(closest);
       }
 
       if (isGeneratingRef.current) {
-        pendingTimeRef.current = rounded;
+        pendingTimeRef.current = bucket;
         return;
       }
 
       isGeneratingRef.current = true;
       player
-        .generateThumbnailsAsync([rounded], { maxWidth: 160 })
+        .generateThumbnailsAsync([bucket], { maxWidth: 160 })
         .then((results: any[]) => {
-          if (results && results.length > 0) {
+          if (results && results.length > 0 && results[0]) {
             const thumb = results[0];
-            thumbnailCache.current.set(rounded, thumb);
+            // LRU eviction: cap thumbnail cache at 50 items to prevent RAM bloat
+            if (thumbnailCache.current.size >= 50) {
+              const oldestKey = thumbnailCache.current.keys().next().value;
+              if (oldestKey !== undefined) {
+                thumbnailCache.current.delete(oldestKey);
+              }
+            }
+            thumbnailCache.current.set(bucket, thumb);
             if (
               isScrubbingRef.current &&
-              (latestRequestedTimeRef.current === rounded ||
+              (latestRequestedTimeRef.current === bucket ||
                 (scrubPositionRef.current &&
-                  Math.abs(scrubPositionRef.current.time - rounded) <= 15))
+                  Math.abs(scrubPositionRef.current.time - bucket) <= 15))
             ) {
               setFrameThumbnail(thumb);
             }
           }
         })
         .catch(() => {
-          // Fallback to static thumbnail or closest cached on decoder error
+          // Decoder error fallback
         })
         .finally(() => {
           isGeneratingRef.current = false;
@@ -141,51 +279,134 @@ export const PlayerTimeline = React.memo<PlayerTimelineProps>(function PlayerTim
           }
         });
     },
-    [player, getClosestCachedFrame]
+    [player, getClosestCachedFrame, isLocalSource]
   );
 
-  const updateScrub = (locationX: number) => {
+  const updateScrub = (locationX: number, isInitial = false) => {
+    if (typeof locationX !== 'number' || isNaN(locationX) || !isFinite(locationX)) return;
     if (duration <= 0 || timelineWidth <= 0) return;
     const clampedX = Math.max(0, Math.min(timelineWidth, locationX));
     const ratio = clampedX / timelineWidth;
-    const targetTime = ratio * duration;
+    const targetTime = Math.max(0, Math.min(duration, ratio * duration));
     const pos = { time: targetTime, x: clampedX };
     scrubPositionRef.current = pos;
     setScrubPosition(pos);
-    requestFrameAtTime(targetTime);
+
+    if (isLocalSource) {
+      requestFrameAtTime(targetTime);
+    }
+
+    if (isInitial) {
+      lastSeekTimestampRef.current = Date.now();
+      if (player) {
+        try {
+          player.currentTime = targetTime;
+        } catch {}
+      }
+      return;
+    }
+
+    // Throttled live keyframe seek to prevent bridge flooding (~45ms)
+    const now = Date.now();
+    const THROTTLE_MS = 45;
+    const timeSinceLastSeek = now - lastSeekTimestampRef.current;
+    pendingSeekTimeRef.current = targetTime;
+
+    if (timeSinceLastSeek >= THROTTLE_MS) {
+      lastSeekTimestampRef.current = now;
+      if (seekThrottleTimerRef.current) {
+        clearTimeout(seekThrottleTimerRef.current);
+        seekThrottleTimerRef.current = null;
+      }
+      if (player) {
+        try {
+          player.currentTime = targetTime;
+        } catch {}
+      }
+    } else if (!seekThrottleTimerRef.current) {
+      seekThrottleTimerRef.current = setTimeout(() => {
+        seekThrottleTimerRef.current = null;
+        if (isScrubbingRef.current && pendingSeekTimeRef.current !== null) {
+          lastSeekTimestampRef.current = Date.now();
+          const nextTime = pendingSeekTimeRef.current;
+          pendingSeekTimeRef.current = null;
+          if (player) {
+            try {
+              player.currentTime = nextTime;
+            } catch {}
+          }
+        }
+      }, THROTTLE_MS - timeSinceLastSeek);
+    }
   };
 
   const handleTouchStart = (e: any) => {
     isScrubbingRef.current = true;
     setIsScrubbing(true);
     onScrubbingChange?.(true);
-    updateScrub(e.nativeEvent.locationX);
+
+    scrubStartTimeRef.current =
+      typeof displayTime === 'number' && !isNaN(displayTime) ? displayTime : 0;
+
+    if (player) {
+      try {
+        player.scrubbingModeOptions = {
+          scrubbingModeEnabled: true,
+          increaseCodecOperatingRate: true,
+          enableDynamicScheduling: true,
+          useDecodeOnlyFlag: true,
+          allowSkippingMediaCodecFlush: true,
+        };
+        player.seekTolerance = {
+          toleranceBefore: 4,
+          toleranceAfter: 4,
+        };
+      } catch {}
+    }
+
+    updateScrub(e.nativeEvent.locationX, true);
   };
 
   const handleTouchMove = (e: any) => {
     if (!isScrubbingRef.current) return;
-    updateScrub(e.nativeEvent.locationX);
+    updateScrub(e.nativeEvent.locationX, false);
   };
 
   const handleTouchEnd = () => {
     if (!isScrubbingRef.current) return;
     isScrubbingRef.current = false;
+    if (seekThrottleTimerRef.current) {
+      clearTimeout(seekThrottleTimerRef.current);
+      seekThrottleTimerRef.current = null;
+    }
+    pendingSeekTimeRef.current = null;
+
     const finalPos = scrubPositionRef.current;
     setIsScrubbing(false);
     setScrubPosition(null);
     scrubPositionRef.current = null;
     pendingTimeRef.current = null;
     setFrameThumbnail(null);
-    onScrubbingChange?.(false);
+
+    if (player) {
+      try {
+        player.scrubbingModeOptions = { scrubbingModeEnabled: false };
+        player.seekTolerance = { toleranceBefore: 0, toleranceAfter: 0 };
+      } catch {}
+    }
 
     if (finalPos && duration > 0) {
       Haptics.selectionAsync().catch(() => {});
       if (player) {
-        player.currentTime = finalPos.time;
+        try {
+          player.currentTime = finalPos.time;
+        } catch {}
       }
       setInternalTime(finalPos.time);
       onSeek(finalPos.time);
     }
+
+    onScrubbingChange?.(false);
   };
 
   const activePercent =
@@ -202,7 +423,15 @@ export const PlayerTimeline = React.memo<PlayerTimelineProps>(function PlayerTim
     Math.min(maxSafeBubbleLeft, currentScrubX - PREVIEW_HALF)
   );
 
-  const deltaSeconds = scrubPosition ? Math.round(scrubPosition.time - displayTime) : 0;
+  const deltaSeconds = scrubPosition
+    ? Math.round(scrubPosition.time - scrubStartTimeRef.current)
+    : 0;
+  const formattedDelta = formatDeltaTime(deltaSeconds);
+  const chapterBadge = getAniSkipChapterBadge(
+    scrubPosition?.time ?? 0,
+    duration,
+    aniSkipResults
+  );
 
   return (
     <View
@@ -219,7 +448,7 @@ export const PlayerTimeline = React.memo<PlayerTimelineProps>(function PlayerTim
       accessibilityRole="adjustable"
       accessibilityLabel="BARRA DI AVANZAMENTO VIDEO CON ANTEPRIMA FRAME"
     >
-      {/* Floating Scrub Preview Card with Real Frame Preview */}
+      {/* Floating Scrub Preview Card with Live Time-Scrubbing HUD OLED */}
       {isScrubbing && scrubPosition && (
         <View
           pointerEvents="none"
@@ -231,38 +460,44 @@ export const PlayerTimeline = React.memo<PlayerTimelineProps>(function PlayerTim
             },
           ]}
         >
-          {frameThumbnail ? (
+          {isLocalSource && frameThumbnail ? (
             <Image
               source={frameThumbnail}
               style={styles.previewThumb}
               contentFit="cover"
             />
-          ) : thumbnail ? (
-            <Image
-              source={{ uri: thumbnail }}
-              style={styles.previewThumb}
-              contentFit="cover"
-            />
-          ) : (
-            <View style={[styles.previewThumb, styles.previewPlaceholder]}>
-              <Ionicons name="film-outline" size={24} color="#888888" />
-            </View>
-          )}
+          ) : null}
 
-          <Text style={styles.previewTimeText}>
-            {formatTime(scrubPosition.time)}
-          </Text>
-
-          {Math.abs(deltaSeconds) >= 2 && (
-            <Text
-              style={[
-                styles.previewDeltaText,
-                { color: deltaSeconds > 0 ? '#4ADE80' : '#F87171' },
-              ]}
-            >
-              {deltaSeconds > 0 ? `+${deltaSeconds}s` : `${deltaSeconds}s`}
+          <View style={styles.previewTimeRow}>
+            <Text style={styles.previewTimeText}>
+              {formatTime(scrubPosition.time)}
             </Text>
-          )}
+
+            {formattedDelta ? (
+              <Text
+                style={[
+                  styles.previewDeltaText,
+                  { color: formattedDelta.color },
+                ]}
+              >
+                {formattedDelta.text}
+              </Text>
+            ) : null}
+          </View>
+
+          <View
+            style={[
+              styles.chapterBadge,
+              {
+                borderColor: chapterBadge.borderColor,
+                backgroundColor: chapterBadge.bgColor,
+              },
+            ]}
+          >
+            <Text style={[styles.chapterBadgeText, { color: chapterBadge.color }]}>
+              {chapterBadge.label}
+            </Text>
+          </View>
         </View>
       )}
 
@@ -372,43 +607,61 @@ const styles = StyleSheet.create({
   },
   previewBubble: {
     position: 'absolute',
-    bottom: 30,
-    backgroundColor: 'rgba(15, 15, 15, 0.95)',
+    bottom: 32,
+    backgroundColor: 'rgba(10, 10, 10, 0.96)',
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.25)',
-    padding: 5,
+    borderColor: 'rgba(255, 255, 255, 0.22)',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 3,
+    gap: 4,
     zIndex: 10,
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.5,
-    shadowRadius: 6,
-    elevation: 8,
+    shadowOpacity: 0.6,
+    shadowRadius: 8,
+    elevation: 10,
   },
   previewThumb: {
     width: '100%',
     aspectRatio: 16 / 9,
     borderRadius: 5,
     backgroundColor: '#0A0A0A',
+    marginBottom: 2,
   },
-  previewPlaceholder: {
+  previewTimeRow: {
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 6,
   },
   previewTimeText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '800',
     color: '#FFFFFF',
     fontFamily: oledTheme.typography.caption.fontFamily,
     letterSpacing: 0.5,
   },
   previewDeltaText: {
-    fontSize: 10,
-    fontWeight: '700',
+    fontSize: 11,
+    fontWeight: '800',
     fontFamily: oledTheme.typography.caption.fontFamily,
+  },
+  chapterBadge: {
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chapterBadgeText: {
+    fontSize: 9.5,
+    fontWeight: '800',
+    fontFamily: oledTheme.typography.caption.fontFamily,
+    letterSpacing: 0.6,
   },
   timeText: {
     fontSize: 12,
