@@ -8,6 +8,15 @@ e questo progetto aderisce al [Semantic Versioning](https://semver.org/lang/it/)
 ## [Unreleased]
 
 ### Aggiunto
+- **Segmentazione Capitoli sulla Timeline Video in Stile YouTube & Colori OLED**:
+  - Implementata in `PlayerTimeline.tsx` la suddivisione visiva dinamica della progress bar in blocchi capitolo logici (`computeTimelineChapters`, `findChapterAtTime`) separati da gap discreti in stile YouTube (`gap: 2.5` a riposo, `3` durante lo scrub a 6dp).
+  - Palette cromatica OLED dedicata per ciascun tipo di segmento: `[SIGLA INIZIALE]` (ambra `#FBBF24`), `[SIGLA FINALE]` (viola `#A78BFA`), `[RECAP]` (azzurro `#38BDF8`), `[POST-CREDITS]` (verde smeraldo `#34D399`) ed `[EPISODIO]` (colore d'accento primario del tema OLED).
+  - Tracce unplayed pre-tinteggiate con opacità OLED per immediata riconoscibilità visiva dei capitoli anche a video in pausa.
+  - Cursore thumb dinamico con colore coordinato (`thumbColor`) al capitolo puntato durante lo scrub.
+  - Feedback aptico leggero (`Haptics.impactAsync(Light)`) ad ogni attraversamento di confine tra capitoli durante il trascinamento.
+  - Estensione automatica della ending alla durata complessiva se termina entro $\le 5$s dalla fine, deduplicazione/clamp degli intervalli sovrapposti e fallback trasparente alla barra continua standard su video privi di intervalli AniSkip.
+- **Suite di Test Estesa a 39 Stadi**:
+  - Test suite `tests/core-verification.test.ts` estesa a **39 stadi** completi (`[1/7]` fino a `[39/39]`), validata con codice 0.
 - **TextInput Decoupled Anti-Drop per Digitazione Veloce su Tastiere Terze Android**:
   - Risolto il problema della cancellazione/perdita improvvisa di caratteri quando si digita o si spamma velocemente nel campo di ricerca con tastiere non-Gboard (SwiftKey, Fleksy, Samsung Keyboard, Ekatox).
   - Eliminazione del vincolo forzato `value={localText}` su `<TextInput>` a favore di `defaultValue={lastNativeTextRef.current}`, azzerando i comandi Fabric `setText` che sovrascrivevano il buffer nativo cancellando i tasti premuti in sequenza rapida.
@@ -177,4 +186,4 @@ Minor Player Fixes
 
 ## [1.0.0] - 2026-11-17
 
-- Aggiornamento e miglioramenti prestazionali per Kuro Mobile.
+Player Preview Fixed

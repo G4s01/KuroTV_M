@@ -37,14 +37,18 @@ Il player integra gesture native ad altissima fluidità tramite `react-native-ge
 
 ---
 
-## 🎞️ Timeline con Anteprima dei Frame Reali (Live Scrubbing)
+## 🎞️ Timeline con Anteprima dei Frame Reali (Live Scrubbing) & Segmentazione Capitoli YouTube
 
-La barra di avanzamento ([`src/components/player/PlayerTimeline.tsx`](../src/components/player/PlayerTimeline.tsx)) include un sistema di anteprima reattiva a 60 FPS:
+La barra di avanzamento ([`src/components/player/PlayerTimeline.tsx`](../src/components/player/PlayerTimeline.tsx)) include un sistema di anteprima reattiva a 60 FPS con segmentazione a capitoli in stile YouTube:
 
-1. **Estrazione Fotogrammi Video**: Durante lo scrub, il player interroga le API native di decodifica `player.generateThumbnailsAsync([targetSecond], { maxWidth: 160 })`.
-2. **Cache in Memoria & Proximity Matching**: I frame decodificati vengono memorizzati in una `thumbnailCache` locale. L'algoritmo `getClosestCachedFrame` individua istantaneamente il fotogramma più vicino (entro 12 secondi), garantendo una risposta visiva immediata durante lo scorrimento continuo delle dita.
-3. **Card Fluttuante**: La bolla di preview sovrasta il cursore, mostrando la miniatura del frame reale, il minutaggio esatto formattato e il delta temporale relativo (`+15s`, `-30s`).
-4. **Target Touch $\ge 44$dp & Haptics**: Wrapper touch con altezza minima 44dp e feedback aptico `Haptics.selectionAsync()` al rilascio del cursore.
+1. **Segmentazione Capitoli in Stile YouTube**:
+   - Ripartizione visiva dinamica dell'intera durata video in segmenti logici separati da gap discreti (`gap: 2.5` a riposo, `3` durante lo scrub a 6dp): `[EPISODIO]` (colore primario tema), `[SIGLA INIZIALE]` (ambra `#FBBF24`), `[SIGLA FINALE]` (viola `#A78BFA`), `[RECAP]` (azzurro `#38BDF8`) e `[POST-CREDITS]` (verde smeraldo `#34D399`).
+   - Sfondo delle porzioni non ancora riprodotte pre-tinteggiato con opacità OLED dedicata per riconoscere a colpo d'occhio la posizione di intro, outro e scene post-credit anche a player fermo.
+   - Fallback immediato alla barra continua classica (`timelineTrack`) in assenza di metadati AniSkip o su stream senza intervalli registrati.
+2. **Estrazione Fotogrammi Video & Time-Scrubbing HUD OLED**: Durante lo scrub, il player interroga le API native di decodifica `player.generateThumbnailsAsync([targetSecond], { maxWidth: 160 })` con quantizzazione a bucket di 5 secondi per sole sorgenti locali scaricate.
+3. **Cache in Memoria & Proximity Matching**: I frame decodificati vengono memorizzati in una `thumbnailCache` locale (fino a 50 item con logica LRU). L'algoritmo `getClosestCachedFrame` individua istantaneamente il fotogramma più vicino (entro 15 secondi), garantendo una risposta visiva immediata durante lo scorrimento continuo delle dita.
+4. **Card Fluttuante & Cursore Adattivo**: La bolla di preview OLED sovrasta il cursore, mostrando la miniatura del frame reale, il minutaggio esatto, il delta temporale relativo (`+02:45` verde `#4ADE80`, `-01:10` rosso `#F87171`) e il badge capitolo attivo. Il thumb di scorrimento adotta dinamicamente il colore coordinato del capitolo puntato.
+5. **Target Touch $\ge 44$dp, Haptics & Accessibilità**: Wrapper touch con altezza minima 44dp, feedback aptico leggero (`Haptics.impactAsync(Light)`) protetto da debounce anti-jitter a 100ms al passaggio tra capitoli durante il trascinamento (`findChapterAtTime`), feedback di rilascio `Haptics.selectionAsync()`, e supporto completo per TalkBack (`accessibilityValue` e `accessibilityActions` a incrementi/decrementi di 10 secondi).
 
 ---
 

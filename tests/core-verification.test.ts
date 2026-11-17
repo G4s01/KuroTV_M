@@ -43,6 +43,8 @@ import {
   formatTime,
   formatDeltaTime,
   getAniSkipChapterBadge,
+  computeTimelineChapters,
+  findChapterAtTime,
 } from '../src/components/player/index';
 import {
   AnimeHeaderBackdrop,
@@ -5169,6 +5171,214 @@ assert(playerRouteSrc.includes('!isScrubbingRef.current && aniSkipResultsRef.cur
 assert(playerRouteSrc.includes('userWantsPlaybackRef.current && !player.playing'), 'app/player/[id].tsx deve riprendere playback al rilascio se richiesto');
 
 console.log('✓ Live Keyframe Scrubbing, Time-Scrubbing HUD OLED & Quantizzazione Thumbnail verificati con successo.');
+
+// -----------------------------------------------------------------------------
+// [39/39] Verifica Visualizzazione Capitoli sulla Timeline (Segmenti YouTube, Gaps, Colori OLED & Haptics)
+// -----------------------------------------------------------------------------
+console.log('\n[39/39] Verifica Visualizzazione Capitoli sulla Timeline (Segmenti YouTube, Gaps, Colori OLED & Haptics)...');
+
+// 1. Verifica computeTimelineChapters con episodio anime standard (OP, ED, Post-credits)
+const standardSkips: AniSkipResult[] = [
+  {
+    skipId: 'op-std',
+    skipType: 'op',
+    interval: { startTime: 90, endTime: 180 },
+    episodeLength: 1440,
+  },
+  {
+    skipId: 'ed-std',
+    skipType: 'ed',
+    interval: { startTime: 1300, endTime: 1390 },
+    episodeLength: 1440,
+  },
+];
+
+const stdChapters = computeTimelineChapters(1440, standardSkips, '#10B981');
+assert.strictEqual(stdChapters.length, 5, 'Episodio con OP ed ED deve generare esattamente 5 capitoli (Ep, OP, Ep, ED, Post-Credits)');
+assert.strictEqual(stdChapters[0].type, 'episode');
+assert.strictEqual(stdChapters[0].startTime, 0);
+assert.strictEqual(stdChapters[0].endTime, 90);
+assert.strictEqual(stdChapters[0].playedColor, '#10B981');
+
+assert.strictEqual(stdChapters[1].type, 'op');
+assert.strictEqual(stdChapters[1].label, '[SIGLA INIZIALE]');
+assert.strictEqual(stdChapters[1].startTime, 90);
+assert.strictEqual(stdChapters[1].endTime, 180);
+assert.strictEqual(stdChapters[1].playedColor, '#FBBF24');
+assert.strictEqual(stdChapters[1].unplayedColor, 'rgba(251, 191, 36, 0.28)');
+
+assert.strictEqual(stdChapters[2].type, 'episode');
+assert.strictEqual(stdChapters[2].startTime, 180);
+assert.strictEqual(stdChapters[2].endTime, 1300);
+
+assert.strictEqual(stdChapters[3].type, 'ed');
+assert.strictEqual(stdChapters[3].label, '[SIGLA FINALE]');
+assert.strictEqual(stdChapters[3].startTime, 1300);
+assert.strictEqual(stdChapters[3].endTime, 1390);
+assert.strictEqual(stdChapters[3].playedColor, '#A78BFA');
+assert.strictEqual(stdChapters[3].unplayedColor, 'rgba(167, 139, 250, 0.28)');
+
+assert.strictEqual(stdChapters[4].type, 'post-credits');
+assert.strictEqual(stdChapters[4].label, '[POST-CREDITS]');
+assert.strictEqual(stdChapters[4].startTime, 1390);
+assert.strictEqual(stdChapters[4].endTime, 1440);
+assert.strictEqual(stdChapters[4].playedColor, '#34D399');
+assert.strictEqual(stdChapters[4].unplayedColor, 'rgba(52, 211, 153, 0.28)');
+
+// 2. Verifica computeTimelineChapters con Recap a inizio video (t=0) e no gaps
+const recapSkips: AniSkipResult[] = [
+  {
+    skipId: 'recap-0',
+    skipType: 'recap',
+    interval: { startTime: 0, endTime: 60 },
+    episodeLength: 1440,
+  },
+  {
+    skipId: 'op-0',
+    skipType: 'mixed-op',
+    interval: { startTime: 60, endTime: 150 },
+    episodeLength: 1440,
+  },
+  {
+    skipId: 'ed-0',
+    skipType: 'mixed-ed',
+    interval: { startTime: 1320, endTime: 1410 },
+    episodeLength: 1440,
+  },
+];
+
+const recapChapters = computeTimelineChapters(1440, recapSkips, '#3B82F6');
+assert.strictEqual(recapChapters.length, 5);
+assert.strictEqual(recapChapters[0].type, 'recap', 'Primo capitolo deve essere recap a t=0 senza segmento episodio vuoto');
+assert.strictEqual(recapChapters[0].label, '[RECAP]');
+assert.strictEqual(recapChapters[0].startTime, 0);
+assert.strictEqual(recapChapters[0].endTime, 60);
+assert.strictEqual(recapChapters[0].playedColor, '#38BDF8');
+assert.strictEqual(recapChapters[0].unplayedColor, 'rgba(56, 189, 248, 0.28)');
+
+assert.strictEqual(recapChapters[1].type, 'op');
+assert.strictEqual(recapChapters[1].startTime, 60);
+assert.strictEqual(recapChapters[1].endTime, 150);
+
+// 3. Verifica estensione ED se termina entro 5 secondi dalla fine
+const edNearEndSkips: AniSkipResult[] = [
+  {
+    skipId: 'ed-end',
+    skipType: 'ed',
+    interval: { startTime: 1300, endTime: 1438 },
+    episodeLength: 1440,
+  },
+];
+const edEndChapters = computeTimelineChapters(1440, edNearEndSkips);
+assert.strictEqual(edEndChapters.length, 2, 'ED che termina a 2s dalla fine deve estendersi fino al termine (2 capitoli)');
+assert.strictEqual(edEndChapters[1].endTime, 1440, 'ED deve terminare esattamente a duration (1440)');
+
+// 4. Verifica ordinamento e gestione overlap intervalli disordinati
+const messySkips: AniSkipResult[] = [
+  {
+    skipId: 'ed-mess',
+    skipType: 'ed',
+    interval: { startTime: 1200, endTime: 1290 },
+    episodeLength: 1440,
+  },
+  {
+    skipId: 'op-mess',
+    skipType: 'op',
+    interval: { startTime: 100, endTime: 190 },
+    episodeLength: 1440,
+  },
+  {
+    skipId: 'overlap-mess',
+    skipType: 'recap',
+    interval: { startTime: 180, endTime: 250 }, // Overlaps with OP end 190
+    episodeLength: 1440,
+  },
+];
+const messyChapters = computeTimelineChapters(1440, messySkips);
+assert(messyChapters.length >= 4, 'Intervalli disordinati e sovrapposti devono essere ordinati e ripartiti');
+assert.strictEqual(messyChapters[0].type, 'episode');
+assert.strictEqual(messyChapters[1].type, 'op');
+assert.strictEqual(messyChapters[2].type, 'recap');
+assert.strictEqual(messyChapters[2].startTime, 190, 'L\'intervallo sovrapposto deve partire dopo la fine del precedente (190)');
+
+// 5. Verifica robustezza input invalidi o assenti, clamp tempi negativi e skip sconosciuti
+assert.deepStrictEqual(computeTimelineChapters(0, standardSkips), [], 'duration 0 deve restituire []');
+assert.deepStrictEqual(computeTimelineChapters(-10, standardSkips), [], 'duration negativa deve restituire []');
+assert.deepStrictEqual(computeTimelineChapters(NaN, standardSkips), [], 'duration NaN deve restituire []');
+assert.deepStrictEqual(computeTimelineChapters(Infinity, standardSkips), [], 'duration Infinity deve restituire []');
+assert.deepStrictEqual(computeTimelineChapters(1440, []), [], 'aniSkipResults vuoto deve restituire []');
+assert.deepStrictEqual(computeTimelineChapters(1440, undefined), [], 'aniSkipResults undefined deve restituire []');
+assert.deepStrictEqual(
+  computeTimelineChapters(1440, [{ skipId: 'x', skipType: 'op', interval: { startTime: 2000, endTime: 2100 }, episodeLength: 1440 }]),
+  [],
+  'Intervallo oltre duration deve restituire []'
+);
+
+// 5b. Verifica clamping tempi di inizio negativi (metadata broadcast/sigla a inizio video)
+const negStartSkips: AniSkipResult[] = [
+  { skipId: 'op-neg', skipType: 'op', interval: { startTime: -2.5, endTime: 90 }, episodeLength: 1440 },
+  { skipId: 'ed-neg', skipType: 'ed', interval: { startTime: 1300, endTime: 1390 }, episodeLength: 1440 },
+];
+const negStartChapters = computeTimelineChapters(1440, negStartSkips);
+assert.strictEqual(negStartChapters[0].type, 'op', 'Inizio negativo deve essere clampato a 0 come sigla');
+assert.strictEqual(negStartChapters[0].startTime, 0);
+assert.strictEqual(negStartChapters[0].endTime, 90);
+
+// 5c. Verifica unione di skip consecutivi dello stesso tipo (es. op + mixed-op contigui)
+const adjacentSkips: AniSkipResult[] = [
+  { skipId: 'op-part1', skipType: 'op', interval: { startTime: 60, endTime: 120 }, episodeLength: 1440 },
+  { skipId: 'op-part2', skipType: 'mixed-op', interval: { startTime: 120, endTime: 150 }, episodeLength: 1440 },
+  { skipId: 'ed-adj', skipType: 'ed', interval: { startTime: 1300, endTime: 1390 }, episodeLength: 1440 },
+];
+const adjacentChapters = computeTimelineChapters(1440, adjacentSkips);
+const opMerged = adjacentChapters.find((c) => c.type === 'op');
+assert(opMerged, 'Deve esistere capitolo OP unificato');
+assert.strictEqual(opMerged.startTime, 60);
+assert.strictEqual(opMerged.endTime, 150, 'Skip contigui dello stesso tipo devono fondersi senza split/gap intermedi');
+
+// 5d. Verifica scarto di skipType sconosciuti senza frammentare l\'episodio
+const unknownTypeSkips: AniSkipResult[] = [
+  { skipId: 'unknown-1', skipType: 'custom' as any, interval: { startTime: 100, endTime: 200 }, episodeLength: 1440 },
+  { skipId: 'op-valid', skipType: 'op', interval: { startTime: 300, endTime: 390 }, episodeLength: 1440 },
+];
+const filteredChapters = computeTimelineChapters(1440, unknownTypeSkips);
+assert.strictEqual(filteredChapters.filter((c) => c.type === 'episode').length, 2, 'Skip non riconosciuti non devono frammentare l\'episodio canonico');
+
+// 5e. Sincronizzazione getAniSkipChapterBadge con estensione ED entro 5s da duration
+const syncBadgeNearEnd = getAniSkipChapterBadge(1439, 1440, edNearEndSkips);
+assert.strictEqual(syncBadgeNearEnd.label, '[SIGLA FINALE]', 'Badge a 1439s deve essere [SIGLA FINALE] per ED che termina a 1438s');
+
+// 6. Verifica findChapterAtTime
+assert.strictEqual(findChapterAtTime(45, stdChapters)?.type, 'episode');
+assert.strictEqual(findChapterAtTime(90, stdChapters)?.type, 'op');
+assert.strictEqual(findChapterAtTime(150, stdChapters)?.type, 'op');
+assert.strictEqual(findChapterAtTime(500, stdChapters)?.type, 'episode');
+assert.strictEqual(findChapterAtTime(1350, stdChapters)?.type, 'ed');
+assert.strictEqual(findChapterAtTime(1400, stdChapters)?.type, 'post-credits');
+assert.strictEqual(findChapterAtTime(1440, stdChapters)?.type, 'post-credits', 'Al confine finale deve restituire ultimo capitolo');
+assert.strictEqual(findChapterAtTime(-10, stdChapters)?.type, 'episode', 'A tempo negativo deve restituire primo capitolo');
+assert.strictEqual(findChapterAtTime(50, []), null, 'Lista vuota deve restituire null');
+assert.strictEqual(findChapterAtTime(NaN, stdChapters), null, 'findChapterAtTime con NaN deve restituire null');
+
+// 7. Verifica Struttura, Accessibilità e Rendering PlayerTimeline.tsx
+const updatedTimelineSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/components/player/PlayerTimeline.tsx'), 'utf-8');
+assert(updatedTimelineSrc.includes('computeTimelineChapters'), 'PlayerTimeline deve contenere computeTimelineChapters');
+assert(updatedTimelineSrc.includes('findChapterAtTime'), 'PlayerTimeline deve contenere findChapterAtTime');
+assert(updatedTimelineSrc.includes('timelineTrackChapters'), 'PlayerTimeline deve avere lo stile timelineTrackChapters');
+assert(updatedTimelineSrc.includes('timelineTrackChaptersActive'), 'PlayerTimeline deve avere lo stile timelineTrackChaptersActive');
+assert(updatedTimelineSrc.includes('chapterSegment'), 'PlayerTimeline deve avere lo stile chapterSegment');
+assert(updatedTimelineSrc.includes('chapterSegmentBar'), 'PlayerTimeline deve avere lo stile chapterSegmentBar');
+assert(updatedTimelineSrc.includes('chapterSegmentBarActive'), 'PlayerTimeline deve avere lo stile chapterSegmentBarActive');
+assert(updatedTimelineSrc.includes('gap: 2.5'), 'PlayerTimeline deve supportare i gap in stile YouTube a 2.5dp');
+assert(updatedTimelineSrc.includes('gap: 3'), 'PlayerTimeline deve espandere i gap a 3dp durante lo scrubbing attivo');
+assert(updatedTimelineSrc.includes('chapters.length > 1'), 'PlayerTimeline deve condizionare i segmenti a chapters.length > 1');
+assert(updatedTimelineSrc.includes('Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)'), 'PlayerTimeline deve fornire feedback aptico Light al cambio capitolo');
+assert(updatedTimelineSrc.includes('lastChapterHapticTimeRef'), 'PlayerTimeline deve proteggere il feedback aptico da vibrazioni jitter');
+assert(updatedTimelineSrc.includes('accessibilityValue'), 'PlayerTimeline deve supportare accessibilityValue TalkBack');
+assert(updatedTimelineSrc.includes('accessibilityActions'), 'PlayerTimeline deve supportare accessibilityActions increment/decrement');
+assert(updatedTimelineSrc.includes('thumbColor'), 'PlayerTimeline deve adattare il colore del thumb al capitolo attivo');
+
+console.log('✓ Visualizzazione Capitoli sulla Timeline (Segmenti YouTube, Gaps, Colori OLED & Haptics) verificata con successo.');
 
 // -----------------------------------------------------------------------------
 // Fine Test

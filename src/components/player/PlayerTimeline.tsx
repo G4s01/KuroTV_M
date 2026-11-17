@@ -39,6 +39,225 @@ export function formatDeltaTime(
   };
 }
 
+export type ChapterType = 'op' | 'ed' | 'recap' | 'post-credits' | 'episode';
+
+export interface TimelineChapter {
+  id: string;
+  type: ChapterType;
+  label: string;
+  startTime: number;
+  endTime: number;
+  playedColor: string;
+  unplayedColor: string;
+  flex: number;
+}
+
+export function computeTimelineChapters(
+  duration: number,
+  aniSkipResults?: AniSkipResult[],
+  primaryColor: string = '#10B981'
+): TimelineChapter[] {
+  if (
+    typeof duration !== 'number' ||
+    isNaN(duration) ||
+    !isFinite(duration) ||
+    duration <= 0 ||
+    !Array.isArray(aniSkipResults) ||
+    aniSkipResults.length === 0
+  ) {
+    return [];
+  }
+
+  interface CleanInterval {
+    startTime: number;
+    endTime: number;
+    type: ChapterType;
+    label: string;
+    playedColor: string;
+    unplayedColor: string;
+  }
+
+  const rawIntervals: CleanInterval[] = [];
+
+  for (const item of aniSkipResults) {
+    if (!item || !item.interval) continue;
+    const { startTime, endTime } = item.interval;
+    if (
+      typeof startTime !== 'number' ||
+      typeof endTime !== 'number' ||
+      isNaN(startTime) ||
+      isNaN(endTime)
+    ) {
+      continue;
+    }
+
+    const clampedStart = Math.max(0, startTime);
+    const clampedEnd = Math.min(duration, endTime);
+    if (clampedEnd <= clampedStart || clampedStart >= duration) {
+      continue;
+    }
+
+    let type: ChapterType;
+    let label: string;
+    let playedColor: string;
+    let unplayedColor: string;
+
+    if (item.skipType === 'op' || item.skipType === 'mixed-op') {
+      type = 'op';
+      label = '[SIGLA INIZIALE]';
+      playedColor = '#FBBF24';
+      unplayedColor = 'rgba(251, 191, 36, 0.28)';
+    } else if (item.skipType === 'ed' || item.skipType === 'mixed-ed') {
+      type = 'ed';
+      label = '[SIGLA FINALE]';
+      playedColor = '#A78BFA';
+      unplayedColor = 'rgba(167, 139, 250, 0.28)';
+    } else if (item.skipType === 'recap') {
+      type = 'recap';
+      label = '[RECAP]';
+      playedColor = '#38BDF8';
+      unplayedColor = 'rgba(56, 189, 248, 0.28)';
+    } else {
+      // Discard unrecognized skip types to avoid fragmenting the episode
+      continue;
+    }
+
+    rawIntervals.push({
+      startTime: clampedStart,
+      endTime: clampedEnd,
+      type,
+      label,
+      playedColor,
+      unplayedColor,
+    });
+  }
+
+  if (rawIntervals.length === 0) {
+    return [];
+  }
+
+  // Sort by startTime ascending
+  rawIntervals.sort((a, b) => a.startTime - b.startTime);
+
+  // Merge/clamp overlapping intervals if any
+  const sortedIntervals: CleanInterval[] = [];
+  for (const cur of rawIntervals) {
+    if (sortedIntervals.length === 0) {
+      sortedIntervals.push(cur);
+      continue;
+    }
+    const prev = sortedIntervals[sortedIntervals.length - 1];
+    // Merge consecutive identical types if touching or overlapping
+    if (cur.type === prev.type && cur.startTime <= prev.endTime) {
+      prev.endTime = Math.max(prev.endTime, cur.endTime);
+      continue;
+    }
+    if (cur.startTime < prev.endTime) {
+      cur.startTime = prev.endTime;
+    }
+    if (cur.endTime > cur.startTime) {
+      sortedIntervals.push(cur);
+    }
+  }
+
+  if (sortedIntervals.length === 0) {
+    return [];
+  }
+
+  // Check if ending skip is present and ends close to duration (within 5 seconds)
+  const lastInterval = sortedIntervals[sortedIntervals.length - 1];
+  if (lastInterval.type === 'ed' && duration - lastInterval.endTime <= 5) {
+    lastInterval.endTime = duration;
+  }
+
+  // Build contiguous timeline chapters across [0, duration]
+  const chapters: TimelineChapter[] = [];
+  let cursor = 0;
+  let segIndex = 0;
+
+  for (const interval of sortedIntervals) {
+    // Gap before interval -> Episode segment
+    if (interval.startTime > cursor) {
+      const len = interval.startTime - cursor;
+      chapters.push({
+        id: `chapter-${segIndex++}-episode`,
+        type: 'episode',
+        label: '[EPISODIO]',
+        startTime: cursor,
+        endTime: interval.startTime,
+        playedColor: primaryColor,
+        unplayedColor: 'rgba(255, 255, 255, 0.24)',
+        flex: Math.max(0.1, len),
+      });
+    }
+
+    // The AniSkip chapter segment
+    const intLen = interval.endTime - interval.startTime;
+    chapters.push({
+      id: `chapter-${segIndex++}-${interval.type}`,
+      type: interval.type,
+      label: interval.label,
+      startTime: interval.startTime,
+      endTime: interval.endTime,
+      playedColor: interval.playedColor,
+      unplayedColor: interval.unplayedColor,
+      flex: Math.max(0.1, intLen),
+    });
+
+    cursor = interval.endTime;
+  }
+
+  // Tail after last interval
+  if (cursor < duration) {
+    const isAfterEnding = sortedIntervals.some((i) => i.type === 'ed');
+    const isPostCredits = isAfterEnding && duration - cursor > 5;
+    const tailLen = duration - cursor;
+
+    chapters.push({
+      id: `chapter-${segIndex++}-${isPostCredits ? 'post-credits' : 'episode'}`,
+      type: isPostCredits ? 'post-credits' : 'episode',
+      label: isPostCredits ? '[POST-CREDITS]' : '[EPISODIO]',
+      startTime: cursor,
+      endTime: duration,
+      playedColor: isPostCredits ? '#34D399' : primaryColor,
+      unplayedColor: isPostCredits
+        ? 'rgba(52, 211, 153, 0.28)'
+        : 'rgba(255, 255, 255, 0.24)',
+      flex: Math.max(0.1, tailLen),
+    });
+  }
+
+  // If only 1 chapter resulted (no segments/breaks), return empty for standard bar
+  if (chapters.length <= 1) {
+    return [];
+  }
+
+  return chapters;
+}
+
+export function findChapterAtTime(
+  time: number,
+  chapters: TimelineChapter[]
+): TimelineChapter | null {
+  if (
+    typeof time !== 'number' ||
+    isNaN(time) ||
+    !Array.isArray(chapters) ||
+    chapters.length === 0
+  ) {
+    return null;
+  }
+  for (const ch of chapters) {
+    if (time >= ch.startTime && time < ch.endTime) {
+      return ch;
+    }
+  }
+  const last = chapters[chapters.length - 1];
+  if (time >= last.endTime) return last;
+  if (time <= chapters[0].startTime) return chapters[0];
+  return null;
+}
+
 export function getAniSkipChapterBadge(
   targetTime: number,
   duration: number,
@@ -57,33 +276,41 @@ export function getAniSkipChapterBadge(
         skip &&
         skip.interval &&
         typeof skip.interval.startTime === 'number' &&
-        typeof skip.interval.endTime === 'number' &&
-        targetTime >= skip.interval.startTime &&
-        targetTime <= skip.interval.endTime
+        typeof skip.interval.endTime === 'number'
       ) {
-        if (skip.skipType === 'op' || skip.skipType === 'mixed-op') {
-          return {
-            label: '[SIGLA INIZIALE]',
-            color: '#FBBF24',
-            borderColor: 'rgba(251, 191, 36, 0.45)',
-            bgColor: 'rgba(251, 191, 36, 0.12)',
-          };
+        let effEnd = skip.interval.endTime;
+        if (
+          (skip.skipType === 'ed' || skip.skipType === 'mixed-ed') &&
+          duration > 0 &&
+          duration - effEnd <= 5
+        ) {
+          effEnd = duration;
         }
-        if (skip.skipType === 'ed' || skip.skipType === 'mixed-ed') {
-          return {
-            label: '[SIGLA FINALE]',
-            color: '#A78BFA',
-            borderColor: 'rgba(167, 139, 250, 0.45)',
-            bgColor: 'rgba(167, 139, 250, 0.12)',
-          };
-        }
-        if (skip.skipType === 'recap') {
-          return {
-            label: '[RECAP]',
-            color: '#38BDF8',
-            borderColor: 'rgba(56, 189, 248, 0.45)',
-            bgColor: 'rgba(56, 189, 248, 0.12)',
-          };
+        if (targetTime >= skip.interval.startTime && targetTime <= effEnd) {
+          if (skip.skipType === 'op' || skip.skipType === 'mixed-op') {
+            return {
+              label: '[SIGLA INIZIALE]',
+              color: '#FBBF24',
+              borderColor: 'rgba(251, 191, 36, 0.45)',
+              bgColor: 'rgba(251, 191, 36, 0.12)',
+            };
+          }
+          if (skip.skipType === 'ed' || skip.skipType === 'mixed-ed') {
+            return {
+              label: '[SIGLA FINALE]',
+              color: '#A78BFA',
+              borderColor: 'rgba(167, 139, 250, 0.45)',
+              bgColor: 'rgba(167, 139, 250, 0.12)',
+            };
+          }
+          if (skip.skipType === 'recap') {
+            return {
+              label: '[RECAP]',
+              color: '#38BDF8',
+              borderColor: 'rgba(56, 189, 248, 0.45)',
+              bgColor: 'rgba(56, 189, 248, 0.12)',
+            };
+          }
         }
       }
     }
@@ -160,6 +387,13 @@ export const PlayerTimeline = React.memo<PlayerTimelineProps>(function PlayerTim
   const [timelineWidth, setTimelineWidth] = React.useState(1);
   const [isScrubbing, setIsScrubbing] = React.useState(false);
   const [scrubPosition, setScrubPosition] = React.useState<{ time: number; x: number } | null>(null);
+
+  const chapters = React.useMemo(() => {
+    return computeTimelineChapters(duration, aniSkipResults, primaryColor);
+  }, [duration, aniSkipResults, primaryColor]);
+
+  const currentChapterIdRef = React.useRef<string | null>(null);
+  const lastChapterHapticTimeRef = React.useRef<number>(0);
 
   // Real frame thumbnail extraction during scrubbing (local sources only)
   const [frameThumbnail, setFrameThumbnail] = React.useState<any>(null);
@@ -296,6 +530,20 @@ export const PlayerTimeline = React.memo<PlayerTimelineProps>(function PlayerTim
       requestFrameAtTime(targetTime);
     }
 
+    if (chapters.length > 1) {
+      const activeChapter = findChapterAtTime(targetTime, chapters);
+      if (activeChapter && activeChapter.id !== currentChapterIdRef.current) {
+        if (currentChapterIdRef.current !== null) {
+          const now = Date.now();
+          if (now - lastChapterHapticTimeRef.current >= 100) {
+            lastChapterHapticTimeRef.current = now;
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+          }
+        }
+        currentChapterIdRef.current = activeChapter.id;
+      }
+    }
+
     if (isInitial) {
       lastSeekTimestampRef.current = Date.now();
       if (player) {
@@ -382,6 +630,8 @@ export const PlayerTimeline = React.memo<PlayerTimelineProps>(function PlayerTim
     pendingSeekTimeRef.current = null;
 
     const finalPos = scrubPositionRef.current;
+    currentChapterIdRef.current = null;
+    lastChapterHapticTimeRef.current = 0;
     setIsScrubbing(false);
     setScrubPosition(null);
     scrubPositionRef.current = null;
@@ -416,6 +666,13 @@ export const PlayerTimeline = React.memo<PlayerTimelineProps>(function PlayerTim
       ? Math.min(100, Math.max(0, (displayTime / duration) * 100))
       : 0;
 
+  const effectiveTime =
+    isScrubbing && scrubPosition
+      ? scrubPosition.time
+      : duration > 0
+      ? displayTime
+      : 0;
+
   const currentScrubX = scrubPosition?.x ?? 0;
   const maxSafeBubbleLeft = Math.max(0, timelineWidth - PREVIEW_WIDTH);
   const clampedBubbleLeft = Math.max(
@@ -427,11 +684,39 @@ export const PlayerTimeline = React.memo<PlayerTimelineProps>(function PlayerTim
     ? Math.round(scrubPosition.time - scrubStartTimeRef.current)
     : 0;
   const formattedDelta = formatDeltaTime(deltaSeconds);
-  const chapterBadge = getAniSkipChapterBadge(
-    scrubPosition?.time ?? 0,
-    duration,
-    aniSkipResults
-  );
+
+  // Synchronize chapter badge with active chapter segment on timeline
+  const activeScrubChapter =
+    chapters.length > 1 && scrubPosition
+      ? findChapterAtTime(scrubPosition.time, chapters)
+      : null;
+
+  const chapterBadge = activeScrubChapter
+    ? {
+        label: activeScrubChapter.label,
+        color:
+          activeScrubChapter.type === 'episode'
+            ? '#D1D5DB'
+            : activeScrubChapter.playedColor,
+        borderColor:
+          activeScrubChapter.type === 'episode'
+            ? 'rgba(255, 255, 255, 0.18)'
+            : 'rgba(255, 255, 255, 0.45)',
+        bgColor:
+          activeScrubChapter.type === 'episode'
+            ? 'rgba(255, 255, 255, 0.06)'
+            : activeScrubChapter.unplayedColor,
+      }
+    : getAniSkipChapterBadge(
+        scrubPosition?.time ?? 0,
+        duration,
+        aniSkipResults
+      );
+
+  const thumbColor =
+    chapterBadge.label === '[EPISODIO]'
+      ? primaryColor
+      : chapterBadge.color || primaryColor;
 
   return (
     <View
@@ -446,7 +731,41 @@ export const PlayerTimeline = React.memo<PlayerTimelineProps>(function PlayerTim
       onResponderRelease={handleTouchEnd}
       onResponderTerminate={handleTouchEnd}
       accessibilityRole="adjustable"
-      accessibilityLabel="BARRA DI AVANZAMENTO VIDEO CON ANTEPRIMA FRAME"
+      accessibilityLabel={
+        chapters.length > 1
+          ? `BARRA DI AVANZAMENTO VIDEO CON ${chapters.length} CAPITOLI`
+          : 'BARRA DI AVANZAMENTO VIDEO CON ANTEPRIMA FRAME'
+      }
+      accessibilityValue={{
+        min: 0,
+        max: Math.round(duration),
+        now: Math.round(effectiveTime),
+        text: `${formatTime(effectiveTime)} di ${formatTime(duration)}`,
+      }}
+      accessibilityActions={[
+        { name: 'increment', label: 'AVANZA 10 SECONDI' },
+        { name: 'decrement', label: 'INDIETRO 10 SECONDI' },
+      ]}
+      onAccessibilityAction={(event) => {
+        if (duration <= 0) return;
+        if (event.nativeEvent.actionName === 'increment') {
+          const nextTime = Math.min(duration, displayTime + 10);
+          onSeek(nextTime);
+          if (player) {
+            try {
+              player.currentTime = nextTime;
+            } catch {}
+          }
+        } else if (event.nativeEvent.actionName === 'decrement') {
+          const nextTime = Math.max(0, displayTime - 10);
+          onSeek(nextTime);
+          if (player) {
+            try {
+              player.currentTime = nextTime;
+            } catch {}
+          }
+        }
+      }}
     >
       {/* Floating Scrub Preview Card with Live Time-Scrubbing HUD OLED */}
       {isScrubbing && scrubPosition && (
@@ -502,20 +821,70 @@ export const PlayerTimeline = React.memo<PlayerTimelineProps>(function PlayerTim
       )}
 
       {/* Timeline Track & Active Bar */}
-      <View
-        pointerEvents="none"
-        style={[styles.timelineTrack, isScrubbing && styles.timelineTrackActive]}
-      >
+      {chapters.length > 1 ? (
         <View
+          pointerEvents="none"
           style={[
-            styles.timelineBar,
-            {
-              backgroundColor: primaryColor,
-              width: `${activePercent}%`,
-            },
+            styles.timelineTrackChapters,
+            isScrubbing && styles.timelineTrackChaptersActive,
           ]}
-        />
-      </View>
+        >
+          {chapters.map((ch) => {
+            const chLen = ch.endTime - ch.startTime;
+            let fillPercent = 0;
+            if (chLen > 0) {
+              if (effectiveTime >= ch.endTime) {
+                fillPercent = 100;
+              } else if (effectiveTime > ch.startTime) {
+                fillPercent = Math.min(
+                  100,
+                  Math.max(0, ((effectiveTime - ch.startTime) / chLen) * 100)
+                );
+              }
+            }
+
+            return (
+              <View
+                key={ch.id}
+                style={[
+                  styles.chapterSegment,
+                  isScrubbing && styles.chapterSegmentActive,
+                  {
+                    flex: ch.flex,
+                    backgroundColor: ch.unplayedColor,
+                  },
+                ]}
+              >
+                <View
+                  style={[
+                    styles.chapterSegmentBar,
+                    isScrubbing && styles.chapterSegmentBarActive,
+                    {
+                      backgroundColor: ch.playedColor,
+                      width: `${fillPercent}%`,
+                    },
+                  ]}
+                />
+              </View>
+            );
+          })}
+        </View>
+      ) : (
+        <View
+          pointerEvents="none"
+          style={[styles.timelineTrack, isScrubbing && styles.timelineTrackActive]}
+        >
+          <View
+            style={[
+              styles.timelineBar,
+              {
+                backgroundColor: primaryColor,
+                width: `${activePercent}%`,
+              },
+            ]}
+          />
+        </View>
+      )}
 
       {/* Scrub Thumb Indicator */}
       {isScrubbing && scrubPosition && (
@@ -525,7 +894,7 @@ export const PlayerTimeline = React.memo<PlayerTimelineProps>(function PlayerTim
             styles.scrubThumb,
             {
               left: Math.max(0, Math.min(Math.max(0, timelineWidth - 14), scrubPosition.x - 7)),
-              backgroundColor: primaryColor,
+              backgroundColor: thumbColor,
             },
           ]}
         />
@@ -588,6 +957,32 @@ const styles = StyleSheet.create({
   },
   timelineTrackActive: {
     height: 6,
+    borderRadius: 3,
+  },
+  timelineTrackChapters: {
+    height: 4,
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2.5,
+  },
+  timelineTrackChaptersActive: {
+    height: 6,
+    gap: 3,
+  },
+  chapterSegment: {
+    height: '100%',
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  chapterSegmentActive: {
+    borderRadius: 3,
+  },
+  chapterSegmentBar: {
+    height: '100%',
+    borderRadius: 2,
+  },
+  chapterSegmentBarActive: {
     borderRadius: 3,
   },
   timelineBar: {

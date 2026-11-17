@@ -84,7 +84,7 @@ Kuro è una suite completa e sincronizzata per lo streaming anime concepita per 
 
 ### 🎬 Player Video Touch di Nuova Generazione
 
-- **🎞️ Live Real-Frame Scrubbing**: Trascina la timeline per visualizzare in tempo reale i fotogrammi estratti dallo stream video (`expo-video`), senza interruzioni e a 60 FPS.
+- **🎞️ Live Real-Frame Scrubbing & Segmentazione Capitoli in Stile YouTube**: Trascina la timeline per visualizzare in tempo reale i fotogrammi estratti dallo stream video (`expo-video`) a 60 FPS con Time-Scrubbing HUD OLED. Progress bar suddivisa in blocchi capitolo logici (`OP`, `ED`, `Recap`, `Post-credits`, `Episodio`) con gap discreti in stile YouTube, palette cromatica OLED, cursore thumb coordinato e feedback aptico al cambio capitolo.
 - **⏭️ AniSkip Intelligente (`SALTA` / `PROSSIMO`)**: Rilevamento automatico delle sigle (`OP`/`ED`/`Recap`) con durata configurabile (`5s`–`60s` o `∞`). Passaggio automatico e intelligente a `'PROSSIMO'` all'ending o alla scena post-credit.
 - **⏩ Gesture Seeking Asimmetrico**: Doppio tocco $\pm 10$s cumulativo (`+20s`, `+30s`...) e HUD verticali per volume (destra) e luminosità (sinistra).
 - **📺 Picture-in-Picture & MediaStyle Notification**: Supporto nativo PiP senza pause e controlli multimediali in notifica a 5 pulsanti (`KuroForwardingPlayer`) con artwork JPEG ad alta risoluzione nei Quick Settings di Android 13+.
