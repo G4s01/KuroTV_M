@@ -192,3 +192,4 @@ Minor Player Fixes
 - Fix deep-Links;
 - Fix player nelle notifiche: ora riporta al player di Kuro e la timeline è in tempo reale;
 - Pop-Up e rimando per i permessi sul risparmio energetico dell'app, 'Nessuna Restrizione'.
+- MAL SYNC & VISUALIZE
