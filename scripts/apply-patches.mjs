@@ -19,6 +19,10 @@ const patches = [
     dest: 'node_modules/expo-video/android/src/main/java/expo/modules/video/managers/VideoManager.kt',
   },
   {
+    src: 'scripts/patches/expo-video/PictureInPictureManager.kt',
+    dest: 'node_modules/expo-video/android/src/main/java/expo/modules/video/managers/PictureInPictureManager.kt',
+  },
+  {
     src: 'scripts/patches/MainActivity.kt',
     dest: 'android/app/src/main/java/com/kurotv/mobile/MainActivity.kt',
   },

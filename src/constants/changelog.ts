@@ -14,14 +14,16 @@ export interface ChangelogEntry {
 
 export const CURRENT_CHANGELOG: ChangelogEntry = {
   version: "1.0.0",
-  versionCode: 63,
+  versionCode: 64,
   releaseDate: "2026-11-25",
   title: "RELEASE UFFICIALE KUROTV MOBILE",
   highlights: [
-  "Il pulsante riproduci nella scheda dettagli ora riprende la visione;",
-  "I controlli di volume e luminosità nel player hanno ora un'escursione adattiva e controlli nativi."
+  "Aggiornamento e miglioramenti prestazionali per Kuro Mobile.",
+  "Compilazione ottimizzata per smartphone Android (sola architettura arm64-v8a)",
+  "UI OLED touch nativa ad alte prestazioni a 60/120 FPS",
+  "Video Player avanzato con controlli touch e supporto Picture-in-Picture"
 ],
-  releaseNotes: "## [1.0.0] - 2026-11\n\n- Il pulsante riproduci nella scheda dettagli ora riprende la visione;\n- I controlli di volume e luminosità nel player hanno ora un'escursione adattiva e controlli nativi.",
+  releaseNotes: "## [1.0.0] - 2026-11-25\n\n- Aggiornamento e miglioramenti prestazionali per Kuro Mobile.\n\n### Dettagli Tecnici\n- Compilazione ottimizzata per smartphone Android (sola architettura arm64-v8a)\n- UI OLED touch nativa ad alte prestazioni a 60/120 FPS\n- Video Player avanzato con controlli touch e supporto Picture-in-Picture",
 };
 
 export function formatChangelog(entry: ChangelogEntry): string {

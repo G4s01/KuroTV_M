@@ -7,7 +7,11 @@ export const Constants = {
 
 export const requireOptionalNativeModule = () => null;
 export const requireNativeModule = () => ({});
-export class NativeModule {}
+export class NativeModule {
+  addListener() {
+    return { remove: () => {} };
+  }
+}
 export const registerWebModule = (cls) => new cls();
 
 export const documentDirectory = '/mock/documents/';
@@ -74,6 +78,8 @@ export const useFocusEffect = (cb) => {
 };
 
 export const useLocalSearchParams = () => ({ id: '1' });
+export const usePathname = () => '/';
+export const useSegments = () => ['(tabs)'];
 
 export const StatusBar = () => null;
 
@@ -135,6 +141,8 @@ export default {
   useRouter,
   useFocusEffect,
   useLocalSearchParams,
+  usePathname,
+  useSegments,
   StatusBar,
   Image,
   VideoView,

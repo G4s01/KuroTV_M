@@ -21,9 +21,11 @@ import {
   type UpdateCheckResult,
   type DownloadProgress,
 } from '@/services/updater';
+import { BatteryStore } from '@/services/battery';
 import { CURRENT_CHANGELOG, formatChangelog } from '@/constants/changelog';
 import {
   SettingsHeader,
+  BatterySettingsCard,
   settingsStyles as styles,
 } from '@/components/settings';
 
@@ -130,6 +132,7 @@ export default function AboutSettingsScreen() {
   // Handle auto-download from startup modal or pending update synchronization
   useFocusEffect(
     useCallback(() => {
+      BatteryStore.refreshStatus();
       const isAuto = UpdateStore.isAutoDownloadRequested() || params.autoDownload === 'true';
       const shouldScroll = isAuto || params.scrollTo === 'update';
 
@@ -227,6 +230,9 @@ export default function AboutSettingsScreen() {
           }
         }}
       >
+        {/* RISPARMIO ENERGETICO */}
+        <BatterySettingsCard />
+
         {/* INFORMAZIONI SCHEDA TECNICA */}
         <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
           <Text style={[styles.cardTitle, { color: theme.colors.text }]}>INFORMAZIONI</Text>

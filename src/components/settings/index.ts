@@ -4,6 +4,7 @@ export * from './SettingsHeader';
 export * from './ThemeSettingsCard';
 export * from './SourceSettingsCard';
 export * from './DownloadSettingsCard';
+export * from './BatterySettingsCard';
 export * from './SyncSettingsCard';
 export * from './SyncConnectModal';
 export * from './AuthorizeTvModal';

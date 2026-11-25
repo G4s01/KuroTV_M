@@ -113,6 +113,8 @@ export const StorageKeys = {
   ANILIST_TOKEN: 'auth.anilistToken',
   AUTOPLAY_NEXT: 'player.autoplayNext',
   DEFAULT_SERVER: 'player.defaultServer',
+  PLAYER_BRIGHTNESS: 'player.brightness',
+  BATTERY_PROMPT_SILENCED: 'settings.batteryPromptSilenced',
   UPDATE_MANIFEST_URL: 'settings.updateManifestUrl',
   THEME_FAMILY: 'settings.themeFamily',
   PIKACHU_MODE: 'settings.pikachuMode',
@@ -857,6 +859,38 @@ export const AppStorage = {
 
   setNavBarMode: (mode: NavBarMode): void => {
     AppStorage.saveSettings({ navBarMode: mode });
+  },
+
+  // ----------------------------------------------------
+  // Player Brightness Preference (local per-device, never synced)
+  // ----------------------------------------------------
+  getPlayerBrightness: (): number => {
+    const saved = storage.getNumber(StorageKeys.PLAYER_BRIGHTNESS);
+    if (typeof saved !== 'number' || !Number.isFinite(saved) || saved < 0) {
+      return -1;
+    }
+    return Math.max(0.005, Math.min(1, saved));
+  },
+
+  setPlayerBrightness: (brightness: number): number => {
+    const normalized =
+      typeof brightness === 'number' && Number.isFinite(brightness) && brightness >= 0
+        ? Math.max(0.005, Math.min(1, brightness))
+        : -1;
+    storage.set(StorageKeys.PLAYER_BRIGHTNESS, normalized);
+    return normalized;
+  },
+
+  // ----------------------------------------------------
+  // Battery Optimization Prompt Preference (local per-device, never synced)
+  // ----------------------------------------------------
+  isBatteryPromptSilenced: (): boolean => {
+    return storage.getBoolean(StorageKeys.BATTERY_PROMPT_SILENCED) ?? false;
+  },
+
+  setBatteryPromptSilenced: (silenced: boolean): void => {
+    storage.set(StorageKeys.BATTERY_PROMPT_SILENCED, Boolean(silenced));
+    notifySettingsListeners(AppStorage.getSettings());
   },
 
   // ----------------------------------------------------

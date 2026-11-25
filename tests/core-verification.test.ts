@@ -67,6 +67,7 @@ import {
 import {
   HistorySlider,
   UpdateModal,
+  BatteryOptimizationModal,
   AniSkipSlider,
   AniSkipDurationSlider,
   ANISKIP_DURATION_STEPS,
@@ -74,6 +75,7 @@ import {
   formatAniSkipManualDescription,
 } from '../src/components/index';
 import { UpdateStore, usePendingUpdate } from '../src/services/updater/index';
+import { BatteryService, BatteryStore } from '../src/services/battery/index';
 import { parseDetailPage } from '../src/services/scraper/parsers/detail.parser';
 import { CURRENT_CHANGELOG, formatChangelog } from '../src/constants/changelog';
 import { computeResponsiveLayout } from '../src/hooks/useResponsiveLayout';
@@ -96,6 +98,7 @@ import {
   getDeviceMetadata,
 } from '../src/services/sync/index';
 import {
+  BatterySettingsCard,
   SyncSettingsCard,
   SyncConnectModal,
   AuthorizeTvModal,
@@ -5713,6 +5716,16 @@ assert.strictEqual(brightMax.brightness, 1);
 assert(playerScreenSrc.includes('KuroDeviceControls'), 'app/player/[id].tsx deve usare KuroDeviceControls');
 assert(playerScreenSrc.includes('restoreSystemBrightness'), 'app/player/[id].tsx deve ripristinare la luminosità di sistema fuori dal player');
 assert(playerScreenSrc.includes('computeVerticalGestureTravelRange'), 'app/player/[id].tsx deve usare computeVerticalGestureTravelRange');
+assert(playerScreenSrc.includes('getPlayerBrightness'), 'app/player/[id].tsx deve caricare la luminosità salvata da AppStorage');
+assert(playerScreenSrc.includes('setPlayerBrightness'), 'app/player/[id].tsx deve salvare la luminosità su AppStorage');
+
+assert.strictEqual(AppStorage.getPlayerBrightness(), -1, 'Default player brightness deve essere -1 (AUTOMATICA)');
+AppStorage.setPlayerBrightness(0.42);
+assert.strictEqual(AppStorage.getPlayerBrightness(), 0.42, 'Luminosità player salvata deve persistere su MMKV');
+AppStorage.setPlayerBrightness(0);
+assert.strictEqual(AppStorage.getPlayerBrightness(), 0.005, 'Luminosità 0 deve essere normalizzata al minimo sicuro 0.005');
+AppStorage.setPlayerBrightness(-1);
+assert.strictEqual(AppStorage.getPlayerBrightness(), -1, 'Luminosità -1 deve ripristinare AUTOMATICA');
 
 const nativeDeviceModuleSrc = fs.readFileSync(
   path.resolve(process.cwd(), 'modules/kuro-device-controls/android/src/main/java/expo/modules/kurodevicecontrols/KuroDeviceControlsModule.kt'),
@@ -5721,7 +5734,53 @@ const nativeDeviceModuleSrc = fs.readFileSync(
 assert(nativeDeviceModuleSrc.includes('AudioManager.STREAM_MUSIC'), 'KuroDeviceControlsModule.kt deve controllare AudioManager.STREAM_MUSIC');
 assert(nativeDeviceModuleSrc.includes('BRIGHTNESS_OVERRIDE_NONE'), 'KuroDeviceControlsModule.kt deve supportare BRIGHTNESS_OVERRIDE_NONE per uscita player e AUTOMATICA');
 
-console.log('✓ Gesture Adattive, Volume Sistema & Luminosità Window verificati con successo.');
+const playbackServicePatchSrc = fs.readFileSync(
+  path.resolve(process.cwd(), 'scripts/patches/expo-video/ExpoVideoPlaybackService.kt'),
+  'utf-8'
+);
+assert(
+  playbackServicePatchSrc.includes('class KuroPlayerListenerWrapper'),
+  'ExpoVideoPlaybackService.kt deve usare KuroPlayerListenerWrapper esplicito invece di delegate by listener'
+);
+for (const methodName of [
+  'onEvents(',
+  'onTimelineChanged(',
+  'onMediaItemTransition(',
+  'onPlaybackStateChanged(',
+  'onIsPlayingChanged(',
+  'onPositionDiscontinuity(',
+  'onPlayWhenReadyChanged(',
+  'onAvailableCommandsChanged(',
+]) {
+  assert(
+    playbackServicePatchSrc.includes(methodName),
+    `KuroPlayerListenerWrapper deve inoltrare esplicitamente ${methodName}`
+  );
+}
+
+const pipManagerPatchSrc = fs.readFileSync(
+  path.resolve(process.cwd(), 'scripts/patches/expo-video/PictureInPictureManager.kt'),
+  'utf-8'
+);
+assert(
+  pipManagerPatchSrc.includes('pauseViewsAfterPiPDismiss'),
+  'PictureInPictureManager.kt deve pausare nativamente il player alla chiusura PiP in background'
+);
+assert(
+  pipManagerPatchSrc.includes('showNowPlayingNotification = false'),
+  'PictureInPictureManager.kt deve nascondere la notifica alla chiusura volontaria del PiP'
+);
+
+assert(
+  applyPatchesSrc.includes('PictureInPictureManager.kt'),
+  'scripts/apply-patches.mjs deve applicare la patch PictureInPictureManager.kt'
+);
+assert(
+  !playerScreenSrc.includes('if (!player.playing) {\n                    player.play();'),
+  'onPictureInPictureStop JS non deve forzare player.play() se la PiP è stata chiusa nativamente'
+);
+
+console.log('✓ Gesture Adattive, Volume Sistema, Luminosità Window, Timeline Notifica & Chiusura PiP verificati con successo.');
 
 // -----------------------------------------------------------------------------
 // Fine Test

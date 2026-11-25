@@ -12,7 +12,7 @@ import { AppStorage, type NavBarMode } from '@/services/storage';
 import { UpdaterService, UpdateStore } from '@/services/updater';
 import { SyncManager, parseKuroSyncDeepLink } from '@/services/sync';
 import * as Linking from 'expo-linking';
-import { UpdateModal, ConfirmModal } from '@/components';
+import { UpdateModal, ConfirmModal, BatteryOptimizationModal } from '@/components';
 import { SyncConnectModal } from '@/components/settings';
 
 const queryClient = new QueryClient({
@@ -307,6 +307,14 @@ function RootNavigation() {
         />
       </Stack>
       <UpdateModal />
+      <BatteryOptimizationModal
+        hasBlockingModal={Boolean(
+          connectionFailurePrompt?.visible ||
+          isConnectModalOpen ||
+          deepLinkPrompt ||
+          syncAlert?.visible
+        )}
+      />
       {startupSyncFeedback && (
         <View
           style={[
@@ -427,7 +435,10 @@ export default function RootLayout() {
             UpdateStore.setPendingUpdate(result);
           }
         })
-        .catch(() => {});
+        .catch(() => {})
+        .finally(() => {
+          UpdateStore.setStartupCheckFinished(true);
+        });
     }, 1200);
 
     return () => {

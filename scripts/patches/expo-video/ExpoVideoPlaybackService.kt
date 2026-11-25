@@ -72,16 +72,136 @@ class KuroForwardingPlayer(
     return withNavigationCommands(super.getAvailableCommands())
   }
 
+  // Explicit delegating wrapper so every Java default method on Player.Listener forwards to MediaSession.
+  private class KuroPlayerListenerWrapper(
+    private val forwardingPlayer: KuroForwardingPlayer,
+    private val delegate: Player.Listener
+  ) : Player.Listener {
+    override fun onEvents(player: Player, events: Player.Events) =
+      delegate.onEvents(player, events)
+
+    override fun onTimelineChanged(timeline: androidx.media3.common.Timeline, reason: Int) =
+      delegate.onTimelineChanged(timeline, reason)
+
+    override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) =
+      delegate.onMediaItemTransition(mediaItem, reason)
+
+    override fun onTracksChanged(tracks: androidx.media3.common.Tracks) =
+      delegate.onTracksChanged(tracks)
+
+    override fun onMediaMetadataChanged(mediaMetadata: MediaMetadata) =
+      delegate.onMediaMetadataChanged(mediaMetadata)
+
+    override fun onPlaylistMetadataChanged(mediaPlaylistMetadata: MediaMetadata) =
+      delegate.onPlaylistMetadataChanged(mediaPlaylistMetadata)
+
+    override fun onIsLoadingChanged(isLoading: Boolean) =
+      delegate.onIsLoadingChanged(isLoading)
+
+    @Suppress("OVERRIDE_DEPRECATION")
+    override fun onLoadingChanged(isLoading: Boolean) =
+      delegate.onLoadingChanged(isLoading)
+
+    override fun onAvailableCommandsChanged(availableCommands: Player.Commands) =
+      delegate.onAvailableCommandsChanged(forwardingPlayer.withNavigationCommands(availableCommands))
+
+    override fun onTrackSelectionParametersChanged(parameters: androidx.media3.common.TrackSelectionParameters) =
+      delegate.onTrackSelectionParametersChanged(parameters)
+
+    @Suppress("OVERRIDE_DEPRECATION")
+    override fun onPlayerStateChanged(playWhenReady: Boolean, playbackState: Int) =
+      delegate.onPlayerStateChanged(playWhenReady, playbackState)
+
+    override fun onPlaybackStateChanged(playbackState: Int) =
+      delegate.onPlaybackStateChanged(playbackState)
+
+    override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) =
+      delegate.onPlayWhenReadyChanged(playWhenReady, reason)
+
+    override fun onPlaybackSuppressionReasonChanged(playbackSuppressionReason: Int) =
+      delegate.onPlaybackSuppressionReasonChanged(playbackSuppressionReason)
+
+    override fun onIsPlayingChanged(isPlaying: Boolean) =
+      delegate.onIsPlayingChanged(isPlaying)
+
+    override fun onRepeatModeChanged(repeatMode: Int) =
+      delegate.onRepeatModeChanged(repeatMode)
+
+    override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) =
+      delegate.onShuffleModeEnabledChanged(shuffleModeEnabled)
+
+    override fun onPlayerError(error: androidx.media3.common.PlaybackException) =
+      delegate.onPlayerError(error)
+
+    override fun onPlayerErrorChanged(error: androidx.media3.common.PlaybackException?) =
+      delegate.onPlayerErrorChanged(error)
+
+    @Suppress("OVERRIDE_DEPRECATION")
+    override fun onPositionDiscontinuity(reason: Int) =
+      delegate.onPositionDiscontinuity(reason)
+
+    override fun onPositionDiscontinuity(
+      oldPosition: Player.PositionInfo,
+      newPosition: Player.PositionInfo,
+      reason: Int
+    ) = delegate.onPositionDiscontinuity(oldPosition, newPosition, reason)
+
+    override fun onPlaybackParametersChanged(playbackParameters: androidx.media3.common.PlaybackParameters) =
+      delegate.onPlaybackParametersChanged(playbackParameters)
+
+    override fun onSeekBackIncrementChanged(seekBackIncrementMs: Long) =
+      delegate.onSeekBackIncrementChanged(seekBackIncrementMs)
+
+    override fun onSeekForwardIncrementChanged(seekForwardIncrementMs: Long) =
+      delegate.onSeekForwardIncrementChanged(seekForwardIncrementMs)
+
+    override fun onMaxSeekToPreviousPositionChanged(maxSeekToPreviousPositionMs: Long) =
+      delegate.onMaxSeekToPreviousPositionChanged(maxSeekToPreviousPositionMs)
+
+    override fun onAudioSessionIdChanged(audioSessionId: Int) =
+      delegate.onAudioSessionIdChanged(audioSessionId)
+
+    override fun onAudioAttributesChanged(audioAttributes: androidx.media3.common.AudioAttributes) =
+      delegate.onAudioAttributesChanged(audioAttributes)
+
+    override fun onVolumeChanged(volume: Float) =
+      delegate.onVolumeChanged(volume)
+
+    override fun onSkipSilenceEnabledChanged(skipSilenceEnabled: Boolean) =
+      delegate.onSkipSilenceEnabledChanged(skipSilenceEnabled)
+
+    override fun onDeviceInfoChanged(deviceInfo: androidx.media3.common.DeviceInfo) =
+      delegate.onDeviceInfoChanged(deviceInfo)
+
+    override fun onDeviceVolumeChanged(volume: Int, muted: Boolean) =
+      delegate.onDeviceVolumeChanged(volume, muted)
+
+    override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) =
+      delegate.onVideoSizeChanged(videoSize)
+
+    override fun onSurfaceSizeChanged(width: Int, height: Int) =
+      delegate.onSurfaceSizeChanged(width, height)
+
+    override fun onRenderedFirstFrame() =
+      delegate.onRenderedFirstFrame()
+
+    @Suppress("OVERRIDE_DEPRECATION")
+    override fun onCues(cues: MutableList<androidx.media3.common.text.Cue>) =
+      delegate.onCues(cues)
+
+    override fun onCues(cueGroup: androidx.media3.common.text.CueGroup) =
+      delegate.onCues(cueGroup)
+
+    override fun onMetadata(metadata: androidx.media3.common.Metadata) =
+      delegate.onMetadata(metadata)
+  }
+
   override fun addListener(listener: Player.Listener) {
     val existing = synchronized(listenerWrappers) { listenerWrappers[listener] }
     if (existing != null) {
       return
     }
-    val wrapped = object : Player.Listener by listener {
-      override fun onAvailableCommandsChanged(availableCommands: Player.Commands) {
-        listener.onAvailableCommandsChanged(withNavigationCommands(availableCommands))
-      }
-    }
+    val wrapped = KuroPlayerListenerWrapper(this, listener)
     synchronized(listenerWrappers) {
       listenerWrappers[listener] = wrapped
     }

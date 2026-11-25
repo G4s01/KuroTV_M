@@ -6,6 +6,8 @@ type UpdateListener = () => void;
 let pendingUpdate: UpdateCheckResult | null = null;
 let isModalDismissed = false;
 let autoDownloadRequested = false;
+let startupCheckFinished = false;
+let updateFlowAccepted = false;
 const listeners = new Set<UpdateListener>();
 
 function notify() {
@@ -38,6 +40,24 @@ export const UpdateStore = {
 
   setAutoDownloadRequested: (flag: boolean): void => {
     autoDownloadRequested = flag;
+    if (flag) {
+      updateFlowAccepted = true;
+    }
+    notify();
+  },
+
+  isStartupCheckFinished: (): boolean => startupCheckFinished,
+
+  setStartupCheckFinished: (finished: boolean): void => {
+    startupCheckFinished = finished;
+    notify();
+  },
+
+  isUpdateFlowAccepted: (): boolean => updateFlowAccepted,
+
+  resetStartupPriorityState: (): void => {
+    startupCheckFinished = false;
+    updateFlowAccepted = false;
     notify();
   },
 
@@ -61,6 +81,8 @@ export function usePendingUpdate() {
     update: UpdateStore.getPendingUpdate(),
     isDismissed: UpdateStore.isModalDismissed(),
     autoDownload: UpdateStore.isAutoDownloadRequested(),
+    startupCheckFinished: UpdateStore.isStartupCheckFinished(),
+    updateFlowAccepted: UpdateStore.isUpdateFlowAccepted(),
   }));
 
   React.useEffect(() => {
@@ -69,6 +91,8 @@ export function usePendingUpdate() {
         update: UpdateStore.getPendingUpdate(),
         isDismissed: UpdateStore.isModalDismissed(),
         autoDownload: UpdateStore.isAutoDownloadRequested(),
+        startupCheckFinished: UpdateStore.isStartupCheckFinished(),
+        updateFlowAccepted: UpdateStore.isUpdateFlowAccepted(),
       });
     });
   }, []);

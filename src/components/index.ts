@@ -12,6 +12,7 @@ export * from './AniSkipDurationSlider';
 export * from './ConfirmModal';
 export * from './SelectionAppBar';
 export * from './UpdateModal';
+export * from './BatteryOptimizationModal';
 export * from './settings';
 export * from './home';
 export * from './skeleton';

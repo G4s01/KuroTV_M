@@ -3,6 +3,7 @@ export * from './scraper';
 export * from './updater';
 export * from './queries';
 export * from './aniskip';
+export * from './battery';
 export * from './downloads';
 export {
   SyncManager,

@@ -264,9 +264,11 @@ export default function VideoPlayerScreen() {
     type: 'volume' | 'brightness' | 'speed';
     value: string | number;
   } | null>(null);
-  // screenBrightness: 0.005 .. 1.0 or -1 for 'AUTOMATICA' (window-scoped inside player only)
-  const [screenBrightness, setScreenBrightness] = React.useState<number>(-1);
-  const screenBrightnessRef = React.useRef<number>(-1);
+  // screenBrightness: 0.005 .. 1.0 or -1 for 'AUTOMATICA' (window-scoped inside player only, persisted locally in MMKV)
+  const [screenBrightness, setScreenBrightness] = React.useState<number>(() =>
+    AppStorage.getPlayerBrightness()
+  );
+  const screenBrightnessRef = React.useRef<number>(screenBrightness);
   const hasNativeDeviceControls = Boolean(Platform.OS === 'android' && KuroDeviceControls);
 
   const startVolumeRef = React.useRef(1.0);
@@ -1512,6 +1514,7 @@ export default function VideoPlayerScreen() {
         const brightRes = computeWindowBrightnessGesture(startBrightnessRef.current, delta);
         screenBrightnessRef.current = brightRes.brightness;
         setScreenBrightness(brightRes.brightness);
+        AppStorage.setPlayerBrightness(brightRes.brightness);
         if (hasNativeDeviceControls && KuroDeviceControls) {
           if (brightRes.isAuto) {
             KuroDeviceControls.restoreSystemBrightness();
@@ -1523,6 +1526,7 @@ export default function VideoPlayerScreen() {
       }
     })
     .onEnd(() => {
+      AppStorage.setPlayerBrightness(screenBrightnessRef.current);
       if (hudTimeoutRef.current) clearTimeout(hudTimeoutRef.current);
       hudTimeoutRef.current = setTimeout(() => setHudIndicator(null), 1200);
     })
@@ -1588,6 +1592,10 @@ export default function VideoPlayerScreen() {
               autoExitOnRotate: true,
             }}
             onPictureInPictureStart={() => {
+              if (pipStopTimerRef.current) {
+                clearTimeout(pipStopTimerRef.current);
+                pipStopTimerRef.current = null;
+              }
               isInPiPRef.current = true;
               wasPlayingInPiPRef.current = player.playing;
               player.showNowPlayingNotification = true;
@@ -1600,14 +1608,20 @@ export default function VideoPlayerScreen() {
               // Preserve playback status: if player was active in PiP, keep flag true so expanding
               // to fullscreen will resume playback smoothly without pausing
               wasPlayingInPiPRef.current = wasPlayingInPiPRef.current || player.playing;
-              // If user pressed 'X' to close PiP, Android stops the window while app remains in background.
-              // Wait for activity transition: only pause if app is STILL in background after 500ms.
-              // If user restored fullscreen with the Android button, the app becomes 'active' and playback continues without pausing.
+              const pipStoppedAt = Date.now();
+              // Native PictureInPictureManager also checks on MainLooper after 300ms so pressing 'X'
+              // to close PiP pauses playback + dismisses the notification even when JS timers freeze
+              // in background; keep JS state and saved progress in sync on both paths.
               if (pipStopTimerRef.current) {
                 clearTimeout(pipStopTimerRef.current);
+                pipStopTimerRef.current = null;
+              }
+              if (AppState.currentState !== 'active' && animeId && episodeId) {
+                saveProgress(currentTimeRef.current, durationRef.current);
               }
               pipStopTimerRef.current = setTimeout(() => {
-                if (AppState.currentState !== 'active') {
+                pipStopTimerRef.current = null;
+                if (!isInPiPRef.current && AppState.currentState !== 'active') {
                   wasPlayingInPiPRef.current = false;
                   userWantsPlaybackRef.current = false;
                   setIsPlaying(false);
@@ -1621,16 +1635,28 @@ export default function VideoPlayerScreen() {
                 }
               }, 500);
               const resumeFromPiP = () => {
-                if (AppState.currentState === 'active') {
-                  if (Platform.OS === 'android' && KuroDeviceControls) {
-                    if (screenBrightnessRef.current >= 0) {
-                      KuroDeviceControls.setWindowBrightness(screenBrightnessRef.current);
-                    } else {
-                      KuroDeviceControls.restoreSystemBrightness();
-                    }
+                if (isInPiPRef.current || AppState.currentState !== 'active') {
+                  return;
+                }
+                if (Platform.OS === 'android' && KuroDeviceControls) {
+                  if (screenBrightnessRef.current >= 0) {
+                    KuroDeviceControls.setWindowBrightness(screenBrightnessRef.current);
+                  } else {
+                    KuroDeviceControls.restoreSystemBrightness();
                   }
                 }
-                if (AppState.currentState === 'active' && wasPlayingInPiPRef.current) {
+                // Do not resume playback if PiP was dismissed with 'X' (native PictureInPictureManager
+                // paused player in background) or if delayed timers unfroze on a much later return.
+                if (Date.now() - pipStoppedAt > 1200 || !player.playing) {
+                  wasPlayingInPiPRef.current = false;
+                  syncPlayerStateFromNative();
+                  return;
+                }
+                if (wasPlayingInPiPRef.current) {
+                  if (pipStopTimerRef.current) {
+                    clearTimeout(pipStopTimerRef.current);
+                    pipStopTimerRef.current = null;
+                  }
                   wasPlayingInPiPRef.current = false;
                   userWantsPlaybackRef.current = true;
                   softKickAttemptedRef.current = false;
@@ -1640,10 +1666,8 @@ export default function VideoPlayerScreen() {
                   setIsBuffering(false);
                   setShowManualReload(false);
                   player.playbackRate = playbackSpeedRef.current;
-                  if (!player.playing) {
-                    player.play();
-                  }
-                } else if (AppState.currentState === 'active') {
+                  player.showNowPlayingNotification = true;
+                } else {
                   syncPlayerStateFromNative();
                 }
               };
