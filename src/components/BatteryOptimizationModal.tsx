@@ -24,7 +24,7 @@ export const BatteryOptimizationModal: React.FC<BatteryOptimizationModalProps> =
   hasBlockingModal = false,
 }) => {
   const { theme } = useTheme();
-  const pathname = typeof usePathname === 'function' ? usePathname() : '/';
+  const pathname = usePathname();
   const {
     update,
     isDismissed: isUpdateDismissed,
@@ -42,7 +42,7 @@ export const BatteryOptimizationModal: React.FC<BatteryOptimizationModalProps> =
   const revealTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const verifyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autoCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const prevAppStateRef = useRef<AppStateStatus>(AppState.currentState || 'active');
+  const prevAppStateRef = useRef<AppStateStatus>((AppState.currentState || 'active') as AppStateStatus);
   const hasPlayedSuccessHapticRef = useRef(false);
 
   const clearVerifyTimer = () => {

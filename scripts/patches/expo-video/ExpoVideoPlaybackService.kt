@@ -2,6 +2,7 @@ package expo.modules.video.playbackService
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -32,6 +33,7 @@ import expo.modules.kotlin.exception.Exceptions
 import expo.modules.video.R
 import expo.modules.video.getPlaybackServiceErrorMessage
 import expo.modules.video.player.VideoPlayer
+import expo.modules.video.utils.createPlayerLaunchPendingIntent
 import kotlinx.coroutines.launch
 import java.io.ByteArrayOutputStream
 import java.lang.ref.WeakReference
@@ -326,12 +328,16 @@ class ExpoVideoPlaybackService : MediaSessionService() {
       }
 
       val forwardingPlayer = KuroForwardingPlayer(player, this@ExpoVideoPlaybackService)
+      val sessionPendingIntent = resolvePlayerLaunchPendingIntent()
 
-      val mediaSession = MediaSession.Builder(this@ExpoVideoPlaybackService, forwardingPlayer)
+      val sessionBuilder = MediaSession.Builder(this@ExpoVideoPlaybackService, forwardingPlayer)
         .setId("ExpoVideoPlaybackService_${player.hashCode()}")
         .setCallback(VideoMediaSessionCallback(this@ExpoVideoPlaybackService))
         .setCustomLayout(ImmutableList.of(seekBackwardButton, seekForwardButton))
-        .build()
+      if (sessionPendingIntent != null) {
+        sessionBuilder.setSessionActivity(sessionPendingIntent)
+      }
+      val mediaSession = sessionBuilder.build()
 
       // Replace the basic media session with a session connected to our playback service.
       videoPlayer.mediaSession.release()
@@ -496,6 +502,15 @@ class ExpoVideoPlaybackService : MediaSessionService() {
     }
   }
 
+  private fun resolvePlayerLaunchPendingIntent(): PendingIntent? {
+    val fallbackActivityClass = try {
+      appContext.currentActivity?.javaClass
+    } catch (_: Exception) {
+      null
+    }
+    return createPlayerLaunchPendingIntent(this, fallbackActivityClass)
+  }
+
   @MainThread
   private fun createNotification(session: MediaSession, startInForegroundRequired: Boolean = false) {
     val player = session.player
@@ -528,12 +543,24 @@ class ExpoVideoPlaybackService : MediaSessionService() {
     val artworkUri = mediaItem?.mediaMetadata?.artworkUri ?: player.mediaMetadata.artworkUri
     val forwardingPlayer = if (player is KuroForwardingPlayer) player else null
     val notificationId = forwardingPlayer?.underlyingPlayer?.hashCode() ?: player.hashCode()
+    val contentIntent = resolvePlayerLaunchPendingIntent()
+    if (contentIntent != null) {
+      try {
+        session.setSessionActivity(contentIntent)
+      } catch (_: Exception) {
+      }
+    }
 
     val notificationCompat = NotificationCompat.Builder(this, CHANNEL_ID)
       .setSmallIcon(androidx.media3.session.R.drawable.media3_icon_circular_play)
       .setContentTitle(contentTitle)
       .setContentText(contentText)
+      .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+      .setOnlyAlertOnce(true)
       .setStyle(MediaStyleNotificationHelper.MediaStyle(session))
+    if (contentIntent != null) {
+      notificationCompat.setContentIntent(contentIntent)
+    }
 
     if (artworkUri != null) {
       loadArtworkBitmap(artworkUri) { bitmap ->
@@ -552,14 +579,18 @@ class ExpoVideoPlaybackService : MediaSessionService() {
             forwardingPlayer?.underlyingPlayer?.playlistMetadata = updatedMetadata
           } catch (_: Exception) {}
 
-          val updatedNotification = NotificationCompat.Builder(this, CHANNEL_ID)
+          val updatedBuilder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(androidx.media3.session.R.drawable.media3_icon_circular_play)
             .setContentTitle(contentTitle)
             .setContentText(contentText)
             .setLargeIcon(bitmap)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setOnlyAlertOnce(true)
             .setStyle(MediaStyleNotificationHelper.MediaStyle(session))
-            .build()
-          notificationManager.notify(notificationId, updatedNotification)
+          if (contentIntent != null) {
+            updatedBuilder.setContentIntent(contentIntent)
+          }
+          notificationManager.notify(notificationId, updatedBuilder.build())
         }
       }
     }

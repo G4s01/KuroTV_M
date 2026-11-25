@@ -5776,11 +5776,313 @@ assert(
   'scripts/apply-patches.mjs deve applicare la patch PictureInPictureManager.kt'
 );
 assert(
+  applyPatchesSrc.includes('MediaSessionUtils.kt'),
+  'scripts/apply-patches.mjs deve applicare la patch MediaSessionUtils.kt'
+);
+
+const mediaSessionUtilsPatchSrc = fs.readFileSync(
+  path.resolve(process.cwd(), 'scripts/patches/expo-video/MediaSessionUtils.kt'),
+  'utf-8'
+);
+for (const token of [
+  'createPlayerLaunchPendingIntent',
+  'getLaunchIntentForPackage',
+  'FLAG_ACTIVITY_NEW_TASK',
+  'FLAG_ACTIVITY_SINGLE_TOP',
+  'FLAG_IMMUTABLE',
+  'setSessionActivity',
+]) {
+  assert(
+    mediaSessionUtilsPatchSrc.includes(token),
+    `MediaSessionUtils.kt deve includere ${token} per riportare il tap della notifica su KuroTV_M`
+  );
+}
+
+for (const token of [
+  'createPlayerLaunchPendingIntent',
+  'setSessionActivity',
+  'setContentIntent',
+]) {
+  assert(
+    playbackServicePatchSrc.includes(token),
+    `ExpoVideoPlaybackService.kt deve impostare ${token} per la notifica multimediale`
+  );
+}
+const contentIntentMatches = playbackServicePatchSrc.match(/setContentIntent\(/g) || [];
+assert(
+  contentIntentMatches.length >= 2,
+  'ExpoVideoPlaybackService.kt deve impostare setContentIntent sia sulla notifica iniziale sia su quella aggiornata con artwork'
+);
+assert(
   !playerScreenSrc.includes('if (!player.playing) {\n                    player.play();'),
   'onPictureInPictureStop JS non deve forzare player.play() se la PiP è stata chiusa nativamente'
 );
 
 console.log('✓ Gesture Adattive, Volume Sistema, Luminosità Window, Timeline Notifica & Chiusura PiP verificati con successo.');
+
+// -----------------------------------------------------------------------------
+// [Extra] Verifica Impostazioni Risparmio Energetico ('Nessuna restrizione'), Priorità Update & Silenziabilità
+// -----------------------------------------------------------------------------
+console.log('\n[Extra] Verifica Risparmio Energetico, Priorità Update & Verifica Applicazione...');
+
+assert(
+  typeof BatteryOptimizationModal === 'function' || typeof BatteryOptimizationModal === 'object',
+  'BatteryOptimizationModal deve essere un componente React'
+);
+assert(
+  typeof BatterySettingsCard === 'function' || typeof BatterySettingsCard === 'object',
+  'BatterySettingsCard deve essere un componente React'
+);
+
+// 1. Persistenza MMKV silenziamento
+AppStorage.setBatteryPromptSilenced(false);
+assert.strictEqual(AppStorage.isBatteryPromptSilenced(), false, 'Il prompt batteria non deve essere silenziato di default');
+AppStorage.setBatteryPromptSilenced(true);
+assert.strictEqual(AppStorage.isBatteryPromptSilenced(), true, 'setBatteryPromptSilenced(true) deve persistere in MMKV');
+AppStorage.setBatteryPromptSilenced(false);
+
+// 2. Priorità startup rispetto ad UpdateStore
+UpdateStore.resetStartupPriorityState();
+assert.strictEqual(UpdateStore.isStartupCheckFinished(), false);
+assert.strictEqual(UpdateStore.isUpdateFlowAccepted(), false);
+UpdateStore.setStartupCheckFinished(true);
+assert.strictEqual(UpdateStore.isStartupCheckFinished(), true);
+UpdateStore.setAutoDownloadRequested(true);
+assert.strictEqual(UpdateStore.isUpdateFlowAccepted(), true);
+UpdateStore.clearUpdate();
+UpdateStore.resetStartupPriorityState();
+
+// 3. State machine BatteryService & BatteryStore con adapter simulato
+let mockRestricted = true;
+let requestedMethodCalled: string | null = null;
+let nativeStatusListener: ((status: any) => void) | null = null;
+
+BatteryService.setAdapterForTest({
+  getBatteryOptimizationStatus: () => ({
+    isSupported: true,
+    isIgnoringBatteryOptimizations: !mockRestricted,
+    isBackgroundRestricted: false,
+    isUnrestricted: !mockRestricted,
+    manufacturer: 'Xiaomi',
+    sdkInt: 34,
+  }),
+  requestIgnoreBatteryOptimizations: () => {
+    requestedMethodCalled = 'request_dialog';
+    return { launched: true, alreadyUnrestricted: false, method: 'request_dialog' };
+  },
+  openBatteryOptimizationSettings: () => {
+    requestedMethodCalled = 'app_details';
+    return { launched: true, alreadyUnrestricted: false, method: 'app_details' };
+  },
+  addStatusListener: (listener) => {
+    nativeStatusListener = listener;
+    return () => {
+      nativeStatusListener = null;
+    };
+  },
+});
+
+BatteryStore.resetForTest();
+assert.strictEqual(
+  BatteryStore.shouldShowStartupModal({
+    startupUpdateCheckFinished: false,
+    hasVisibleUpdateModal: false,
+    isUpdateFlowActive: false,
+    currentPathname: '/',
+  }),
+  false,
+  'Il popup batteria non deve apparire prima della fine del check update'
+);
+assert.strictEqual(
+  BatteryStore.shouldShowStartupModal({
+    startupUpdateCheckFinished: true,
+    hasVisibleUpdateModal: true,
+    isUpdateFlowActive: false,
+    currentPathname: '/',
+  }),
+  false,
+  'Il popup batteria deve avere priorità secondaria rispetto a UpdateModal visibile'
+);
+assert.strictEqual(
+  BatteryStore.shouldShowStartupModal({
+    startupUpdateCheckFinished: true,
+    hasVisibleUpdateModal: false,
+    isUpdateFlowActive: true,
+    currentPathname: '/',
+  }),
+  false,
+  'Il popup batteria non deve apparire se l\'utente ha avviato l\'aggiornamento'
+);
+assert.strictEqual(
+  BatteryStore.shouldShowStartupModal({
+    startupUpdateCheckFinished: true,
+    hasVisibleUpdateModal: false,
+    isUpdateFlowActive: false,
+    currentPathname: '/player/123',
+  }),
+  false,
+  'Il popup batteria non deve apparire sopra il video player'
+);
+assert.strictEqual(
+  BatteryStore.shouldShowStartupModal({
+    startupUpdateCheckFinished: true,
+    hasVisibleUpdateModal: false,
+    isUpdateFlowActive: false,
+    currentPathname: '/',
+  }),
+  true,
+  'Il popup batteria deve apparire dopo il check update se il risparmio è attivo'
+);
+
+// Simula apertura modale all'avvio -> richiesta sistema -> ritorno senza applicazione -> apertura impostazioni app -> verifica positiva
+BatteryStore.setStartupModalPresented(true);
+const reqLaunch = BatteryStore.startUnrestrictedRequest();
+assert.strictEqual(reqLaunch.launched, true);
+assert.strictEqual(requestedMethodCalled, 'request_dialog');
+assert.strictEqual(BatteryStore.getState().verificationState, 'awaiting_return');
+
+const notAppliedStatus = BatteryStore.verifyAfterReturn();
+assert.strictEqual(notAppliedStatus.isUnrestricted, false);
+assert.strictEqual(BatteryStore.getState().verificationState, 'not_applied', 'Se l\'utente non applica la modifica, deve entrare in stato not_applied');
+
+const settingsLaunch = BatteryStore.openSystemSettings();
+assert.strictEqual(settingsLaunch.launched, true);
+assert.strictEqual(requestedMethodCalled, 'app_details');
+assert.strictEqual(BatteryStore.getState().verificationState, 'awaiting_return');
+
+// Test evento nativo OnActivityResult / OnActivityEntersForeground
+const unsubNativeTest = BatteryService.subscribeNativeStatusChange((s) => {
+  BatteryStore.applyNativeStatusUpdate(s);
+});
+const capturedNativeListener = nativeStatusListener as ((status: any) => void) | null;
+assert(typeof capturedNativeListener === 'function', 'subscribeNativeStatusChange deve registrare il listener nativo');
+mockRestricted = false;
+capturedNativeListener!({
+  isSupported: true,
+  isIgnoringBatteryOptimizations: true,
+  isBackgroundRestricted: false,
+  isUnrestricted: true,
+  manufacturer: 'Xiaomi',
+  sdkInt: 34,
+});
+assert.strictEqual(BatteryStore.getState().verificationState, 'verified');
+unsubNativeTest();
+assert.strictEqual(nativeStatusListener, null, 'unsubscribe deve rimuovere il listener nativo');
+
+mockRestricted = true;
+BatteryStore.resetForTest();
+BatteryStore.setStartupModalPresented(true);
+BatteryStore.startUnrestrictedRequest();
+
+// L'utente imposta 'Nessuna restrizione' nelle impostazioni di sistema e rientra
+mockRestricted = false;
+const verifiedStatus = BatteryStore.verifyAfterReturn();
+assert.strictEqual(verifiedStatus.isUnrestricted, true);
+assert.strictEqual(BatteryStore.getState().verificationState, 'verified', 'Al rientro deve verificare l\'effettiva applicazione di Nessuna restrizione');
+assert.strictEqual(
+  BatteryStore.shouldShowStartupModal({
+    startupUpdateCheckFinished: true,
+    hasVisibleUpdateModal: false,
+    isUpdateFlowActive: false,
+    currentPathname: '/',
+  }),
+  true,
+  'Il modale resta visibile nello stato verified per mostrare la conferma prima della chiusura'
+);
+
+BatteryStore.dismissForSession();
+assert.strictEqual(
+  BatteryStore.shouldShowStartupModal({
+    startupUpdateCheckFinished: true,
+    hasVisibleUpdateModal: false,
+    isUpdateFlowActive: false,
+    currentPathname: '/',
+  }),
+  false
+);
+
+// Silenziamento permanente
+mockRestricted = true;
+BatteryStore.resetForTest();
+BatteryStore.silencePrompt(true);
+assert.strictEqual(AppStorage.isBatteryPromptSilenced(), true);
+BatteryStore.resetForTest();
+assert.strictEqual(
+  BatteryStore.shouldShowStartupModal({
+    startupUpdateCheckFinished: true,
+    hasVisibleUpdateModal: false,
+    isUpdateFlowActive: false,
+    currentPathname: '/',
+  }),
+  false,
+  'Il prompt silenziato non deve riapparire ai nuovi avvii'
+);
+AppStorage.setBatteryPromptSilenced(false);
+BatteryService.setAdapterForTest(null);
+BatteryStore.resetForTest();
+
+// 4. Verifiche statiche manifest, modulo nativo, layout e conformità AGENTS.md
+const appJsonBatterySrc = fs.readFileSync(path.resolve(process.cwd(), 'app.json'), 'utf-8');
+assert(
+  appJsonBatterySrc.includes('android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS'),
+  'app.json deve dichiarare REQUEST_IGNORE_BATTERY_OPTIMIZATIONS'
+);
+const manifestBatterySrc = fs.readFileSync(
+  path.resolve(process.cwd(), 'android/app/src/main/AndroidManifest.xml'),
+  'utf-8'
+);
+assert(
+  manifestBatterySrc.includes('android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS'),
+  'AndroidManifest.xml deve dichiarare REQUEST_IGNORE_BATTERY_OPTIMIZATIONS'
+);
+
+const updatedDeviceControlsKt = fs.readFileSync(
+  path.resolve(process.cwd(), 'modules/kuro-device-controls/android/src/main/java/expo/modules/kurodevicecontrols/KuroDeviceControlsModule.kt'),
+  'utf-8'
+);
+for (const token of [
+  'isIgnoringBatteryOptimizations',
+  'isBackgroundRestricted',
+  'ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS',
+  'ACTION_APPLICATION_DETAILS_SETTINGS',
+  'ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS',
+  'OnActivityEntersForeground',
+  'OnActivityResult',
+  'onBatteryOptimizationStatusChanged',
+]) {
+  assert(
+    updatedDeviceControlsKt.includes(token),
+    `KuroDeviceControlsModule.kt deve implementare ${token}`
+  );
+}
+
+const batteryModalSrc = fs.readFileSync(
+  path.resolve(process.cwd(), 'src/components/BatteryOptimizationModal.tsx'),
+  'utf-8'
+);
+assert(!batteryModalSrc.includes('Alert.alert'), 'BatteryOptimizationModal non deve usare Alert.alert');
+assert(batteryModalSrc.includes('getContrastTextColor'), 'BatteryOptimizationModal deve usare getContrastTextColor');
+assert(batteryModalSrc.includes('NESSUNA RESTRIZIONE'), 'BatteryOptimizationModal deve riferirsi esplicitamente a Nessuna restrizione');
+
+const batteryCardSrc = fs.readFileSync(
+  path.resolve(process.cwd(), 'src/components/settings/BatterySettingsCard.tsx'),
+  'utf-8'
+);
+assert(!batteryCardSrc.includes('Alert.alert'), 'BatterySettingsCard non deve usare Alert.alert');
+assert(batteryCardSrc.includes('NESSUNA RESTRIZIONE'), 'BatterySettingsCard deve mostrare lo stato Nessuna restrizione');
+
+const rootLayoutBatterySrc = fs.readFileSync(path.resolve(process.cwd(), 'app/_layout.tsx'), 'utf-8');
+assert(rootLayoutBatterySrc.includes('<BatteryOptimizationModal'), 'app/_layout.tsx deve montare BatteryOptimizationModal');
+assert(rootLayoutBatterySrc.includes('setStartupCheckFinished(true)'), 'app/_layout.tsx deve segnalare il completamento del check update iniziale');
+
+const aboutBatterySrc = fs.readFileSync(path.resolve(process.cwd(), 'app/settings/about.tsx'), 'utf-8');
+assert(aboutBatterySrc.includes('<BatterySettingsCard'), 'app/settings/about.tsx deve includere BatterySettingsCard');
+assert(
+  aboutBatterySrc.indexOf('<BatterySettingsCard') < aboutBatterySrc.indexOf('INFORMAZIONI SCHEDA TECNICA'),
+  'BatterySettingsCard deve precedere la card Informazioni/Updater per preservare scrollToEnd'
+);
+
+console.log('✓ Risparmio Energetico (Nessuna restrizione, Priorità Update, Verifica & Silenziamento) verificato con successo.');
 
 // -----------------------------------------------------------------------------
 // Fine Test
