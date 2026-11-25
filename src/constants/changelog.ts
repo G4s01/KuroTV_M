@@ -18,9 +18,14 @@ export const CURRENT_CHANGELOG: ChangelogEntry = {
   releaseDate: "2026-11-25",
   title: "RELEASE UFFICIALE KUROTV MOBILE",
   highlights: [
-  "RELEASE UFFICIALE V1.0.0 (BUILD 66)"
+  "Ripresa della visione dal Play Button nella Scheda Dettagli;",
+  "Fix escursione gesture volume e luminosità del player nonché azione ora nativa;",
+  "Fix finto buffering in seguito a ibernazione player video, continue pause o perdita sorgente;",
+  "Fix deep-Links;",
+  "Fix player nelle notifiche: ora riporta al player di Kuro e la timeline è in tempo reale;",
+  "Pop-Up e rimando per i permessi sul risparmio energetico dell'app, 'Nessuna Restrizione'."
 ],
-  releaseNotes: "## [1.0.0] - 2026-11-25",
+  releaseNotes: "## [1.0.0] - 2026-11-25\n\n- Ripresa della visione dal Play Button nella Scheda Dettagli;\n- Fix escursione gesture volume e luminosità del player nonché azione ora nativa;\n- Fix finto buffering in seguito a ibernazione player video, continue pause o perdita sorgente;\n- Fix deep-Links;\n- Fix player nelle notifiche: ora riporta al player di Kuro e la timeline è in tempo reale;\n- Pop-Up e rimando per i permessi sul risparmio energetico dell'app, 'Nessuna Restrizione'.",
 };
 
 export function formatChangelog(entry: ChangelogEntry): string {

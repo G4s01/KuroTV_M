@@ -253,8 +253,8 @@ main() {
   echo ""
   if [ "${SKIP_BUILD}" -eq 1 ]; then
     echo -e "   ${BOLD}Modalità --skip-build (riutilizzo APK esistente):${NC}"
-    echo "     0) Mantieni v${CURRENT_VERSION} → v${CURRENT_VERSION} (Build ${CURRENT_VERSION_CODE})"
-    echo "     1) +build   → v${CURRENT_VERSION} (Build $((CURRENT_VERSION_CODE + 1))) [Default]"
+    echo "     0) Mantieni v${CURRENT_VERSION} → v${CURRENT_VERSION} (Build ${CURRENT_VERSION_CODE}) [Default]"
+    echo "     1) +build   → v${CURRENT_VERSION} (Build $((CURRENT_VERSION_CODE + 1)))"
     echo "     2) +0.0.1   → v${NEXT_PATCH} (Build $((CURRENT_VERSION_CODE + 1)))"
     echo "     3) +0.1.0   → v${NEXT_MINOR} (Build $((CURRENT_VERSION_CODE + 1)))"
   else
@@ -273,19 +273,30 @@ main() {
     if [ -n "${CLI_VERSION:-}" ]; then
       VERSION_INPUT="${CLI_VERSION}"
       CLI_VERSION="" # consumata
+    elif [ "${SKIP_BUILD}" -eq 1 ]; then
+      read -rp "   Scelta [INVIO=0 / 1 / 2 / 3 / manuale]: " VERSION_INPUT || true
     else
       read -rp "   Scelta [INVIO=1 / 0 / 2 / 3 / manuale]: " VERSION_INPUT || true
     fi
     VERSION_INPUT="$(echo -e "${VERSION_INPUT:-}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
 
-    if [ -z "${VERSION_INPUT}" ] || [ "${VERSION_INPUT}" = "1" ]; then
-      # Default: stessa versione, build +1
-      NEW_VERSION="${CURRENT_VERSION}"
-      NEW_VERSION_CODE="${CLI_BUILD_NUMBER:-$((CURRENT_VERSION_CODE + 1))}"
+    if [ -z "${VERSION_INPUT}" ]; then
+      if [ "${SKIP_BUILD}" -eq 1 ]; then
+        NEW_VERSION="${CURRENT_VERSION}"
+        NEW_VERSION_CODE="${CLI_BUILD_NUMBER:-${CURRENT_VERSION_CODE}}"
+      else
+        # Default: stessa versione, build +1
+        NEW_VERSION="${CURRENT_VERSION}"
+        NEW_VERSION_CODE="${CLI_BUILD_NUMBER:-$((CURRENT_VERSION_CODE + 1))}"
+      fi
       break
     elif [ "${VERSION_INPUT}" = "0" ]; then
       NEW_VERSION="${CURRENT_VERSION}"
       NEW_VERSION_CODE="${CLI_BUILD_NUMBER:-${CURRENT_VERSION_CODE}}"
+      break
+    elif [ "${VERSION_INPUT}" = "1" ]; then
+      NEW_VERSION="${CURRENT_VERSION}"
+      NEW_VERSION_CODE="${CLI_BUILD_NUMBER:-$((CURRENT_VERSION_CODE + 1))}"
       break
     elif [ "${VERSION_INPUT}" = "2" ]; then
       NEW_VERSION="${NEXT_PATCH}"
@@ -341,22 +352,41 @@ main() {
   TMP_NOTES=$(mktemp)
   trap 'rm -f "${TMP_NOTES}"' EXIT
 
-  # Leggi il corpo del changelog precedente da src/constants/changelog.ts
+  # Leggi il corpo del changelog precedente da src/constants/changelog.ts (con fallback su CHANGELOG.md)
   PREV_CHANGELOG_BODY=""
   PREV_CHANGELOG_BODY=$(node -e '
     const fs = require("fs");
+    const stripLeadingHeader = (raw) => {
+      const lines = raw.split(/\r?\n/);
+      while (lines.length > 0 && (lines[0].trim() === "" || lines[0].trim().startsWith("## ["))) {
+        lines.shift();
+      }
+      return lines.join("\n").trim();
+    };
     try {
-      const content = fs.readFileSync(process.argv[1], "utf8");
-      const match = content.match(/releaseNotes:\s*("(?:[^"\\]|\\.)*"|`(?:[^`\\]|\\.)*`)/);
+      const tsContent = fs.readFileSync(process.argv[1], "utf8");
+      const match = tsContent.match(/releaseNotes:\s*("(?:[^"\\]|\\.)*")/);
       if (match) {
-        const raw = JSON.parse(match[1]);
-        const lines = raw.split("\n");
-        const bodyLines = lines.filter(l => !l.trim().startsWith("## ["));
-        const body = bodyLines.join("\n").trim();
-        if (body.length > 0) process.stdout.write(body);
+        const body = stripLeadingHeader(JSON.parse(match[1]));
+        if (body.length > 0) {
+          process.stdout.write(body);
+          process.exit(0);
+        }
       }
     } catch {}
-  ' "${ROOT_DIR}/src/constants/changelog.ts" 2>/dev/null || echo "")
+    try {
+      const mdContent = fs.readFileSync(process.argv[2], "utf8");
+      const curVer = (process.argv[3] || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      if (curVer) {
+        const re = new RegExp("(?:^|\\n)(##\\s+\\[" + curVer + "\\][^\\n]*[\\s\\S]*?)(?=\\n##\\s+\\[|$)");
+        const m = mdContent.match(re);
+        if (m) {
+          const body = stripLeadingHeader(m[1]);
+          if (body.length > 0) process.stdout.write(body);
+        }
+      }
+    } catch {}
+  ' "${ROOT_DIR}/src/constants/changelog.ts" "${ROOT_DIR}/CHANGELOG.md" "${CURRENT_VERSION}" 2>/dev/null || echo "")
 
   PREV_HAS_BODY=0
   if [ -n "${PREV_CHANGELOG_BODY}" ]; then
@@ -431,6 +461,7 @@ EOF
   RELEASE_NOTES=$(cat "${TMP_NOTES}")
   if [ -z "${RELEASE_NOTES// /}" ]; then
     RELEASE_NOTES="## [${NEW_VERSION}] - ${RELEASE_DATE}"
+    printf '%s\n' "${RELEASE_NOTES}" > "${TMP_NOTES}"
   fi
 
   # Aggiornamento CHANGELOG.md
