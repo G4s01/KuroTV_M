@@ -51,6 +51,7 @@ import {
   AnimeSynopsis,
   AnimeInfoTable,
   AnimeControlsBar,
+  resolveAnimePlayTarget,
 } from '../src/components/anime/index';
 import {
   HistorySlider,
@@ -5379,6 +5380,132 @@ assert(updatedTimelineSrc.includes('accessibilityActions'), 'PlayerTimeline deve
 assert(updatedTimelineSrc.includes('thumbColor'), 'PlayerTimeline deve adattare il colore del thumb al capitolo attivo');
 
 console.log('✓ Visualizzazione Capitoli sulla Timeline (Segmenti YouTube, Gaps, Colori OLED & Haptics) verificata con successo.');
+
+// -----------------------------------------------------------------------------
+// Verifica Resume Ultimo Episodio Visto & Timeline in Anime Detail
+// -----------------------------------------------------------------------------
+console.log('\n[Extra] Verifica Resume Ultimo Episodio Visto in Anime Detail...');
+
+const sampleEpisodes = [
+  { id: 'ep-1', number: 1, title: 'Episodio 1' },
+  { id: 'ep-2', number: 2, title: 'Episodio 2' },
+  { id: 'ep-3', number: 3, title: 'Episodio 3' },
+  { id: 'ep-4', number: 4, title: 'Episodio 4' },
+  { id: 'ep-5', number: 5, title: 'Episodio 5' },
+];
+
+// 1. Nessun progresso -> Episodio 1 a 0s
+const emptyProgress = sampleEpisodes.map((ep) => ({
+  episode: ep,
+  progress: 0,
+  currentTime: 0,
+  updatedAt: 0,
+  isCompleted: false,
+}));
+const targetNone = resolveAnimePlayTarget(sampleEpisodes, emptyProgress, undefined);
+assert.strictEqual(targetNone.episode?.number, 1, 'Senza progressi deve avviare Episodio 1');
+assert.strictEqual(targetNone.resumePosition, 0);
+assert.strictEqual(targetNone.hasStartedWatching, false);
+
+// 2. Episodio 4 visto fino a 725s mentre Episodio 1 non è completato -> deve avviare Ep 4 a 725s
+const ep4InProgressList = sampleEpisodes.map((ep) => ({
+  episode: ep,
+  progress: ep.number === 4 ? 50 : 0,
+  currentTime: ep.number === 4 ? 725 : 0,
+  updatedAt: ep.number === 4 ? 5000 : 0,
+  isCompleted: false,
+}));
+const targetEp4 = resolveAnimePlayTarget(sampleEpisodes, ep4InProgressList, {
+  animeId: 'anime-x',
+  animeTitle: 'Anime X',
+  thumbnail: '',
+  episodeId: 'ep-4',
+  episodeNumber: 4,
+  currentTime: 725,
+  duration: 1450,
+  percentage: 50,
+  isCompleted: false,
+  updatedAt: 5000,
+});
+assert.strictEqual(targetEp4.episode?.number, 4, 'Deve riprendere Episodio 4 anche se Ep 1 non è completato');
+assert.strictEqual(targetEp4.resumePosition, 725, 'Deve mantenere la timeline salvata di Ep 4');
+assert.strictEqual(targetEp4.hasStartedWatching, true);
+
+// 3. Episodio 1 in pausa (300s) ma Episodio 3 visto più di recente (640s) -> deve avviare Ep 3 a 640s
+const multiInProgressList = sampleEpisodes.map((ep) => ({
+  episode: ep,
+  progress: ep.number === 1 ? 20 : ep.number === 3 ? 45 : 0,
+  currentTime: ep.number === 1 ? 300 : ep.number === 3 ? 640 : 0,
+  updatedAt: ep.number === 1 ? 1000 : ep.number === 3 ? 8000 : 0,
+  isCompleted: false,
+}));
+const targetEp3Latest = resolveAnimePlayTarget(sampleEpisodes, multiInProgressList, undefined);
+assert.strictEqual(targetEp3Latest.episode?.number, 3, 'Deve scegliere ultimo episodio visto per updatedAt');
+assert.strictEqual(targetEp3Latest.resumePosition, 640);
+assert.strictEqual(targetEp3Latest.hasStartedWatching, true);
+
+// 4. Episodio 3 completato (>= 90%) -> deve avanzare al successivo non completato (Ep 4)
+const ep3CompletedList = sampleEpisodes.map((ep) => ({
+  episode: ep,
+  progress: ep.number === 3 ? 95 : 0,
+  currentTime: ep.number === 3 ? 1350 : 0,
+  updatedAt: ep.number === 3 ? 9000 : 0,
+  isCompleted: ep.number === 3,
+}));
+const targetAfterEp3 = resolveAnimePlayTarget(sampleEpisodes, ep3CompletedList, {
+  animeId: 'anime-x',
+  animeTitle: 'Anime X',
+  thumbnail: '',
+  episodeId: 'ep-3',
+  episodeNumber: 3,
+  currentTime: 1350,
+  duration: 1420,
+  percentage: 95,
+  isCompleted: true,
+  updatedAt: 9000,
+});
+assert.strictEqual(targetAfterEp3.episode?.number, 4, 'Dopo Ep 3 completato deve proporre Ep 4');
+assert.strictEqual(targetAfterEp3.resumePosition, 0);
+
+// 5. ContinueWatching remoto senza WATCH_PROGRESS_PREFIX locale -> usa timeline di latestProgress e fallback getWatchProgress
+const targetFromContinue = resolveAnimePlayTarget(sampleEpisodes, emptyProgress, {
+  animeId: 'anime-sync-cw',
+  animeTitle: 'Anime Sync CW',
+  thumbnail: '',
+  episodeId: 'ep-5',
+  episodeNumber: 5,
+  currentTime: 412,
+  duration: 1400,
+  percentage: 29,
+  isCompleted: false,
+  updatedAt: 12000,
+});
+assert.strictEqual(targetFromContinue.episode?.number, 5);
+assert.strictEqual(targetFromContinue.resumePosition, 412);
+assert.strictEqual(targetFromContinue.hasStartedWatching, true);
+
+AppStorage.setObject(StorageKeys.CONTINUE_WATCHING, [
+  {
+    animeId: 'anime-cw-fallback',
+    title: 'Anime CW Fallback',
+    thumbnail: '',
+    episodeId: 'ep-4',
+    episodeNumber: 4,
+    position: 518,
+    duration: 1440,
+    percentage: 36,
+    updatedAt: Date.now(),
+  },
+]);
+const cwFallbackProg = AppStorage.getWatchProgress('anime-cw-fallback', 4);
+assert(cwFallbackProg, 'getWatchProgress deve recuperare il progresso da CONTINUE_WATCHING se assente altrove');
+assert.strictEqual(cwFallbackProg.currentTime, 518);
+
+const animeDetailPlaySrc = fs.readFileSync(path.resolve(process.cwd(), 'app/anime/[id].tsx'), 'utf-8');
+assert(animeDetailPlaySrc.includes('resolveAnimePlayTarget'), 'app/anime/[id].tsx deve usare resolveAnimePlayTarget');
+assert(animeDetailPlaySrc.includes('getLatestAnimeProgress'), 'app/anime/[id].tsx deve consultare getLatestAnimeProgress');
+
+console.log('✓ Resume Ultimo Episodio Visto & Timeline in Anime Detail verificati con successo.');
 
 // -----------------------------------------------------------------------------
 // Fine Test

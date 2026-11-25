@@ -1122,10 +1122,12 @@ export const AppStorage = {
 
   getWatchProgress: (animeId: string, episodeNumber: number): WatchProgressItem | undefined => {
     if (!animeId) return undefined;
+    const retentionDays = AppStorage.getHistoryRetentionDays();
+    if (retentionDays === -1) return undefined;
+
     const progressKey = `${StorageKeys.WATCH_PROGRESS_PREFIX}${animeId}.${episodeNumber}`;
     const direct = AppStorage.getObject<WatchProgressItem>(progressKey);
     if (direct) {
-      const retentionDays = AppStorage.getHistoryRetentionDays();
       if (retentionDays > 0) {
         const cutoffTime = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
         if ((direct.updatedAt || 0) < cutoffTime) {
@@ -1154,6 +1156,28 @@ export const AppStorage = {
         updatedAt: match.updatedAt,
         dataId: match.dataId,
         serverId: match.serverId,
+      };
+    }
+
+    // Fallback to continue watching (e.g. synced from another device without direct progress key)
+    const cwMatch = AppStorage.getContinueWatching().find(
+      (c) => c.animeId === animeId && c.episodeNumber === episodeNumber,
+    );
+    if (cwMatch) {
+      return {
+        animeId: cwMatch.animeId,
+        animeTitle: cwMatch.title,
+        thumbnail: cwMatch.thumbnail,
+        episodeId: cwMatch.episodeId,
+        episodeNumber: cwMatch.episodeNumber,
+        totalEpisodes: cwMatch.totalEpisodes,
+        currentTime: cwMatch.position,
+        duration: cwMatch.duration,
+        percentage: cwMatch.percentage,
+        isCompleted: Boolean(cwMatch.percentage >= 90 || cwMatch.isCaughtUp),
+        updatedAt: cwMatch.updatedAt,
+        dataId: cwMatch.dataId,
+        serverId: cwMatch.serverId,
       };
     }
     return undefined;

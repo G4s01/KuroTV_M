@@ -184,6 +184,6 @@ e questo progetto aderisce al [Semantic Versioning](https://semver.org/lang/it/)
 
 Minor Player Fixes
 
-## [1.0.0] - 2026-11-17
+## [1.0.0] - 2026-11-25
 
-Player Preview Fixed
+Play button in Details now resume playing

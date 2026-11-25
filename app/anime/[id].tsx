@@ -28,6 +28,7 @@ import {
   AnimeInfoTable,
   AnimeControlsBar,
   DownloadOptionsSheet,
+  resolveAnimePlayTarget,
 } from '@/components/anime';
 import { useResponsiveLayout } from '@/hooks';
 import type { Episode, VideoServer } from '@/types';
@@ -68,14 +69,26 @@ export default function AnimeDetailScreen() {
     setActiveBatchId('batch-0');
   }, [animeId]);
 
+  const resolvedAnimeId = anime?.id || animeId;
+
   useFocusEffect(
     React.useCallback(() => {
-      if (animeId) {
-        setIsFavorite(AppStorage.isFavorite(animeId));
+      if (resolvedAnimeId) {
+        setIsFavorite(AppStorage.isFavorite(resolvedAnimeId));
       }
       setFocusTick((t) => t + 1);
-    }, [animeId])
+    }, [resolvedAnimeId])
   );
+
+  React.useEffect(() => {
+    const unsub = AppStorage.addSettingsListener(() => {
+      if (resolvedAnimeId) {
+        setIsFavorite(AppStorage.isFavorite(resolvedAnimeId));
+      }
+      setFocusTick((t) => t + 1);
+    });
+    return unsub;
+  }, [resolvedAnimeId]);
 
   const toggleFavorite = () => {
     if (!anime) return;
@@ -98,10 +111,18 @@ export default function AnimeDetailScreen() {
   };
 
   const navigateToEpisode = React.useCallback(
-    (episode: Episode) => {
+    (episode: Episode, overridePosition?: number) => {
       if (!anime) return;
       Haptics.selectionAsync().catch(() => {});
-      const savedProg = AppStorage.getWatchProgress(anime.id, episode.number);
+      const savedProg =
+        AppStorage.getWatchProgress(anime.id, episode.number) ||
+        (animeId !== anime.id ? AppStorage.getWatchProgress(animeId, episode.number) : undefined);
+      const resolvedPosition =
+        overridePosition !== undefined && overridePosition > 0
+          ? overridePosition
+          : savedProg && !savedProg.isCompleted
+            ? savedProg.currentTime
+            : 0;
       router.push({
         pathname: '/player/[id]',
         params: {
@@ -112,12 +133,12 @@ export default function AnimeDetailScreen() {
           animeTitle: anime.title,
           serverId: selectedServerId,
           thumbnail: anime.image || anime.thumbnail || '',
-          position: String(savedProg && !savedProg.isCompleted ? savedProg.currentTime : 0),
+          position: String(resolvedPosition),
           totalEpisodes: String(anime.totalEpisodes ?? (anime.episodes?.length || '')),
         },
       });
     },
-    [anime, selectedServerId, router]
+    [anime, animeId, selectedServerId, router]
   );
 
   const handleRestartPlayback = React.useCallback(() => {
@@ -200,14 +221,18 @@ export default function AnimeDetailScreen() {
 
   const currentProgressList = React.useMemo(() => {
     return episodes.map((ep) => {
-      const prog = AppStorage.getWatchProgress(animeId, ep.number);
+      const prog =
+        AppStorage.getWatchProgress(resolvedAnimeId, ep.number) ||
+        (animeId !== resolvedAnimeId ? AppStorage.getWatchProgress(animeId, ep.number) : undefined);
       return {
         episode: ep,
         progress: prog?.percentage || 0,
+        currentTime: prog?.currentTime || 0,
+        updatedAt: prog?.updatedAt || 0,
         isCompleted: Boolean(prog?.isCompleted || (prog?.percentage || 0) >= 90),
       };
     });
-  }, [episodes, animeId, focusTick]);
+  }, [episodes, resolvedAnimeId, animeId, focusTick]);
 
   const progressMap = React.useMemo(() => {
     const map = new Map<number, { progress: number; isCompleted: boolean }>();
@@ -339,17 +364,25 @@ export default function AnimeDetailScreen() {
     [episodes, animeId, anime]
   );
 
-  const firstUnwatched = React.useMemo(() => {
-    return currentProgressList.find((p) => !p.isCompleted)?.episode || episodes[0];
-  }, [currentProgressList, episodes]);
+  const playTarget = React.useMemo(() => {
+    const latestProgress =
+      AppStorage.getLatestAnimeProgress(resolvedAnimeId) ||
+      (animeId !== resolvedAnimeId ? AppStorage.getLatestAnimeProgress(animeId) : undefined);
+    return resolveAnimePlayTarget(episodes, currentProgressList, latestProgress);
+  }, [episodes, currentProgressList, resolvedAnimeId, animeId]);
+
+  const handlePlayResumeEpisode = React.useCallback(
+    (episode: Episode) => {
+      const overridePos =
+        playTarget.episode?.id === episode.id ? playTarget.resumePosition : undefined;
+      navigateToEpisode(episode, overridePos);
+    },
+    [navigateToEpisode, playTarget]
+  );
 
   const servers: VideoServer[] = anime?.servers || anime?.serverList || [
     { id: '9', name: 'AnimeWorld Server (Default)' },
   ];
-
-  const hasStartedWatching = React.useMemo(() => {
-    return currentProgressList.some((p) => p.progress > 0 && !p.isCompleted);
-  }, [currentProgressList]);
 
   const portraitHeaderElement = React.useMemo(() => {
     if (!anime) return null;
@@ -365,9 +398,9 @@ export default function AnimeDetailScreen() {
           anime={anime}
           windowWidth={isTablet ? Math.min(windowWidth, 960) : windowWidth}
           theme={theme}
-          firstUnwatched={firstUnwatched}
-          hasStartedWatching={hasStartedWatching}
-          onPlayEpisode={navigateToEpisode}
+          firstUnwatched={playTarget.episode}
+          hasStartedWatching={playTarget.hasStartedWatching}
+          onPlayEpisode={handlePlayResumeEpisode}
           onRestartPlayback={episodes.length > 0 ? handleRestartPlayback : undefined}
         />
 
@@ -398,9 +431,9 @@ export default function AnimeDetailScreen() {
     theme,
     windowWidth,
     isTablet,
-    firstUnwatched,
-    hasStartedWatching,
-    navigateToEpisode,
+    playTarget.episode,
+    playTarget.hasStartedWatching,
+    handlePlayResumeEpisode,
     episodes.length,
     handleRestartPlayback,
     batches.length,
@@ -525,9 +558,9 @@ export default function AnimeDetailScreen() {
               anime={anime}
               windowWidth={leftMasterWidth}
               theme={theme}
-              firstUnwatched={firstUnwatched}
-              hasStartedWatching={hasStartedWatching}
-              onPlayEpisode={navigateToEpisode}
+              firstUnwatched={playTarget.episode}
+              hasStartedWatching={playTarget.hasStartedWatching}
+              onPlayEpisode={handlePlayResumeEpisode}
               onRestartPlayback={episodes.length > 0 ? handleRestartPlayback : undefined}
             />
             <AnimeInfoTable anime={anime} theme={theme} />
