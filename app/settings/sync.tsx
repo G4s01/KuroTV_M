@@ -10,6 +10,7 @@ import {
   SyncSettingsCard,
   settingsStyles as styles,
 } from '@/components/settings';
+import { MalSyncSummaryCard } from '@/components/mal';
 
 export default function SyncSettingsScreen() {
   const router = useRouter();
@@ -48,6 +49,7 @@ export default function SyncSettingsScreen() {
         showsVerticalScrollIndicator={false}
       >
         <SyncSettingsCard theme={theme} />
+        <MalSyncSummaryCard />
       </ScrollView>
     </View>
   );

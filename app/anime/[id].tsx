@@ -15,6 +15,7 @@ import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { animeDetailQueryOptions } from '@/services/queries';
 import { AppStorage } from '@/services/storage';
+import { recordAnimeMalMapping } from '@/services/mal';
 import { scraperConfig } from '@/services/scraper/config';
 import { oledTheme, useTheme, getContrastTextColor } from '@/theme';
 import { EpisodeItem } from '@/components/EpisodeItem';
@@ -22,6 +23,7 @@ import { AnimeDetailScreenSkeleton } from '@/components/skeleton';
 import { ServerBottomSheet } from '@/components/ServerBottomSheet';
 import { BatchBottomSheet, type EpisodeBatch } from '@/components/BatchBottomSheet';
 import { DownloadService, type DownloadStatus } from '@/services/downloads';
+import { MalStatusPill } from '@/components/mal';
 import {
   AnimeHeaderBackdrop,
   AnimeSynopsis,
@@ -68,6 +70,12 @@ export default function AnimeDetailScreen() {
   React.useEffect(() => {
     setActiveBatchId('batch-0');
   }, [animeId]);
+
+  React.useEffect(() => {
+    if (anime && typeof anime.malId === 'number' && Number.isFinite(anime.malId) && anime.malId > 0) {
+      recordAnimeMalMapping(anime);
+    }
+  }, [anime]);
 
   const resolvedAnimeId = anime?.id || animeId;
 
@@ -410,6 +418,8 @@ export default function AnimeDetailScreen() {
           theme={theme}
         />
 
+        <MalStatusPill anime={anime} />
+
         <AnimeInfoTable
           anime={anime}
           theme={theme}
@@ -563,6 +573,7 @@ export default function AnimeDetailScreen() {
               onPlayEpisode={handlePlayResumeEpisode}
               onRestartPlayback={episodes.length > 0 ? handleRestartPlayback : undefined}
             />
+            <MalStatusPill anime={anime} />
             <AnimeInfoTable anime={anime} theme={theme} />
           </ScrollView>
 

@@ -16,6 +16,7 @@ export interface SelectionAppBarProps {
   showNormalTrash?: boolean;
   normalTrashLabel?: string;
   selectionTrashLabel?: string;
+  rightActions?: React.ReactNode;
 }
 
 /**
@@ -35,6 +36,7 @@ export const SelectionAppBar = React.memo<SelectionAppBarProps>(
     showNormalTrash = false,
     normalTrashLabel = 'SVUOTA',
     selectionTrashLabel = 'RIMUOVI SELEZIONATI',
+    rightActions,
   }) {
     const { theme } = useTheme();
     const isSelectionMode = selectedCount > 0;
@@ -145,22 +147,27 @@ export const SelectionAppBar = React.memo<SelectionAppBarProps>(
           )}
         </View>
 
-        {showNormalTrash && onTrashPress && (
-          <Pressable
-            style={styles.touchTarget}
-            onPress={onTrashPress}
-            accessibilityRole="button"
-            accessibilityLabel={normalTrashLabel}
-          >
-            <View
-              style={[
-                styles.iconCircle,
-                { backgroundColor: theme.colors.card, borderColor: theme.colors.border },
-              ]}
-            >
-              <Ionicons name="trash-outline" size={20} color={errorColor} />
-            </View>
-          </Pressable>
+        {(rightActions || (showNormalTrash && onTrashPress)) && (
+          <View style={styles.actionsRow}>
+            {rightActions}
+            {showNormalTrash && onTrashPress && (
+              <Pressable
+                style={styles.touchTarget}
+                onPress={onTrashPress}
+                accessibilityRole="button"
+                accessibilityLabel={normalTrashLabel}
+              >
+                <View
+                  style={[
+                    styles.iconCircle,
+                    { backgroundColor: theme.colors.card, borderColor: theme.colors.border },
+                  ]}
+                >
+                  <Ionicons name="trash-outline" size={20} color={errorColor} />
+                </View>
+              </Pressable>
+            )}
+          </View>
         )}
       </View>
     );

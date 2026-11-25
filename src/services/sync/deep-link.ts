@@ -181,6 +181,26 @@ export function parseKuroSyncDeepLink(deepLink: string): ParsedKuroSyncDeepLink 
 }
 
 /**
+ * Determines whether an incoming URL is an OAuth callback deep link for MyAnimeList
+ * (`kurotv://mal-callback?code=...&state=...`).
+ */
+export function isMalAuthCallbackDeepLink(rawUrl: string): boolean {
+  if (!rawUrl || typeof rawUrl !== 'string') return false;
+  const trimmed = rawUrl.trim();
+  if (!trimmed || trimmed.includes('expo-development-client')) {
+    return false;
+  }
+
+  const lower = trimmed.toLowerCase();
+  if (lower.startsWith('kurotv://mal-callback') || lower.startsWith('kurotv:///mal-callback')) {
+    return true;
+  }
+
+  const routePath = normalizeUrlForRouteExtraction(trimmed).toLowerCase();
+  return /^\/mal-callback(?:[/?#]|$)/.test(routePath);
+}
+
+/**
  * Determines whether an incoming URL is an action deep link for KuroSync / TV pairing
  * (handled via RootNavigation's ConfirmModal flow rather than Expo Router screen navigation).
  */
@@ -238,6 +258,10 @@ export function resolveSystemDeepLinkPath({
     // Preserve Expo Dev Launcher deep links cleanly
     if (trimmed.includes('expo-development-client')) {
       return path;
+    }
+
+    if (isMalAuthCallbackDeepLink(trimmed)) {
+      return initial ? '/' : null;
     }
 
     if (isKuroSyncActionDeepLink(trimmed)) {

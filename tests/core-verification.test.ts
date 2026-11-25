@@ -108,6 +108,7 @@ import {
   SyncProfileModal,
   QrScannerModal,
 } from '../src/components/settings/index';
+import { runMalVerificationTests } from './mal-verification.test';
 
 console.log('=== Inizio Test di Verifica KuroTV Mobile ===\n');
 
@@ -6241,6 +6242,11 @@ assert.strictEqual(
 );
 
 console.log('✓ Deep-Link Routing Expo Router (+native-intent, +not-found, MainActivity onNewIntent & CSRF Guard) verificato con successo.');
+
+// -----------------------------------------------------------------------------
+// 38. Integrazione MyAnimeList (OAuth PKCE, Client, Mapper, Sync & UI)
+// -----------------------------------------------------------------------------
+await runMalVerificationTests();
 
 // -----------------------------------------------------------------------------
 // Fine Test

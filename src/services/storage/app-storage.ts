@@ -136,6 +136,16 @@ export const StorageKeys = {
   SYNC_PENDING_DELETIONS: 'sync.pending_deletions',
   SYNC_IS_ENABLED: 'sync.is_enabled',
   SYNC_KNOWN_TOMBSTONES: 'sync.known_tombstones',
+  MAL_CLIENT_ID: 'mal.clientId',
+  MAL_AUTH_SESSION: 'mal.authSession',
+  MAL_OAUTH_PENDING: 'mal.oauthPending',
+  MAL_SETTINGS: 'mal.settings',
+  MAL_ID_MAP: 'mal.idMap',
+  MAL_WATCHED_HIGHWATER: 'mal.watchedHighwater',
+  MAL_PENDING_UPDATES: 'mal.pendingUpdates',
+  MAL_LIST_CACHE: 'mal.listCache',
+  MAL_LAST_SYNC_TIME: 'mal.lastSyncTime',
+  MAL_IGNORED_ANIME_IDS: 'mal.ignoredAnimeIds',
 } as const;
 
 export type ThemeMode = 'oled' | 'light' | 'custom';
@@ -1301,6 +1311,15 @@ export const AppStorage = {
     const progressKey = `${StorageKeys.WATCH_PROGRESS_PREFIX}${payload.animeId}.${payload.episodeNumber}`;
     AppStorage.setObject(progressKey, progressItem);
 
+    // 1b. Update compact MAL watched highwater register (local-only, immune to 60-day progress pruning)
+    if (
+      progressItem.isCompleted &&
+      Number.isInteger(progressItem.episodeNumber) &&
+      progressItem.episodeNumber > 0
+    ) {
+      AppStorage.recordMalWatchedHighwater(payload.animeId, progressItem.episodeNumber);
+    }
+
     // 2. Update watch history (limit 100) - read directly without scanning disk keys
     const rawHistory = AppStorage.getObject<WatchHistoryItem[]>(StorageKeys.WATCH_HISTORY);
     const history = Array.isArray(rawHistory) ? rawHistory : [];
@@ -2106,6 +2125,43 @@ export const AppStorage = {
       }
     }
     return items;
+  },
+
+  // ----------------------------------------------------
+  // MAL Local Watched Highwater (Isolated from KuroSync & Cache Clear)
+  // ----------------------------------------------------
+  getMalWatchedHighwater: (): Record<string, number> => {
+    const raw = AppStorage.getObject<Record<string, unknown>>(StorageKeys.MAL_WATCHED_HIGHWATER);
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+      return {};
+    }
+    const clean: Record<string, number> = {};
+    for (const [animeId, val] of Object.entries(raw)) {
+      if (animeId && typeof val === 'number' && Number.isInteger(val) && val > 0) {
+        clean[animeId] = val;
+      }
+    }
+    return clean;
+  },
+
+  getMalWatchedHighwaterForAnime: (animeId: string): number => {
+    if (!animeId) return 0;
+    const map = AppStorage.getMalWatchedHighwater();
+    return map[animeId] || 0;
+  },
+
+  recordMalWatchedHighwater: (animeId: string, episodeNumber: number): void => {
+    if (!animeId || !Number.isInteger(episodeNumber) || episodeNumber <= 0) return;
+    const current = AppStorage.getMalWatchedHighwater();
+    const prev = current[animeId] || 0;
+    if (episodeNumber > prev) {
+      current[animeId] = episodeNumber;
+      AppStorage.setObject(StorageKeys.MAL_WATCHED_HIGHWATER, current);
+    }
+  },
+
+  clearMalWatchedHighwater: (): void => {
+    AppStorage.remove(StorageKeys.MAL_WATCHED_HIGHWATER);
   },
 
   clearCache: (): void => {

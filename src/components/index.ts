@@ -16,4 +16,5 @@ export * from './BatteryOptimizationModal';
 export * from './settings';
 export * from './home';
 export * from './skeleton';
+export * from './mal';
 export * from './TabletNavigationRail';

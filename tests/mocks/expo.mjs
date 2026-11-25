@@ -123,6 +123,29 @@ export const openSettings = async () => {};
 export const getInitialURL = async () => null;
 export const addEventListener = () => ({ remove: () => {} });
 
+export const WebBrowserResultType = {
+  CANCEL: 'cancel',
+  DISMISS: 'dismiss',
+  OPENED: 'opened',
+  LOCKED: 'locked',
+};
+let mockOpenAuthSessionHandler = null;
+export const setMockOpenAuthSessionHandler = (fn) => {
+  mockOpenAuthSessionHandler = typeof fn === 'function' ? fn : null;
+};
+export const openBrowserAsync = async () => ({ type: 'opened' });
+export const dismissBrowser = async () => ({ type: 'dismiss' });
+export const openAuthSessionAsync = async (url, redirectUrl) => {
+  if (mockOpenAuthSessionHandler) {
+    return await mockOpenAuthSessionHandler(url, redirectUrl);
+  }
+  return { type: 'cancel' };
+};
+
+export const setStringAsync = async () => true;
+export const getStringAsync = async () => '';
+export const hasStringAsync = async () => false;
+
 export const CameraView = ({ children }) => children || null;
 export const useCameraPermissions = () => [
   { granted: true, canAskAgain: true, status: 'granted' },
@@ -173,4 +196,12 @@ export default {
   StorageAccessFramework,
   getNetworkStateAsync,
   NetworkStateType,
+  WebBrowserResultType,
+  setMockOpenAuthSessionHandler,
+  openBrowserAsync,
+  dismissBrowser,
+  openAuthSessionAsync,
+  setStringAsync,
+  getStringAsync,
+  hasStringAsync,
 };

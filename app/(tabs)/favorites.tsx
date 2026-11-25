@@ -10,16 +10,19 @@ import {
 import { useRouter, useNavigation, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FlashList } from '@shopify/flash-list';
+import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { AppStorage } from '@/services/storage';
 import { SyncManager } from '@/services/sync';
+import { MalAuthService, addMalDataListener } from '@/services/mal';
 import { oledTheme, useTheme, getContrastTextColor } from '@/theme';
 import { AnimeCard } from '@/components/AnimeCard';
 import { ConfirmModal } from '@/components/ConfirmModal';
 import { SelectionAppBar } from '@/components/SelectionAppBar';
 import { useResponsiveLayout, useMultiSelection } from '@/hooks';
 import type { AnimeItem } from '@/types';
+import malSvg from '../../assets/icons/myanimelist.svg';
 
 const getFavoriteKey = (item: AnimeItem) => item.id;
 
@@ -33,6 +36,7 @@ export default function FavoritesScreen() {
   const [favorites, setFavorites] = React.useState<AnimeItem[]>([]);
   const [isRefreshing, setIsRefreshing] = React.useState(false);
   const [isConfirmRemoveVisible, setIsConfirmRemoveVisible] = React.useState(false);
+  const [isMalConnected, setIsMalConnected] = React.useState(() => MalAuthService.isConnected());
 
   const {
     selectedKeys,
@@ -55,6 +59,7 @@ export default function FavoritesScreen() {
   useFocusEffect(
     React.useCallback(() => {
       loadFavorites();
+      setIsMalConnected(MalAuthService.isConnected());
       if (SyncManager.isConnected()) {
         SyncManager.pullDeltaIfNeeded(15000).catch(() => {});
       }
@@ -65,7 +70,13 @@ export default function FavoritesScreen() {
     const unsub = AppStorage.addSettingsListener(() => {
       loadFavorites();
     });
-    return unsub;
+    const unsubMal = addMalDataListener(() => {
+      setIsMalConnected(MalAuthService.isConnected());
+    });
+    return () => {
+      unsub();
+      unsubMal();
+    };
   }, [loadFavorites]);
 
   useFocusEffect(
@@ -147,6 +158,41 @@ export default function FavoritesScreen() {
     [selectedKeys, isSelectionMode]
   );
 
+  const malHeaderAction = React.useMemo(
+    () => (
+      <Pressable
+        style={[
+          styles.malHeaderBtn,
+          {
+            backgroundColor: theme.colors.card,
+            borderColor: isMalConnected ? theme.colors.success || '#10B981' : theme.colors.border,
+          },
+        ]}
+        onPress={() => {
+          Haptics.selectionAsync().catch(() => {});
+          router.push('/mal' as any);
+        }}
+        hitSlop={6}
+        accessibilityRole="button"
+        accessibilityLabel={
+          isMalConnected ? 'APRI LISTE MYANIMELIST (CONNESSO)' : 'APRI MYANIMELIST'
+        }
+      >
+        <Image source={malSvg} style={styles.malHeaderIcon} contentFit="contain" />
+        <Text style={[styles.malHeaderText, { color: theme.colors.text }]}>MAL</Text>
+        {isMalConnected && (
+          <View
+            style={[
+              styles.malConnectedDot,
+              { backgroundColor: theme.colors.success || '#10B981' },
+            ]}
+          />
+        )}
+      </Pressable>
+    ),
+    [theme, isMalConnected, router]
+  );
+
   return (
     <View style={[styles.root, { paddingTop: insets.top, backgroundColor: theme.colors.background }]}>
       <SelectionAppBar
@@ -160,6 +206,7 @@ export default function FavoritesScreen() {
         onTrashPress={handleRequestRemoveSelected}
         showNormalTrash={false}
         selectionTrashLabel="RIMUOVI PREFERITI SELEZIONATI"
+        rightActions={malHeaderAction}
       />
 
       {favorites.length === 0 ? (
@@ -294,5 +341,33 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 16,
     paddingBottom: 24,
+  },
+  malHeaderBtn: {
+    minWidth: 44,
+    minHeight: 44,
+    paddingHorizontal: 12,
+    borderRadius: oledTheme.radius.full,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  malHeaderIcon: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+  },
+  malHeaderText: {
+    fontSize: 11,
+    fontWeight: '800',
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  malConnectedDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
   },
 });

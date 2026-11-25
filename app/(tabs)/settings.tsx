@@ -20,6 +20,7 @@ import {
   type NavBarMode,
 } from '@/services/storage';
 import { SyncManager, type SyncStatus } from '@/services/sync';
+import { MalAuthService, addMalDataListener, type MalAuthStatus } from '@/services/mal';
 import { DownloadService, type DownloadSettings, type StorageUsageInfo } from '@/services/downloads';
 import { UpdaterService, UpdateStore, usePendingUpdate } from '@/services/updater';
 import { ConfirmModal } from '@/components/ConfirmModal';
@@ -95,6 +96,7 @@ export default function SettingsScreen() {
   const [navBarMode, setNavBarMode] = useState<NavBarMode>(() => AppStorage.getNavBarMode());
   const [aniSkipSettings, setAniSkipSettings] = useState<AniSkipSettings>(() => AppStorage.getAniSkipSettings());
   const [syncStatus, setSyncStatus] = useState<SyncStatus>(() => SyncManager.getStatus());
+  const [malStatus, setMalStatus] = useState<MalAuthStatus>(() => MalAuthService.getStatus());
   const [downloadSettings, setDownloadSettings] = useState<DownloadSettings>(() => DownloadService.getSettings());
   const [storageInfo, setStorageInfo] = useState<StorageUsageInfo>({
     appDownloadsBytes: 0,
@@ -133,6 +135,7 @@ export default function SettingsScreen() {
       setNavBarMode(AppStorage.getNavBarMode());
       setAniSkipSettings(AppStorage.getAniSkipSettings());
       setSyncStatus(SyncManager.getStatus());
+      setMalStatus(MalAuthService.getStatus());
       setDownloadSettings(DownloadService.getSettings());
       setWatchRetention(AppStorage.getHistoryRetentionDays());
       setSearchRetention(AppStorage.getSearchHistoryRetentionDays());
@@ -156,6 +159,9 @@ export default function SettingsScreen() {
   // Live event listeners for settings & sync changes
   useEffect(() => {
     const unsubSync = SyncManager.addSyncListener(setSyncStatus);
+    const unsubMal = addMalDataListener(() => {
+      setMalStatus(MalAuthService.getStatus());
+    });
     const unsubDownloads = DownloadService.addSettingsListener(setDownloadSettings);
     const unsubDownloadList = DownloadService.addListListener(() => {
       DownloadService.getStorageUsage().then(setStorageInfo).catch(() => {});
@@ -167,6 +173,7 @@ export default function SettingsScreen() {
 
     return () => {
       unsubSync();
+      unsubMal();
       unsubDownloads();
       unsubDownloadList();
       unsubStorage();
@@ -188,6 +195,10 @@ export default function SettingsScreen() {
   const syncSubtitle = syncStatus.isConnected
     ? `CONNESSO • ${(syncStatus.profileName || 'PRINCIPALE').toUpperCase()}`
     : 'NON CONNESSO';
+
+  const malSubtitle = malStatus.isConnected
+    ? `CONNESSO • @${(malStatus.username || 'UTENTE').toUpperCase()}`
+    : 'NON CONNESSO • LISTE & SYNC';
 
   const downloadSubtitle = `${storageInfo.appDownloadsFormatted} OCCUPATI • SOLO WI-FI: ${downloadSettings.wifiOnly ? 'ON' : 'OFF'}`;
 
@@ -425,6 +436,14 @@ export default function SettingsScreen() {
           title="SINCRONIA"
           subtitle={syncSubtitle}
           onPress={() => router.push('/settings/sync' as any)}
+        />
+
+        {/* 3b. MyAnimeList */}
+        <SettingsCategoryRow
+          icon="bookmark-outline"
+          title="MYANIMELIST"
+          subtitle={malSubtitle}
+          onPress={() => router.push('/mal' as any)}
         />
 
         {/* 4. Download */}

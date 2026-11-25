@@ -35,6 +35,11 @@ import {
 import { AppStorage } from '@/services/storage';
 import { SyncManager } from '@/services/sync';
 import { DownloadService, type DownloadStatus } from '@/services/downloads';
+import {
+  MalSyncService,
+  getMappedMalIdForAnime,
+  recordAnimeMalMapping,
+} from '@/services/mal';
 import { oledTheme, useTheme, getContrastTextColor } from '@/theme';
 import { AniSkipButton } from '@/components/AniSkipButton';
 import { PlayerSkeleton } from '@/components/skeleton';
@@ -160,7 +165,9 @@ export default function VideoPlayerScreen() {
   const nextEpisodeRef = React.useRef<{ id: string; number: number; dataId?: string } | null>(null);
   const hasResumedRef = React.useRef(false);
   const detailLoadedRef = React.useRef(false);
+  const loadedAnimeIdRef = React.useRef<string>('');
   const malIdRef = React.useRef<number | null>(null);
+  const pureMalIdRef = React.useRef<number | null>(null);
 
   // Resume from saved position or navigation param
   const initialResumePosition = React.useMemo(() => {
@@ -190,7 +197,7 @@ export default function VideoPlayerScreen() {
       if (!animeId || !episodeId) return;
       const currentDuration = dur && dur > 0 ? dur : durationRef.current;
       const nextEp = nextEpisodeRef.current;
-      AppStorage.saveWatchProgress({
+      const savedItem = AppStorage.saveWatchProgress({
         animeId,
         animeTitle,
         episodeId,
@@ -210,6 +217,25 @@ export default function VideoPlayerScreen() {
             }
           : undefined,
       });
+
+      const crossedCompletionThreshold =
+        currentDuration > 0 &&
+        (pos / currentDuration >= 0.9 ||
+          (currentDuration - pos <= (AppStorage.getEndingThreshold() || 90) && pos > 30));
+
+      if (savedItem?.isCompleted === true && crossedCompletionThreshold) {
+        const resolvedMalId = pureMalIdRef.current || getMappedMalIdForAnime(animeId);
+        if (resolvedMalId && resolvedMalId > 0) {
+          MalSyncService.maybeAutoSyncOnEpisodeComplete({
+            animeId,
+            malId: resolvedMalId,
+            episodeNumber: savedItem.episodeNumber,
+            title: animeTitle,
+            totalEpisodes: totalEpisodesRef.current,
+            isOngoingSeries: isOngoingRef.current,
+          }).catch(() => {});
+        }
+      }
 
       if (SyncManager.isConnected()) {
         const isCompleted =
@@ -1030,9 +1056,15 @@ export default function VideoPlayerScreen() {
   React.useEffect(() => {
     async function loadMetadataAndAniSkip() {
       try {
+        if (loadedAnimeIdRef.current !== animeId) {
+          detailLoadedRef.current = false;
+          pureMalIdRef.current = null;
+          malIdRef.current = null;
+        }
         if (!detailLoadedRef.current && animeId) {
           const detail = await AnimeWorldScraper.getAnimeDetail(animeId);
           detailLoadedRef.current = true;
+          loadedAnimeIdRef.current = animeId;
           if (detail) {
             setAnimeDetail(detail);
             const statusStr = (detail.status || detail.state || '').toLowerCase();
@@ -1059,6 +1091,12 @@ export default function VideoPlayerScreen() {
               } else {
                 nextEpisodeRef.current = null;
               }
+            }
+            if (typeof detail.malId === 'number' && Number.isFinite(detail.malId) && detail.malId > 0) {
+              pureMalIdRef.current = Math.floor(detail.malId);
+              recordAnimeMalMapping(detail);
+            } else {
+              pureMalIdRef.current = null;
             }
             const malId = detail.malId || detail.anilistId;
             if (malId) {

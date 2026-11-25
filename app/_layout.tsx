@@ -10,7 +10,13 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider, useTheme } from '@/theme';
 import { AppStorage, type NavBarMode } from '@/services/storage';
 import { UpdaterService, UpdateStore } from '@/services/updater';
-import { SyncManager, parseKuroSyncDeepLink, isKuroSyncActionDeepLink } from '@/services/sync';
+import {
+  SyncManager,
+  parseKuroSyncDeepLink,
+  isKuroSyncActionDeepLink,
+  isMalAuthCallbackDeepLink,
+} from '@/services/sync';
+import { MalAuthService, MalSyncService } from '@/services/mal';
 import * as Linking from 'expo-linking';
 import { UpdateModal, ConfirmModal, BatteryOptimizationModal } from '@/components';
 import { SyncConnectModal } from '@/components/settings';
@@ -74,6 +80,9 @@ function RootNavigation() {
         if (SyncManager.isConnected()) {
           SyncManager.pullDelta().catch(() => {});
           SyncManager.startPeriodicSync(60000);
+        }
+        if (MalAuthService.isConnected() && MalSyncService.getPendingUpdatesCount() > 0) {
+          MalSyncService.flushPendingUpdates().catch(() => {});
         }
       } else if (state === 'background' || state === 'inactive') {
         if (SyncManager.isConnected()) {
@@ -165,6 +174,30 @@ function RootNavigation() {
         return;
       }
       lastDeepLinkRef.current = { url: trimmedUrl, timestamp: now };
+
+      if (isMalAuthCallbackDeepLink(trimmedUrl)) {
+        const wasLoginInFlight = MalAuthService.isLoginInFlight();
+        try {
+          const malRes = await MalAuthService.handleCallbackUrl(trimmedUrl);
+          if (
+            !wasLoginInFlight &&
+            !malRes.ok &&
+            !malRes.alreadyHandled &&
+            !malRes.cancelled &&
+            malRes.error &&
+            isMounted
+          ) {
+            setSyncAlert({
+              visible: true,
+              title: 'LOGIN MYANIMELIST FALLITO',
+              message: malRes.error,
+            });
+          }
+        } catch {
+          // Safe fallback
+        }
+        return;
+      }
 
       const parsed = parseKuroSyncDeepLink(trimmedUrl);
       if (parsed?.token) {
@@ -309,6 +342,13 @@ function RootNavigation() {
         />
         <Stack.Screen
           name="downloads/index"
+          options={{
+            headerShown: false,
+            animation: 'slide_from_right',
+          }}
+        />
+        <Stack.Screen
+          name="mal/index"
           options={{
             headerShown: false,
             animation: 'slide_from_right',

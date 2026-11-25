@@ -18,6 +18,7 @@ import { buildFilterQuery, parseSearchPage } from "./parsers/search.parser";
 import type { SearchResult } from "./parsers/search.parser";
 import { resolveVideoSource } from "./parsers/video.parser";
 import { resolveUrl } from "./utils";
+import { recordAnimeMalMapping } from "../mal/id-map-store";
 
 export class AnimeWorldScraperService {
   private httpClient: HttpClient;
@@ -171,6 +172,13 @@ export class AnimeWorldScraperService {
         throw new Error(
           `[AnimeWorldScraper] Failed to parse anime detail from: ${targetUrl}`,
         );
+      }
+      if (typeof detail.malId === "number" && Number.isFinite(detail.malId) && detail.malId > 0) {
+        try {
+          recordAnimeMalMapping(detail);
+        } catch {
+          // Non-blocking passive mapping cache update
+        }
       }
       return detail;
     } catch (error) {

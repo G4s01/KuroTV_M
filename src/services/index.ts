@@ -5,12 +5,14 @@ export * from './queries';
 export * from './aniskip';
 export * from './battery';
 export * from './downloads';
+export * from './mal';
 export {
   SyncManager,
   DEFAULT_SYNC_SERVER_URL,
   KUROSYNC_GITHUB_REPO_URL,
   parseKuroSyncDeepLink,
   isKuroSyncActionDeepLink,
+  isMalAuthCallbackDeepLink,
   resolveSystemDeepLinkPath,
   type ParsedKuroSyncDeepLink,
   type SyncStatus,
