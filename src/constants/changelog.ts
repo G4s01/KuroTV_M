@@ -14,13 +14,14 @@ export interface ChangelogEntry {
 
 export const CURRENT_CHANGELOG: ChangelogEntry = {
   version: "1.0.0",
-  versionCode: 62,
+  versionCode: 63,
   releaseDate: "2026-11-25",
   title: "RELEASE UFFICIALE KUROTV MOBILE",
   highlights: [
-  "RELEASE UFFICIALE V1.0.0 (BUILD 62)"
+  "Il pulsante riproduci nella scheda dettagli ora riprende la visione;",
+  "I controlli di volume e luminosità nel player hanno ora un'escursione adattiva e controlli nativi."
 ],
-  releaseNotes: "## [1.0.0] - 2026-11-25\n\nPlay button in Details now resume playing",
+  releaseNotes: "## [1.0.0] - 2026-11\n\n- Il pulsante riproduci nella scheda dettagli ora riprende la visione;\n- I controlli di volume e luminosità nel player hanno ora un'escursione adattiva e controlli nativi.",
 };
 
 export function formatChangelog(entry: ChangelogEntry): string {

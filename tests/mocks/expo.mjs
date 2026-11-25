@@ -5,6 +5,11 @@ export const Constants = {
   },
 };
 
+export const requireOptionalNativeModule = () => null;
+export const requireNativeModule = () => ({});
+export class NativeModule {}
+export const registerWebModule = (cls) => new cls();
+
 export const documentDirectory = '/mock/documents/';
 
 export let mockFileContent = '';

@@ -11,6 +11,14 @@ const patches = [
     dest: 'node_modules/expo-video/android/src/main/java/expo/modules/video/playbackService/VideoMediaSessionCallback.kt',
   },
   {
+    src: 'scripts/patches/expo-video/DataSourceUtils.kt',
+    dest: 'node_modules/expo-video/android/src/main/java/expo/modules/video/utils/DataSourceUtils.kt',
+  },
+  {
+    src: 'scripts/patches/expo-video/VideoManager.kt',
+    dest: 'node_modules/expo-video/android/src/main/java/expo/modules/video/managers/VideoManager.kt',
+  },
+  {
     src: 'scripts/patches/MainActivity.kt',
     dest: 'android/app/src/main/java/com/kurotv/mobile/MainActivity.kt',
   },

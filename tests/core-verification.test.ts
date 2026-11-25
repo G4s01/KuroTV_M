@@ -45,6 +45,17 @@ import {
   getAniSkipChapterBadge,
   computeTimelineChapters,
   findChapterAtTime,
+  resolvePlayingChangeState,
+  resolveStatusChangeState,
+  syncPlayerSnapshot,
+  evaluatePlaybackStall,
+  STALL_BUFFERING_THRESHOLD_MS,
+  STALL_SOFT_KICK_THRESHOLD_MS,
+  STALL_MANUAL_RELOAD_THRESHOLD_MS,
+  STALL_AUTO_RELOAD_THRESHOLD_MS,
+  computeVerticalGestureTravelRange,
+  computeSystemVolumeGesture,
+  computeWindowBrightnessGesture,
 } from '../src/components/player/index';
 import {
   AnimeHeaderBackdrop,
@@ -5506,6 +5517,211 @@ assert(animeDetailPlaySrc.includes('resolveAnimePlayTarget'), 'app/anime/[id].ts
 assert(animeDetailPlaySrc.includes('getLatestAnimeProgress'), 'app/anime/[id].tsx deve consultare getLatestAnimeProgress');
 
 console.log('✓ Resume Ultimo Episodio Visto & Timeline in Anime Detail verificati con successo.');
+
+// -----------------------------------------------------------------------------
+// Verifica State Machine Playback, Pausa Esterna & Stall Recovery del Player
+// -----------------------------------------------------------------------------
+console.log('\n[Extra] Verifica Playback State Machine & Stall Recovery...');
+
+// 1. Pausa esterna (es. AudioFocus loss / background nativo) con userWantsPlayback=true e status='readyToPlay'
+const extPause = resolvePlayingChangeState({
+  playing: false,
+  status: 'readyToPlay',
+  userWantsPlayback: true,
+  hasEnded: false,
+  isScrubbing: false,
+});
+assert.strictEqual(extPause.isPlaying, false, 'Pausa esterna non deve lasciare isPlaying=true');
+assert.strictEqual(extPause.isBuffering, false, 'Pausa esterna su readyToPlay non deve mostrare buffering infinito');
+assert.strictEqual(extPause.userWantsPlayback, false, 'Pausa esterna deve allineare userWantsPlayback=false');
+
+// 2. Buffering reale durante riproduzione (playing=false, status='loading', userWantsPlayback=true)
+const realBuffering = resolvePlayingChangeState({
+  playing: false,
+  status: 'loading',
+  userWantsPlayback: true,
+  hasEnded: false,
+  isScrubbing: false,
+});
+assert.strictEqual(realBuffering.isPlaying, true);
+assert.strictEqual(realBuffering.isBuffering, true);
+assert.strictEqual(realBuffering.userWantsPlayback, true);
+
+// 3. statusChange -> readyToPlay mentre il player è in pausa (playerPlaying=false) deve azzerare buffering
+const readyWhilePaused = resolveStatusChangeState({
+  status: 'readyToPlay',
+  hasError: false,
+  playerPlaying: false,
+  userWantsPlayback: false,
+  hasEnded: false,
+  isScrubbing: false,
+});
+assert.strictEqual(readyWhilePaused.isBuffering, false, 'readyToPlay in pausa deve sempre azzerare isBuffering');
+assert.strictEqual(readyWhilePaused.isPlaying, false);
+
+// 4. syncPlayerSnapshot al rientro da background con ExoPlayer in pausa
+const fgPaused = syncPlayerSnapshot({
+  playerPlaying: false,
+  playerStatus: 'readyToPlay',
+  userWantsPlayback: true,
+  hasEnded: false,
+  isScrubbing: false,
+});
+assert.strictEqual(fgPaused.isBuffering, false);
+assert.strictEqual(fgPaused.isPlaying, false);
+assert.strictEqual(fgPaused.userWantsPlayback, false);
+
+// 5. syncPlayerSnapshot al rientro con ExoPlayer in riproduzione
+const fgPlaying = syncPlayerSnapshot({
+  playerPlaying: true,
+  playerStatus: 'readyToPlay',
+  userWantsPlayback: false,
+  hasEnded: false,
+  isScrubbing: false,
+});
+assert.strictEqual(fgPlaying.isBuffering, false);
+assert.strictEqual(fgPlaying.isPlaying, true);
+assert.strictEqual(fgPlaying.userWantsPlayback, true);
+
+// 6. Escalation watchdog su stall (1.2s buffering -> 5s soft_kick -> 6s manual reload -> 11s reload_stream)
+const stallT0 = 10_000;
+const stallAt1500 = evaluatePlaybackStall({
+  time: 320,
+  duration: 1400,
+  lastAdvanceTime: 320,
+  lastAdvanceTimestamp: stallT0,
+  now: stallT0 + STALL_BUFFERING_THRESHOLD_MS + 300,
+  userWantsPlayback: true,
+  hasEnded: false,
+  isScrubbing: false,
+  playerPlaying: false,
+  playerStatus: 'loading',
+  isBuffering: false,
+  softKickAttempted: false,
+  reloadAttempts: 0,
+});
+assert.strictEqual(stallAt1500.nextIsBuffering, true);
+assert.strictEqual(stallAt1500.showManualReload, false);
+assert.strictEqual(stallAt1500.recoveryAction, 'none');
+
+const stallAt5200 = evaluatePlaybackStall({
+  time: 320,
+  duration: 1400,
+  lastAdvanceTime: 320,
+  lastAdvanceTimestamp: stallT0,
+  now: stallT0 + STALL_SOFT_KICK_THRESHOLD_MS + 200,
+  userWantsPlayback: true,
+  hasEnded: false,
+  isScrubbing: false,
+  playerPlaying: false,
+  playerStatus: 'loading',
+  isBuffering: true,
+  softKickAttempted: false,
+  reloadAttempts: 0,
+});
+assert.strictEqual(stallAt5200.recoveryAction, 'soft_kick');
+assert.strictEqual(stallAt5200.showManualReload, false);
+
+const stallAt6500 = evaluatePlaybackStall({
+  time: 320,
+  duration: 1400,
+  lastAdvanceTime: 320,
+  lastAdvanceTimestamp: stallT0,
+  now: stallT0 + STALL_MANUAL_RELOAD_THRESHOLD_MS + 500,
+  userWantsPlayback: true,
+  hasEnded: false,
+  isScrubbing: false,
+  playerPlaying: false,
+  playerStatus: 'loading',
+  isBuffering: true,
+  softKickAttempted: true,
+  reloadAttempts: 0,
+});
+assert.strictEqual(stallAt6500.showManualReload, true);
+assert.strictEqual(stallAt6500.recoveryAction, 'none');
+
+const stallAt11500 = evaluatePlaybackStall({
+  time: 320,
+  duration: 1400,
+  lastAdvanceTime: 320,
+  lastAdvanceTimestamp: stallT0,
+  now: stallT0 + STALL_AUTO_RELOAD_THRESHOLD_MS + 500,
+  userWantsPlayback: true,
+  hasEnded: false,
+  isScrubbing: false,
+  playerPlaying: false,
+  playerStatus: 'loading',
+  isBuffering: true,
+  softKickAttempted: true,
+  reloadAttempts: 0,
+});
+assert.strictEqual(stallAt11500.recoveryAction, 'reload_stream');
+
+// 7. Verifica presenza patch native expo-video e integrazione in app/player/[id].tsx
+const playerScreenSrc = fs.readFileSync(path.resolve(process.cwd(), 'app/player/[id].tsx'), 'utf-8');
+assert(playerScreenSrc.includes('resolvePlayingChangeState'), 'app/player/[id].tsx deve usare resolvePlayingChangeState');
+assert(playerScreenSrc.includes('resolveStatusChangeState'), 'app/player/[id].tsx deve usare resolveStatusChangeState');
+assert(playerScreenSrc.includes('syncPlayerStateFromNative'), 'app/player/[id].tsx deve risincronizzare lo stato al rientro in foreground');
+assert(playerScreenSrc.includes('RICARICA STREAM'), 'app/player/[id].tsx deve offrire RICARICA STREAM su stall prolungato');
+
+const applyPatchesSrc = fs.readFileSync(path.resolve(process.cwd(), 'scripts/apply-patches.mjs'), 'utf-8');
+assert(applyPatchesSrc.includes('DataSourceUtils.kt'), 'apply-patches.mjs deve applicare DataSourceUtils.kt');
+assert(applyPatchesSrc.includes('VideoManager.kt'), 'apply-patches.mjs deve applicare VideoManager.kt');
+
+console.log('✓ Playback State Machine, Stall Recovery & Patch ExpoVideo verificati con successo.');
+
+// -----------------------------------------------------------------------------
+// Verifica Gesture Adattive, Volume Sistema & Luminosità Confinata al Player
+// -----------------------------------------------------------------------------
+console.log('\n[Extra] Verifica Gesture Adattive, Volume Sistema & Luminosità Window...');
+
+const landscapeTravel = computeVerticalGestureTravelRange(360, 0, 0);
+assert(
+  landscapeTravel >= 130 && landscapeTravel <= 180,
+  `Travel range landscape 360dp deve consentire swipe 100%->0% in un gesto (got ${landscapeTravel})`
+);
+const portraitTravel = computeVerticalGestureTravelRange(844, 36, 24);
+assert.strictEqual(portraitTravel, 260, 'Travel range su schermi alti deve essere limitato a 260dp');
+
+const volDownFull = computeSystemVolumeGesture(1.0, -1.0, 15);
+assert.strictEqual(volDownFull.stepIndex, 0);
+assert.strictEqual(volDownFull.percentage, 0);
+
+const volUpFull = computeSystemVolumeGesture(0.0, 1.0, 15);
+assert.strictEqual(volUpFull.stepIndex, 15);
+assert.strictEqual(volUpFull.percentage, 100);
+
+const volFineStep = computeSystemVolumeGesture(0.15, 0.35, 100);
+assert.strictEqual(volFineStep.stepIndex, 50);
+assert.strictEqual(volFineStep.percentage, 50);
+
+const brightZero = computeWindowBrightnessGesture(1.0, -1.0);
+assert.strictEqual(brightZero.isAuto, false);
+assert.strictEqual(brightZero.hudValue, 0);
+assert.strictEqual(brightZero.brightness, 0.005);
+
+const brightAuto = computeWindowBrightnessGesture(1.0, -1.05);
+assert.strictEqual(brightAuto.isAuto, true);
+assert.strictEqual(brightAuto.hudValue, 'AUTOMATICA');
+assert.strictEqual(brightAuto.brightness, -1);
+
+const brightMax = computeWindowBrightnessGesture(0.2, 0.9);
+assert.strictEqual(brightMax.isAuto, false);
+assert.strictEqual(brightMax.hudValue, 100);
+assert.strictEqual(brightMax.brightness, 1);
+
+assert(playerScreenSrc.includes('KuroDeviceControls'), 'app/player/[id].tsx deve usare KuroDeviceControls');
+assert(playerScreenSrc.includes('restoreSystemBrightness'), 'app/player/[id].tsx deve ripristinare la luminosità di sistema fuori dal player');
+assert(playerScreenSrc.includes('computeVerticalGestureTravelRange'), 'app/player/[id].tsx deve usare computeVerticalGestureTravelRange');
+
+const nativeDeviceModuleSrc = fs.readFileSync(
+  path.resolve(process.cwd(), 'modules/kuro-device-controls/android/src/main/java/expo/modules/kurodevicecontrols/KuroDeviceControlsModule.kt'),
+  'utf-8'
+);
+assert(nativeDeviceModuleSrc.includes('AudioManager.STREAM_MUSIC'), 'KuroDeviceControlsModule.kt deve controllare AudioManager.STREAM_MUSIC');
+assert(nativeDeviceModuleSrc.includes('BRIGHTNESS_OVERRIDE_NONE'), 'KuroDeviceControlsModule.kt deve supportare BRIGHTNESS_OVERRIDE_NONE per uscita player e AUTOMATICA');
+
+console.log('✓ Gesture Adattive, Volume Sistema & Luminosità Window verificati con successo.');
 
 // -----------------------------------------------------------------------------
 // Fine Test

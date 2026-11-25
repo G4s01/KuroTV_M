@@ -184,6 +184,7 @@ e questo progetto aderisce al [Semantic Versioning](https://semver.org/lang/it/)
 
 Minor Player Fixes
 
-## [1.0.0] - 2026-11-25
+## [1.0.0] - 2026-11
 
-Play button in Details now resume playing
+- Il pulsante riproduci nella scheda dettagli ora riprende la visione;
+- I controlli di volume e luminosità nel player hanno ora un'escursione adattiva e controlli nativi.

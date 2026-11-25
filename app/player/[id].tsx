@@ -12,7 +12,7 @@ import {
   DeviceEventEmitter,
   ActivityIndicator,
 } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useVideoPlayer, VideoView } from 'expo-video';
@@ -44,7 +44,15 @@ import {
   PlayerFooter,
   PlayerEpisodesCarouselSheet,
   PlayerInfoSheet,
+  resolvePlayingChangeState,
+  resolveStatusChangeState,
+  syncPlayerSnapshot,
+  evaluatePlaybackStall,
+  computeVerticalGestureTravelRange,
+  computeSystemVolumeGesture,
+  computeWindowBrightnessGesture,
 } from '@/components/player';
+import KuroDeviceControls from '../../modules/kuro-device-controls';
 import { playerStyles as styles } from '@/components/player/player.styles';
 import type { AniSkipResult, AnimeDetail, Episode } from '@/types';
 
@@ -256,11 +264,15 @@ export default function VideoPlayerScreen() {
     type: 'volume' | 'brightness' | 'speed';
     value: string | number;
   } | null>(null);
-  // screenBrightness: 0.1 .. 1.0 or -1 for 'AUTOMATICA'
-  const [screenBrightness, setScreenBrightness] = React.useState<number>(0.8);
+  // screenBrightness: 0.005 .. 1.0 or -1 for 'AUTOMATICA' (window-scoped inside player only)
+  const [screenBrightness, setScreenBrightness] = React.useState<number>(-1);
+  const screenBrightnessRef = React.useRef<number>(-1);
+  const hasNativeDeviceControls = Boolean(Platform.OS === 'android' && KuroDeviceControls);
 
   const startVolumeRef = React.useRef(1.0);
-  const startBrightnessRef = React.useRef(0.8);
+  const volumeMaxStepsRef = React.useRef(15);
+  const lastVolumeStepRef = React.useRef(-1);
+  const startBrightnessRef = React.useRef(0.5);
   const startPanTranslationYRef = React.useRef(0);
   const hudTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -335,14 +347,43 @@ export default function VideoPlayerScreen() {
 
   // Track player loading, playback and active buffering status
   const [playerStatus, setPlayerStatus] = React.useState<string>('idle');
+  const playerStatusRef = React.useRef<string>('idle');
   const [isBuffering, setIsBuffering] = React.useState(false);
+  const [showManualReload, setShowManualReload] = React.useState(false);
   const userWantsPlaybackRef = React.useRef(true);
   const hasEndedRef = React.useRef(false);
   const isScrubbingRef = React.useRef(false);
   const lastAdvanceTimeRef = React.useRef(0);
-  const lastAdvanceTimestampRef = React.useRef(Date.now());
+  const lastAdvanceTimestampRef = React.useRef(0);
+  const softKickAttemptedRef = React.useRef(false);
+  const stallReloadAttemptsRef = React.useRef(0);
+  const isReloadingStreamRef = React.useRef(false);
+  const loadRequestIdRef = React.useRef(0);
+  const pendingResumePositionRef = React.useRef<number>(initialResumePosition);
+  const loadStreamRef = React.useRef<((overrideResumePosition?: number) => Promise<void>) | null>(null);
 
-  // Track playback time & active stall detection
+  const syncPlayerStateFromNative = React.useCallback(() => {
+    if (!player) return;
+    const nativeStatus = player.status || playerStatusRef.current;
+    playerStatusRef.current = nativeStatus;
+    setPlayerStatus(nativeStatus);
+    const snapshot = syncPlayerSnapshot({
+      playerPlaying: Boolean(player.playing),
+      playerStatus: nativeStatus,
+      userWantsPlayback: userWantsPlaybackRef.current,
+      hasEnded: hasEndedRef.current,
+      isScrubbing: isScrubbingRef.current,
+    });
+    userWantsPlaybackRef.current = snapshot.userWantsPlayback;
+    setIsPlaying(snapshot.isPlaying);
+    setIsBuffering(snapshot.isBuffering);
+    lastAdvanceTimestampRef.current = Date.now();
+    if (!snapshot.isBuffering) {
+      setShowManualReload(false);
+    }
+  }, [player]);
+
+  // Track playback time & active stall detection with progressive recovery
   useEventListener(player, 'timeUpdate', ({ currentTime: time }) => {
     currentTimeRef.current = time;
     if (player.duration && player.duration > 0 && player.duration !== durationRef.current) {
@@ -350,22 +391,62 @@ export default function VideoPlayerScreen() {
       durationRef.current = player.duration;
     }
 
-    // Monitor real playback progress to identify silent network stalls
-    if (userWantsPlaybackRef.current && !hasEndedRef.current && !isScrubbingRef.current) {
-      if (Math.abs(time - lastAdvanceTimeRef.current) > 0.05) {
-        lastAdvanceTimeRef.current = time;
-        lastAdvanceTimestampRef.current = Date.now();
-        if (isBuffering) {
-          setIsBuffering(false);
-        }
+    // Monitor real playback progress to identify silent network stalls & trigger recovery
+    const now = Date.now();
+    const stallEval = evaluatePlaybackStall({
+      time,
+      duration: durationRef.current,
+      lastAdvanceTime: lastAdvanceTimeRef.current,
+      lastAdvanceTimestamp: lastAdvanceTimestampRef.current,
+      now,
+      userWantsPlayback: userWantsPlaybackRef.current,
+      hasEnded: hasEndedRef.current,
+      isScrubbing: isScrubbingRef.current,
+      playerPlaying: Boolean(player.playing),
+      playerStatus: player.status || playerStatusRef.current,
+      isBuffering,
+      softKickAttempted: softKickAttemptedRef.current,
+      reloadAttempts: stallReloadAttemptsRef.current,
+    });
+
+    if (stallEval.advanced) {
+      lastAdvanceTimeRef.current = time;
+      lastAdvanceTimestampRef.current = now;
+      softKickAttemptedRef.current = false;
+      stallReloadAttemptsRef.current = 0;
+      if (isBuffering) {
+        setIsBuffering(false);
+      }
+      if (showManualReload) {
+        setShowManualReload(false);
+      }
+    } else if (userWantsPlaybackRef.current && !hasEndedRef.current && !isScrubbingRef.current) {
+      if (stallEval.nextIsBuffering !== isBuffering) {
+        setIsBuffering(stallEval.nextIsBuffering);
+      }
+      if (stallEval.showManualReload && !showManualReload) {
+        setShowManualReload(true);
+      }
+      if (stallEval.recoveryAction === 'soft_kick') {
+        softKickAttemptedRef.current = true;
+        try {
+          const resumePos = currentTimeRef.current;
+          if (resumePos > 0) {
+            player.currentTime = resumePos;
+          }
+          player.playbackRate = playbackSpeedRef.current;
+          player.play();
+        } catch {}
       } else if (
-        !isBuffering &&
-        Date.now() - lastAdvanceTimestampRef.current > 1200 &&
-        durationRef.current > 0 &&
-        time < durationRef.current - 1
+        stallEval.recoveryAction === 'reload_stream' &&
+        !isReloadingStreamRef.current
       ) {
-        // Timeline has not advanced for >1.2s during requested playback: buffering
-        setIsBuffering(true);
+        stallReloadAttemptsRef.current += 1;
+        lastAdvanceTimestampRef.current = now;
+        softKickAttemptedRef.current = false;
+        setShowManualReload(false);
+        const resumePos = currentTimeRef.current > 1 ? currentTimeRef.current : undefined;
+        loadStreamRef.current?.(resumePos);
       }
     }
 
@@ -432,23 +513,26 @@ export default function VideoPlayerScreen() {
   });
 
   useEventListener(player, 'playingChange', ({ isPlaying: playing }) => {
-    if (playing) {
-      setIsPlaying(true);
-      setIsBuffering(false);
+    const next = resolvePlayingChangeState({
+      playing,
+      status: player.status || playerStatusRef.current,
+      userWantsPlayback: userWantsPlaybackRef.current,
+      hasEnded: hasEndedRef.current,
+      isScrubbing: isScrubbingRef.current,
+    });
+    userWantsPlaybackRef.current = next.userWantsPlayback;
+    setIsPlaying(next.isPlaying);
+    setIsBuffering(next.isBuffering);
+    if (next.shouldResetAdvanceTimestamp) {
       lastAdvanceTimestampRef.current = Date.now();
-    } else {
-      // If player paused on its own while user wants playback (and hasn't ended and isn't scrubbing), it is buffering
-      if (userWantsPlaybackRef.current && !hasEndedRef.current && !isScrubbingRef.current) {
-        setIsBuffering(true);
-      } else {
-        setIsPlaying(false);
-        setIsBuffering(false);
-      }
-      if (animeId && !isScrubbingRef.current) {
-        saveProgress(currentTimeRef.current, durationRef.current);
-        if (!userWantsPlaybackRef.current) {
-          SyncManager.flushPlaybackProgress().catch(() => {});
-        }
+      softKickAttemptedRef.current = false;
+      stallReloadAttemptsRef.current = 0;
+      setShowManualReload(false);
+    }
+    if (!playing && animeId && !isScrubbingRef.current) {
+      saveProgress(currentTimeRef.current, durationRef.current);
+      if (!next.userWantsPlayback) {
+        SyncManager.flushPlaybackProgress().catch(() => {});
       }
     }
     if (isInPiPRef.current) {
@@ -457,14 +541,25 @@ export default function VideoPlayerScreen() {
   });
 
   useEventListener(player, 'statusChange', ({ status, error }) => {
+    playerStatusRef.current = status;
     setPlayerStatus(status);
-    if (status === 'loading') {
-      setIsBuffering(true);
-    } else if (status === 'readyToPlay') {
+    const next = resolveStatusChangeState({
+      status,
+      hasError: Boolean(error),
+      playerPlaying: Boolean(player.playing),
+      userWantsPlayback: userWantsPlaybackRef.current,
+      hasEnded: hasEndedRef.current,
+      isScrubbing: isScrubbingRef.current,
+    });
+    userWantsPlaybackRef.current = next.userWantsPlayback;
+    setIsBuffering(next.isBuffering);
+    if (status !== 'loading') {
+      setShowManualReload(false);
+    }
+    if (status === 'readyToPlay') {
       setSourceError(null);
-      if (player.playing) {
-        setIsBuffering(false);
-      }
+      setIsPlaying(next.isPlaying);
+      lastAdvanceTimestampRef.current = Date.now();
       const dur = player.duration || durationRef.current;
       if (dur > 0) {
         setDuration(dur);
@@ -473,18 +568,22 @@ export default function VideoPlayerScreen() {
       // Re-apply desired playback rate in case underlying player reset it
       player.playbackRate = playbackSpeedRef.current;
 
-      if (!hasResumedRef.current && initialResumePosition > 0) {
+      const targetResumePos = pendingResumePositionRef.current;
+      if (!hasResumedRef.current && targetResumePos > 0) {
         hasResumedRef.current = true;
-        player.currentTime = initialResumePosition;
-        currentTimeRef.current = initialResumePosition;
-        saveProgress(initialResumePosition, dur);
+        player.currentTime = targetResumePos;
+        currentTimeRef.current = targetResumePos;
+        lastAdvanceTimeRef.current = targetResumePos;
+        saveProgress(targetResumePos, dur);
       } else if (!hasResumedRef.current) {
         hasResumedRef.current = true;
         saveProgress(currentTimeRef.current, dur);
       }
     }
     if (error) {
+      setIsPlaying(false);
       setIsBuffering(false);
+      setShowManualReload(false);
       setSourceError(`ERRORE RIPRODUZIONE: ${error.message.toUpperCase()}`);
     }
   });
@@ -494,6 +593,7 @@ export default function VideoPlayerScreen() {
     userWantsPlaybackRef.current = false;
     setIsPlaying(false);
     setIsBuffering(false);
+    setShowManualReload(false);
     if (animeId && episodeId) {
       const finalDuration = player.duration || durationRef.current;
       currentTimeRef.current = finalDuration;
@@ -509,17 +609,28 @@ export default function VideoPlayerScreen() {
   saveProgressRef.current = saveProgress;
   const hasNavigatedRef = React.useRef(false);
 
-  // AppState listener: if app goes to background without PiP, pause playback and save progress
+  // AppState listener: if app goes to background without PiP, pause playback and save progress;
+  // on return to active foreground, resynchronize native player state to prevent stuck buffering spinners.
   React.useEffect(() => {
     let backgroundTimer: ReturnType<typeof setTimeout> | null = null;
+    let foregroundSyncTimer: ReturnType<typeof setTimeout> | null = null;
 
     const sub = AppState.addEventListener('change', (nextAppState) => {
       if (nextAppState === 'background') {
+        if (foregroundSyncTimer) {
+          clearTimeout(foregroundSyncTimer);
+          foregroundSyncTimer = null;
+        }
+        if (Platform.OS === 'android' && KuroDeviceControls) {
+          KuroDeviceControls.restoreSystemBrightness();
+        }
         // Give Android PiP transition time to activate and fire onPictureInPictureStart
         backgroundTimer = setTimeout(() => {
           if (!isInPiPRef.current && AppState.currentState === 'background') {
             userWantsPlaybackRef.current = false;
+            setIsPlaying(false);
             setIsBuffering(false);
+            setShowManualReload(false);
             player.pause();
             player.showNowPlayingNotification = false;
             if (currentAnimeIdRef.current && currentEpisodeIdRef.current) {
@@ -537,12 +648,35 @@ export default function VideoPlayerScreen() {
           clearTimeout(pipStopTimerRef.current);
           pipStopTimerRef.current = null;
         }
+        if (foregroundSyncTimer) {
+          clearTimeout(foregroundSyncTimer);
+          foregroundSyncTimer = null;
+        }
         player.showNowPlayingNotification = true;
+        player.playbackRate = playbackSpeedRef.current;
+        if (Platform.OS === 'android' && KuroDeviceControls) {
+          if (screenBrightnessRef.current >= 0) {
+            KuroDeviceControls.setWindowBrightness(screenBrightnessRef.current);
+          } else {
+            KuroDeviceControls.restoreSystemBrightness();
+          }
+        }
+        softKickAttemptedRef.current = false;
+        stallReloadAttemptsRef.current = 0;
+        lastAdvanceTimestampRef.current = Date.now();
         // If returning from PiP and was playing, resume playback smoothly without pausing
         if (wasPlayingInPiPRef.current) {
           wasPlayingInPiPRef.current = false;
           userWantsPlaybackRef.current = true;
+          setIsPlaying(true);
+          setIsBuffering(false);
+          setShowManualReload(false);
           player.play();
+        } else {
+          syncPlayerStateFromNative();
+          foregroundSyncTimer = setTimeout(() => {
+            syncPlayerStateFromNative();
+          }, 250);
         }
       }
     });
@@ -551,18 +685,52 @@ export default function VideoPlayerScreen() {
       if (backgroundTimer) {
         clearTimeout(backgroundTimer);
       }
+      if (foregroundSyncTimer) {
+        clearTimeout(foregroundSyncTimer);
+      }
       if (pipStopTimerRef.current) {
         clearTimeout(pipStopTimerRef.current);
       }
       sub.remove();
     };
-  }, [player]);
+  }, [player, syncPlayerStateFromNative]);
+
+  // Ensure player-only window brightness is active exclusively while player is focused/mounted
+  useFocusEffect(
+    React.useCallback(() => {
+      if (Platform.OS === 'android' && KuroDeviceControls) {
+        if (screenBrightnessRef.current >= 0) {
+          KuroDeviceControls.setWindowBrightness(screenBrightnessRef.current);
+        } else {
+          KuroDeviceControls.restoreSystemBrightness();
+        }
+      }
+      return () => {
+        if (
+          Platform.OS === 'android' &&
+          KuroDeviceControls &&
+          !hasNavigatedRef.current &&
+          !isNavigatingToEpisode
+        ) {
+          KuroDeviceControls.restoreSystemBrightness();
+        }
+      };
+    }, [])
+  );
 
   // Save latest progress on exit / screen unmount (only when leaving the screen)
   React.useEffect(() => {
     return () => {
       player.pause();
       player.showNowPlayingNotification = false;
+      if (
+        Platform.OS === 'android' &&
+        KuroDeviceControls &&
+        !hasNavigatedRef.current &&
+        !isNavigatingToEpisode
+      ) {
+        KuroDeviceControls.restoreSystemBrightness();
+      }
       if (!hasNavigatedRef.current && currentAnimeIdRef.current && currentEpisodeIdRef.current) {
         saveProgressRef.current(currentTimeRef.current, durationRef.current);
       }
@@ -640,113 +808,171 @@ export default function VideoPlayerScreen() {
     }
   };
 
-  // Fetch direct video stream
-  const loadStream = React.useCallback(async () => {
-    setIsLoadingSource(true);
-    setSourceError(null);
-    setVideoUrl(null);
+  // Fetch direct video stream (supports reloading at current position during stall recovery)
+  const loadStream = React.useCallback(
+    async (overrideResumePosition?: number) => {
+      const requestId = ++loadRequestIdRef.current;
+      const hasOverrideResume =
+        typeof overrideResumePosition === 'number' &&
+        Number.isFinite(overrideResumePosition) &&
+        overrideResumePosition > 0;
 
-    try {
-      let directUrl = '';
-      let directHeaders: Record<string, string> | undefined;
-      const verifiedLocalUri = await DownloadService.resolvePlayableLocalUri(
-        animeId,
-        episodeNumber,
-        params.localUri
-      );
+      if (hasOverrideResume) {
+        pendingResumePositionRef.current = overrideResumePosition;
+        hasResumedRef.current = false;
+      } else if (!hasResumedRef.current) {
+        pendingResumePositionRef.current = initialResumePosition;
+      }
 
-      if (verifiedLocalUri) {
-        setIsOffline(true);
-        directUrl = verifiedLocalUri;
-      } else {
-        setIsOffline(false);
-        const targetEp = {
-          id: episodeId,
-          number: episodeNumber,
-          dataId: episodeDataId,
-        };
-        // Step 3: Resolve via ProviderRegistry with multi-provider fallback (when online identifiers exist)
-        if (episodeDataId || (episodeId && !episodeId.endsWith(`-ep-${episodeNumber}`))) {
-          const directSource = await ProviderRegistry.resolveVideoWithFallback(targetEp, serverId);
-          if (directSource?.url) {
-            directUrl = directSource.url;
-            directHeaders = directSource.headers;
+      isReloadingStreamRef.current = true;
+      setIsLoadingSource(true);
+      setSourceError(null);
+      setShowManualReload(false);
+      setVideoUrl(null);
+
+      try {
+        let directUrl = '';
+        let directHeaders: Record<string, string> | undefined;
+        const verifiedLocalUri = await DownloadService.resolvePlayableLocalUri(
+          animeId,
+          episodeNumber,
+          params.localUri
+        );
+        if (requestId !== loadRequestIdRef.current) return;
+
+        if (verifiedLocalUri) {
+          setIsOffline(true);
+          directUrl = verifiedLocalUri;
+        } else {
+          setIsOffline(false);
+          const targetEp = {
+            id: episodeId,
+            number: episodeNumber,
+            dataId: episodeDataId,
+          };
+          // Step 3: Resolve via ProviderRegistry with multi-provider fallback (when online identifiers exist)
+          if (episodeDataId || (episodeId && !episodeId.endsWith(`-ep-${episodeNumber}`))) {
+            const directSource = await ProviderRegistry.resolveVideoWithFallback(targetEp, serverId);
+            if (requestId !== loadRequestIdRef.current) return;
+            if (directSource?.url) {
+              directUrl = directSource.url;
+              directHeaders = directSource.headers;
+            }
           }
-        }
 
-        if (!directUrl && animeId) {
-          // Fallback to scraping episode directly from detail page
-          const detail = await AnimeWorldScraper.getAnimeDetail(animeId);
-          const ep = detail?.episodes?.find((e) => e.id === episodeId || e.number === episodeNumber);
-          if (ep) {
-            const direct = await ProviderRegistry.resolveVideoWithFallback(ep, serverId);
-            if (direct?.url) {
-              directUrl = direct.url;
-              directHeaders = direct.headers;
+          if (!directUrl && animeId) {
+            // Fallback to scraping episode directly from detail page
+            const detail = await AnimeWorldScraper.getAnimeDetail(animeId);
+            if (requestId !== loadRequestIdRef.current) return;
+            const ep = detail?.episodes?.find((e) => e.id === episodeId || e.number === episodeNumber);
+            if (ep) {
+              const direct = await ProviderRegistry.resolveVideoWithFallback(ep, serverId);
+              if (requestId !== loadRequestIdRef.current) return;
+              if (direct?.url) {
+                directUrl = direct.url;
+                directHeaders = direct.headers;
+              }
             }
           }
         }
-      }
 
-      if (directUrl) {
-        setVideoUrl(directUrl);
-        const episodeTitle = `EPISODIO ${episodeNumber}`;
-        const seriesSubtitle = params.animeTitle || animeDetail?.title;
-        const artworkUri = thumbnailRef.current || thumbnail || animeDetail?.image || animeDetail?.thumbnail || undefined;
-        const isLocalSource = directUrl.startsWith('file://') || directUrl.startsWith('content://');
-        const videoSource = {
-          uri: directUrl,
-          ...( !isLocalSource && directHeaders && Object.keys(directHeaders).length > 0
-            ? { headers: directHeaders }
-            : {}),
-          metadata: {
-            title: episodeTitle,
-            artist: seriesSubtitle ? String(seriesSubtitle).toUpperCase() : 'KURO MOBILE',
-            artwork: artworkUri,
-          },
-        };
-        try {
-          if (typeof player.replaceAsync === 'function') {
-            await player.replaceAsync(videoSource);
-          } else {
-            player.replace(videoSource);
+        if (requestId !== loadRequestIdRef.current) return;
+
+        if (directUrl) {
+          setVideoUrl(directUrl);
+          const episodeTitle = `EPISODIO ${episodeNumber}`;
+          const seriesSubtitle = params.animeTitle || animeDetail?.title;
+          const artworkUri =
+            thumbnailRef.current || thumbnail || animeDetail?.image || animeDetail?.thumbnail || undefined;
+          const isLocalSource = directUrl.startsWith('file://') || directUrl.startsWith('content://');
+          const videoSource = {
+            uri: directUrl,
+            ...(!isLocalSource && directHeaders && Object.keys(directHeaders).length > 0
+              ? { headers: directHeaders }
+              : {}),
+            metadata: {
+              title: episodeTitle,
+              artist: seriesSubtitle ? String(seriesSubtitle).toUpperCase() : 'KURO MOBILE',
+              artwork: artworkUri,
+            },
+          };
+          try {
+            if (typeof player.replaceAsync === 'function') {
+              await player.replaceAsync(videoSource);
+            } else {
+              player.replace(videoSource);
+            }
+          } catch (replaceErr: any) {
+            if (requestId !== loadRequestIdRef.current) return;
+            console.warn('[VideoPlayer] replaceAsync error:', replaceErr);
+            setVideoUrl(null);
+            setSourceError(
+              (replaceErr?.message || 'ERRORE DURANTE IL CARICAMENTO DEL VIDEO.').toUpperCase()
+            );
+            return;
           }
-        } catch (replaceErr: any) {
-          console.warn('[VideoPlayer] replaceAsync error:', replaceErr);
-          setVideoUrl(null);
-          setSourceError(
-            (replaceErr?.message || 'ERRORE DURANTE IL CARICAMENTO DEL VIDEO.').toUpperCase()
-          );
-          return;
-        }
-        player.playbackRate = playbackSpeedRef.current;
-        player.showNowPlayingNotification = true;
-        userWantsPlaybackRef.current = true;
-        hasEndedRef.current = false;
-        lastAdvanceTimestampRef.current = Date.now();
-        player.play();
+          if (requestId !== loadRequestIdRef.current) return;
 
-        if (initialResumePosition > 0) {
-          player.currentTime = initialResumePosition;
-          currentTimeRef.current = initialResumePosition;
+          const targetPos = pendingResumePositionRef.current;
+          player.playbackRate = playbackSpeedRef.current;
+          player.showNowPlayingNotification = true;
+          userWantsPlaybackRef.current = true;
+          hasEndedRef.current = false;
+          softKickAttemptedRef.current = false;
+          setShowManualReload(false);
+          setIsPlaying(true);
+          lastAdvanceTimeRef.current = targetPos;
+          lastAdvanceTimestampRef.current = Date.now();
+
+          if (targetPos > 0) {
+            player.currentTime = targetPos;
+            currentTimeRef.current = targetPos;
+          }
+          player.play();
+        } else {
+          setSourceError(
+            params.offline === '1'
+              ? "FILE OFFLINE NON TROVATO O DANNEGGIATO. SCARICA DI NUOVO L'EPISODIO."
+              : 'NESSUN FLUSSO VIDEO TROVATO. RIPROVA TRA POCHI SECONDI.'
+          );
         }
-      } else {
-        setSourceError(
-          params.offline === '1'
-            ? "FILE OFFLINE NON TROVATO O DANNEGGIATO. SCARICA DI NUOVO L'EPISODIO."
-            : 'NESSUN FLUSSO VIDEO TROVATO. RIPROVA TRA POCHI SECONDI.'
-        );
+      } catch (err: any) {
+        if (requestId !== loadRequestIdRef.current) return;
+        if (params.offline === '1') {
+          setSourceError("FILE OFFLINE NON TROVATO O DANNEGGIATO. SCARICA DI NUOVO L'EPISODIO.");
+        } else {
+          setSourceError((err.message || 'ERRORE DURANTE LA RISOLUZIONE DEL VIDEO.').toUpperCase());
+        }
+      } finally {
+        if (requestId === loadRequestIdRef.current) {
+          setIsLoadingSource(false);
+          isReloadingStreamRef.current = false;
+        }
       }
-    } catch (err: any) {
-      if (params.offline === '1') {
-        setSourceError("FILE OFFLINE NON TROVATO O DANNEGGIATO. SCARICA DI NUOVO L'EPISODIO.");
-      } else {
-        setSourceError((err.message || 'ERRORE DURANTE LA RISOLUZIONE DEL VIDEO.').toUpperCase());
-      }
-    } finally {
-      setIsLoadingSource(false);
-    }
-  }, [episodeId, episodeNumber, episodeDataId, serverId, animeId, player, initialResumePosition, params.localUri, params.offline]);
+    },
+    [
+      episodeId,
+      episodeNumber,
+      episodeDataId,
+      serverId,
+      animeId,
+      player,
+      initialResumePosition,
+      params.localUri,
+      params.offline,
+    ]
+  );
+
+  loadStreamRef.current = loadStream;
+
+  const handleManualReloadStream = React.useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    stallReloadAttemptsRef.current = 0;
+    softKickAttemptedRef.current = false;
+    lastAdvanceTimestampRef.current = Date.now();
+    const resumePos = currentTimeRef.current > 1 ? currentTimeRef.current : undefined;
+    loadStream(resumePos);
+  }, [loadStream]);
 
   React.useEffect(() => {
     loadStream();
@@ -768,9 +994,17 @@ export default function VideoPlayerScreen() {
     }
 
     hasResumedRef.current = false;
+    pendingResumePositionRef.current = initialResumePosition;
     hasEndedRef.current = false;
     userWantsPlaybackRef.current = true;
+    playerStatusRef.current = 'idle';
+    setPlayerStatus('idle');
+    setIsPlaying(true);
     setIsBuffering(false);
+    setShowManualReload(false);
+    softKickAttemptedRef.current = false;
+    stallReloadAttemptsRef.current = 0;
+    isReloadingStreamRef.current = false;
     currentTimeRef.current = 0;
     durationRef.current = 0;
     lastAdvanceTimeRef.current = 0;
@@ -788,7 +1022,7 @@ export default function VideoPlayerScreen() {
     autoNavigatedEpisodeRef.current = false;
     autoSkippedIdsRef.current.clear();
     skipTriggeredTimeRef.current = 0;
-  }, [episodeId, episodeNumber, params.orientation]);
+  }, [episodeId, episodeNumber, params.orientation, initialResumePosition]);
 
   // Fetch AniSkip timestamps & episode batch metadata for advancing next episode
   React.useEffect(() => {
@@ -873,15 +1107,20 @@ export default function VideoPlayerScreen() {
         if (isBuffering) {
           setIsBuffering(false);
         }
+        if (showManualReload) {
+          setShowManualReload(false);
+        }
       } else {
         lastAdvanceTimestampRef.current = Date.now();
+        softKickAttemptedRef.current = false;
         if (userWantsPlaybackRef.current && !player.playing) {
+          player.playbackRate = playbackSpeedRef.current;
           player.play();
         }
         resetControlsTimer();
       }
     },
-    [player, isBuffering, resetControlsTimer]
+    [player, isBuffering, showManualReload, resetControlsTimer]
   );
 
   React.useEffect(() => {
@@ -906,16 +1145,25 @@ export default function VideoPlayerScreen() {
 
   const handlePlayPause = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    if (isPlaying && userWantsPlaybackRef.current) {
+    const effectivelyActive =
+      Boolean(player.playing) ||
+      (userWantsPlaybackRef.current && (player.status || playerStatusRef.current) === 'loading');
+
+    if (effectivelyActive) {
       userWantsPlaybackRef.current = false;
       setIsPlaying(false);
       setIsBuffering(false);
+      setShowManualReload(false);
       player.pause();
     } else {
       userWantsPlaybackRef.current = true;
       hasEndedRef.current = false;
+      softKickAttemptedRef.current = false;
+      stallReloadAttemptsRef.current = 0;
       lastAdvanceTimestampRef.current = Date.now();
+      setShowManualReload(false);
       setIsPlaying(true);
+      player.playbackRate = playbackSpeedRef.current;
       player.play();
     }
     resetControlsTimer();
@@ -1206,15 +1454,29 @@ export default function VideoPlayerScreen() {
   // Exclusive taps: doubleTap takes precedence over singleTap
   const tapGestures = Gesture.Exclusive(doubleTap, singleTap);
 
-  // Pan gesture for volume and brightness: vertical only, guarded against horizontal gestures and accidental activation
+  // Pan gesture for real system volume and player-window brightness: vertical only, calibrated to available vertical space
   const panGesture = Gesture.Pan()
     .enabled(!showControls)
     .activeOffsetY([-18, 18])
     .failOffsetX([-14, 14])
     .onStart((e) => {
       startPanTranslationYRef.current = e.translationY;
-      startVolumeRef.current = typeof player.volume === 'number' ? player.volume : 1.0;
-      startBrightnessRef.current = screenBrightness === -1 ? 0.08 : screenBrightness;
+      if (hasNativeDeviceControls && KuroDeviceControls) {
+        const volInfo = KuroDeviceControls.getSystemVolumeInfo();
+        startVolumeRef.current = volInfo.volume;
+        volumeMaxStepsRef.current = volInfo.maxSteps;
+        lastVolumeStepRef.current = volInfo.currentStep;
+        player.volume = 1.0;
+
+        if (screenBrightnessRef.current < 0) {
+          startBrightnessRef.current = KuroDeviceControls.getSystemBrightness();
+        } else {
+          startBrightnessRef.current = screenBrightnessRef.current;
+        }
+      } else {
+        startVolumeRef.current = typeof player.volume === 'number' ? player.volume : 1.0;
+        startBrightnessRef.current = screenBrightnessRef.current < 0 ? 0.5 : screenBrightnessRef.current;
+      }
     })
     .onUpdate((e) => {
       // Strictly ignore horizontal gestures: only adjust if vertical movement dominates
@@ -1222,25 +1484,42 @@ export default function VideoPlayerScreen() {
         return;
       }
       const effectiveTranslationY = e.translationY - startPanTranslationYRef.current;
-      const travelRange = Math.max(260, windowHeight * 0.7);
+      const travelRange = computeVerticalGestureTravelRange(windowHeight, insets.top, insets.bottom);
       const delta = -effectiveTranslationY / travelRange;
+
       if (e.x > windowWidth / 2) {
-        // Volume adjustment (right side)
-        const newVol = Math.max(0, Math.min(1, startVolumeRef.current + delta));
-        player.volume = newVol;
-        setHudIndicator({ type: 'volume', value: Math.round(newVol * 100) });
-      } else {
-        // Brightness adjustment (left side)
-        // If swiped to the lowest peak, set value to 'AUTOMATICA'
-        const raw = startBrightnessRef.current + delta;
-        if (raw <= 0.08) {
-          setScreenBrightness(-1);
-          setHudIndicator({ type: 'brightness', value: 'AUTOMATICA' });
+        // Real system media volume adjustment (STREAM_MUSIC, right side)
+        if (hasNativeDeviceControls && KuroDeviceControls) {
+          const volRes = computeSystemVolumeGesture(
+            startVolumeRef.current,
+            delta,
+            volumeMaxStepsRef.current
+          );
+          if (volRes.stepIndex !== lastVolumeStepRef.current) {
+            lastVolumeStepRef.current = volRes.stepIndex;
+            const applied = KuroDeviceControls.setSystemVolume(volRes.targetVolume);
+            setHudIndicator({ type: 'volume', value: Math.round(applied.volume * 100) });
+          } else {
+            setHudIndicator({ type: 'volume', value: volRes.percentage });
+          }
         } else {
-          const newBright = Math.max(0.1, Math.min(1, raw));
-          setScreenBrightness(newBright);
-          setHudIndicator({ type: 'brightness', value: Math.round(newBright * 100) });
+          const newVol = Math.max(0, Math.min(1, startVolumeRef.current + delta));
+          player.volume = newVol;
+          setHudIndicator({ type: 'volume', value: Math.round(newVol * 100) });
         }
+      } else {
+        // Player-scoped window brightness adjustment (left side): 0%..100% or AUTOMATICA (-1)
+        const brightRes = computeWindowBrightnessGesture(startBrightnessRef.current, delta);
+        screenBrightnessRef.current = brightRes.brightness;
+        setScreenBrightness(brightRes.brightness);
+        if (hasNativeDeviceControls && KuroDeviceControls) {
+          if (brightRes.isAuto) {
+            KuroDeviceControls.restoreSystemBrightness();
+          } else {
+            KuroDeviceControls.setWindowBrightness(brightRes.brightness);
+          }
+        }
+        setHudIndicator({ type: 'brightness', value: brightRes.hudValue });
       }
     })
     .onEnd(() => {
@@ -1281,8 +1560,8 @@ export default function VideoPlayerScreen() {
     <View style={styles.root}>
       <StatusBar hidden={true} />
 
-      {/* Screen Brightness Overlay (hidden when set to 'AUTOMATICA') */}
-      {screenBrightness >= 0 && screenBrightness < 1.0 && (
+      {/* Fallback Screen Brightness Overlay (used only when native Android window brightness is unavailable) */}
+      {!hasNativeDeviceControls && screenBrightness >= 0 && screenBrightness < 1.0 && (
         <View
           pointerEvents="none"
           style={[
@@ -1312,6 +1591,9 @@ export default function VideoPlayerScreen() {
               isInPiPRef.current = true;
               wasPlayingInPiPRef.current = player.playing;
               player.showNowPlayingNotification = true;
+              if (Platform.OS === 'android' && KuroDeviceControls) {
+                KuroDeviceControls.restoreSystemBrightness();
+              }
             }}
             onPictureInPictureStop={() => {
               isInPiPRef.current = false;
@@ -1327,6 +1609,10 @@ export default function VideoPlayerScreen() {
               pipStopTimerRef.current = setTimeout(() => {
                 if (AppState.currentState !== 'active') {
                   wasPlayingInPiPRef.current = false;
+                  userWantsPlaybackRef.current = false;
+                  setIsPlaying(false);
+                  setIsBuffering(false);
+                  setShowManualReload(false);
                   player.pause();
                   player.showNowPlayingNotification = false;
                   if (animeId && episodeId) {
@@ -1334,29 +1620,39 @@ export default function VideoPlayerScreen() {
                   }
                 }
               }, 500);
+              const resumeFromPiP = () => {
+                if (AppState.currentState === 'active') {
+                  if (Platform.OS === 'android' && KuroDeviceControls) {
+                    if (screenBrightnessRef.current >= 0) {
+                      KuroDeviceControls.setWindowBrightness(screenBrightnessRef.current);
+                    } else {
+                      KuroDeviceControls.restoreSystemBrightness();
+                    }
+                  }
+                }
+                if (AppState.currentState === 'active' && wasPlayingInPiPRef.current) {
+                  wasPlayingInPiPRef.current = false;
+                  userWantsPlaybackRef.current = true;
+                  softKickAttemptedRef.current = false;
+                  stallReloadAttemptsRef.current = 0;
+                  lastAdvanceTimestampRef.current = Date.now();
+                  setIsPlaying(true);
+                  setIsBuffering(false);
+                  setShowManualReload(false);
+                  player.playbackRate = playbackSpeedRef.current;
+                  if (!player.playing) {
+                    player.play();
+                  }
+                } else if (AppState.currentState === 'active') {
+                  syncPlayerStateFromNative();
+                }
+              };
               // Immediate check and staggered fallbacks for returning to active fullscreen
               if (AppState.currentState === 'active' && wasPlayingInPiPRef.current) {
-                wasPlayingInPiPRef.current = false;
-                if (!player.playing) {
-                  player.play();
-                }
+                resumeFromPiP();
               } else {
-                setTimeout(() => {
-                  if (AppState.currentState === 'active' && wasPlayingInPiPRef.current) {
-                    wasPlayingInPiPRef.current = false;
-                    if (!player.playing) {
-                      player.play();
-                    }
-                  }
-                }, 150);
-                setTimeout(() => {
-                  if (AppState.currentState === 'active' && wasPlayingInPiPRef.current) {
-                    wasPlayingInPiPRef.current = false;
-                    if (!player.playing) {
-                      player.play();
-                    }
-                  }
-                }, 300);
+                setTimeout(resumeFromPiP, 150);
+                setTimeout(resumeFromPiP, 300);
               }
             }}
           />
@@ -1383,7 +1679,7 @@ export default function VideoPlayerScreen() {
             <Text style={styles.errorText}>{(sourceError || 'IMPOSSIBILE RIPRODURRE').toUpperCase()}</Text>
             <Pressable
               style={[styles.retryBtn, { backgroundColor: theme.colors.primary }]}
-              onPress={loadStream}
+              onPress={handleManualReloadStream}
               hitSlop={8}
               accessibilityLabel="RIPROVA CARICAMENTO STREAMING"
             >
@@ -1394,10 +1690,25 @@ export default function VideoPlayerScreen() {
 
         {/* Integrated Loading / Buffering feedback indicator when OSD controls are hidden */}
         {!showControls && isBufferingOrLoading && !sourceError && (
-          <View style={styles.loadingOverlay} pointerEvents="none">
-            <View style={[styles.centerPlayBtn, { backgroundColor: `${theme.colors.primary}E0` }]}>
+          <View style={styles.loadingOverlay} pointerEvents="box-none">
+            <View
+              pointerEvents="none"
+              style={[styles.centerPlayBtn, { backgroundColor: `${theme.colors.primary}E0` }]}
+            >
               <ActivityIndicator size="large" color={getContrastTextColor(theme.colors.primary)} />
             </View>
+            {showManualReload && (
+              <Pressable
+                style={styles.stallReloadBtn}
+                onPress={handleManualReloadStream}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="RICARICA FLUSSO VIDEO"
+              >
+                <Ionicons name="refresh" size={16} color="#FFFFFF" />
+                <Text style={styles.stallReloadText}>RICARICA STREAM</Text>
+              </Pressable>
+            )}
           </View>
         )}
 
@@ -1551,6 +1862,21 @@ export default function VideoPlayerScreen() {
                 <View style={styles.navEpBtnSpacer} />
               )}
             </View>
+
+            {showManualReload && isBufferingOrLoading && (
+              <View style={styles.osdManualReloadWrap} pointerEvents="box-none">
+                <Pressable
+                  style={styles.stallReloadBtn}
+                  onPress={handleManualReloadStream}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel="RICARICA FLUSSO VIDEO"
+                >
+                  <Ionicons name="refresh" size={16} color="#FFFFFF" />
+                  <Text style={styles.stallReloadText}>RICARICA STREAM</Text>
+                </Pressable>
+              </View>
+            )}
 
             {/* OSD Footer */}
             <PlayerFooter
