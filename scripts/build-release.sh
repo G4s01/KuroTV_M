@@ -253,14 +253,16 @@ main() {
   echo ""
   if [ "${SKIP_BUILD}" -eq 1 ]; then
     echo -e "   ${BOLD}Modalità --skip-build (riutilizzo APK esistente):${NC}"
-    echo "     0) Mantieni v${CURRENT_VERSION} → v${CURRENT_VERSION} (Build ${CURRENT_VERSION_CODE}) [Default]"
-    echo "     1) +0.0.1   → v${NEXT_PATCH} (Build $((CURRENT_VERSION_CODE + 1)))"
-    echo "     2) +0.1.0   → v${NEXT_MINOR} (Build $((CURRENT_VERSION_CODE + 1)))"
+    echo "     0) Mantieni v${CURRENT_VERSION} → v${CURRENT_VERSION} (Build ${CURRENT_VERSION_CODE})"
+    echo "     1) +build   → v${CURRENT_VERSION} (Build $((CURRENT_VERSION_CODE + 1))) [Default]"
+    echo "     2) +0.0.1   → v${NEXT_PATCH} (Build $((CURRENT_VERSION_CODE + 1)))"
+    echo "     3) +0.1.0   → v${NEXT_MINOR} (Build $((CURRENT_VERSION_CODE + 1)))"
   else
     echo -e "   ${BOLD}Seleziona la nuova versione:${NC}"
     echo "     0) Mantieni v${CURRENT_VERSION} → v${CURRENT_VERSION} (Build ${CURRENT_VERSION_CODE})"
-    echo "     1) +0.0.1   → v${NEXT_PATCH} (Build $((CURRENT_VERSION_CODE + 1))) [Default]"
-    echo "     2) +0.1.0   → v${NEXT_MINOR} (Build $((CURRENT_VERSION_CODE + 1)))"
+    echo "     1) +build   → v${CURRENT_VERSION} (Build $((CURRENT_VERSION_CODE + 1))) [Default]"
+    echo "     2) +0.0.1   → v${NEXT_PATCH} (Build $((CURRENT_VERSION_CODE + 1)))"
+    echo "     3) +0.1.0   → v${NEXT_MINOR} (Build $((CURRENT_VERSION_CODE + 1)))"
   fi
   echo "     Oppure digita versione manuale (es. 1.2.0 o 1.2.0:4)"
   echo ""
@@ -271,31 +273,25 @@ main() {
     if [ -n "${CLI_VERSION:-}" ]; then
       VERSION_INPUT="${CLI_VERSION}"
       CLI_VERSION="" # consumata
-    elif [ "${SKIP_BUILD}" -eq 1 ]; then
-      read -rp "   Scelta [INVIO=0 / 1 / 2 / manuale]: " VERSION_INPUT || true
     else
-      read -rp "   Scelta [INVIO=1 / 0 / 2 / manuale]: " VERSION_INPUT || true
+      read -rp "   Scelta [INVIO=1 / 0 / 2 / 3 / manuale]: " VERSION_INPUT || true
     fi
     VERSION_INPUT="$(echo -e "${VERSION_INPUT:-}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
 
-    if [ -z "${VERSION_INPUT}" ]; then
-      if [ "${SKIP_BUILD}" -eq 1 ]; then
-        NEW_VERSION="${CURRENT_VERSION}"
-        NEW_VERSION_CODE="${CLI_BUILD_NUMBER:-${CURRENT_VERSION_CODE}}"
-      else
-        NEW_VERSION="${NEXT_PATCH}"
-        NEW_VERSION_CODE="${CLI_BUILD_NUMBER:-$((CURRENT_VERSION_CODE + 1))}"
-      fi
+    if [ -z "${VERSION_INPUT}" ] || [ "${VERSION_INPUT}" = "1" ]; then
+      # Default: stessa versione, build +1
+      NEW_VERSION="${CURRENT_VERSION}"
+      NEW_VERSION_CODE="${CLI_BUILD_NUMBER:-$((CURRENT_VERSION_CODE + 1))}"
       break
     elif [ "${VERSION_INPUT}" = "0" ]; then
       NEW_VERSION="${CURRENT_VERSION}"
       NEW_VERSION_CODE="${CLI_BUILD_NUMBER:-${CURRENT_VERSION_CODE}}"
       break
-    elif [ "${VERSION_INPUT}" = "1" ]; then
+    elif [ "${VERSION_INPUT}" = "2" ]; then
       NEW_VERSION="${NEXT_PATCH}"
       NEW_VERSION_CODE="${CLI_BUILD_NUMBER:-$((CURRENT_VERSION_CODE + 1))}"
       break
-    elif [ "${VERSION_INPUT}" = "2" ]; then
+    elif [ "${VERSION_INPUT}" = "3" ]; then
       NEW_VERSION="${NEXT_MINOR}"
       NEW_VERSION_CODE="${CLI_BUILD_NUMBER:-$((CURRENT_VERSION_CODE + 1))}"
       break
@@ -345,9 +341,36 @@ main() {
   TMP_NOTES=$(mktemp)
   trap 'rm -f "${TMP_NOTES}"' EXIT
 
+  # Leggi il corpo del changelog precedente da src/constants/changelog.ts
+  PREV_CHANGELOG_BODY=""
+  PREV_CHANGELOG_BODY=$(node -e '
+    const fs = require("fs");
+    try {
+      const content = fs.readFileSync(process.argv[1], "utf8");
+      const match = content.match(/releaseNotes:\s*("(?:[^"\\]|\\.)*"|`(?:[^`\\]|\\.)*`)/);
+      if (match) {
+        const raw = JSON.parse(match[1]);
+        const lines = raw.split("\n");
+        const bodyLines = lines.filter(l => !l.trim().startsWith("## ["));
+        const body = bodyLines.join("\n").trim();
+        if (body.length > 0) process.stdout.write(body);
+      }
+    } catch {}
+  ' "${ROOT_DIR}/src/constants/changelog.ts" 2>/dev/null || echo "")
+
+  PREV_HAS_BODY=0
+  if [ -n "${PREV_CHANGELOG_BODY}" ]; then
+    PREV_HAS_BODY=1
+  fi
+
   echo -e "   ${BOLD}Opzioni:${NC}"
-  echo "     [INVIO]  Solo versione e data (## [${NEW_VERSION}] - ${RELEASE_DATE})"
-  echo "     'n'      Apri editor per modificare le note con i commit recenti"
+  if [ "${PREV_HAS_BODY}" -eq 1 ]; then
+    echo "     [INVIO]  Mantieni changelog precedente con header aggiornato (## [${NEW_VERSION}] - ${RELEASE_DATE})"
+    echo "     'n'      Apri editor con changelog precedente da modificare"
+  else
+    echo "     [INVIO]  Solo versione e data (## [${NEW_VERSION}] - ${RELEASE_DATE})"
+    echo "     'n'      Apri editor per modificare le note con i commit recenti"
+  fi
   echo "     <testo>  Inserisci direttamente le note"
   echo ""
 
@@ -355,12 +378,31 @@ main() {
   NOTES_TRIMMED="$(echo -e "${NOTES_INPUT:-}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
 
   if [ -z "${NOTES_TRIMMED}" ]; then
-    cat <<EOF > "${TMP_NOTES}"
+    if [ "${PREV_HAS_BODY}" -eq 1 ]; then
+      # Mantieni il corpo precedente con header aggiornato
+      cat <<EOF > "${TMP_NOTES}"
+## [${NEW_VERSION}] - ${RELEASE_DATE}
+
+${PREV_CHANGELOG_BODY}
+EOF
+      ok "Note: changelog precedente con header aggiornato."
+    else
+      cat <<EOF > "${TMP_NOTES}"
 ## [${NEW_VERSION}] - ${RELEASE_DATE}
 EOF
-    ok "Note: solo header versione."
+      ok "Note: solo header versione."
+    fi
   elif [ "${NOTES_TRIMMED}" = "n" ] || [ "${NOTES_TRIMMED}" = "N" ]; then
-    cat <<EOF > "${TMP_NOTES}"
+    if [ "${PREV_HAS_BODY}" -eq 1 ]; then
+      # Pre-popola editor con changelog precedente e header aggiornato
+      cat <<EOF > "${TMP_NOTES}"
+## [${NEW_VERSION}] - ${RELEASE_DATE}
+
+${PREV_CHANGELOG_BODY}
+EOF
+    else
+      # Nessun changelog precedente, mostra commit recenti come prima
+      cat <<EOF > "${TMP_NOTES}"
 ## [${NEW_VERSION}] - ${RELEASE_DATE}
 
 ${RECENT_COMMITS}
@@ -370,6 +412,7 @@ ${RECENT_COMMITS}
 - UI OLED touch nativa ad alte prestazioni a 60/120 FPS
 - Video Player avanzato con controlli touch e supporto Picture-in-Picture
 EOF
+    fi
 
     EDITOR_TO_USE="${EDITOR:-nano}"
     if ! command -v "${EDITOR_TO_USE}" &> /dev/null; then

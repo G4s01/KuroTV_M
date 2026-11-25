@@ -92,11 +92,14 @@ import {
   DEFAULT_SYNC_SERVER_URL,
   KUROSYNC_GITHUB_REPO_URL,
   parseKuroSyncDeepLink,
+  isKuroSyncActionDeepLink,
+  resolveSystemDeepLinkPath,
   KuroSyncClient,
   mergeLocalAndRemote,
   getDeviceName,
   getDeviceMetadata,
 } from '../src/services/sync/index';
+import { redirectSystemPath } from '../app/+native-intent';
 import {
   BatterySettingsCard,
   SyncSettingsCard,
@@ -1260,6 +1263,7 @@ const requiredRoutes = [
   'app/settings/about.tsx',
   'app/anime/[id].tsx',
   'app/player/[id].tsx',
+  'app/+not-found.tsx',
 ];
 
 for (const relPath of requiredRoutes) {
@@ -6083,6 +6087,160 @@ assert(
 );
 
 console.log('✓ Risparmio Energetico (Nessuna restrizione, Priorità Update, Verifica & Silenziamento) verificato con successo.');
+
+// -----------------------------------------------------------------------------
+// [Extra] Verifica Deep-Link Routing Expo Router (+native-intent, +not-found, MainActivity onNewIntent & CSRF Guard)
+// -----------------------------------------------------------------------------
+console.log('\n[Extra] Verifica Deep-Link Routing Expo Router (+native-intent, +not-found, MainActivity onNewIntent & CSRF Guard)...');
+
+// 1. +native-intent redirectSystemPath non deve instradare azioni KuroSync verso *not-found
+assert.strictEqual(
+  redirectSystemPath({
+    path: 'kurosync://connect?url=https%3A%2F%2Fmy-sync.workers.dev&token=tok-123&profile=prof-1',
+    initial: true,
+  }),
+  '/',
+  'Cold-start su kurosync://connect deve reindirizzare Expo Router su / (Home)'
+);
+assert.strictEqual(
+  redirectSystemPath({
+    path: 'kurosync://connect?url=https%3A%2F%2Fmy-sync.workers.dev&token=tok-123&profile=prof-1',
+    initial: false,
+  }),
+  null,
+  'Warm-start su kurosync://connect deve restituire null per preservare la schermata attiva'
+);
+assert.strictEqual(
+  redirectSystemPath({ path: 'kurosync://pair?code=K7X9P2', initial: true }),
+  '/',
+  'Cold-start su kurosync://pair deve aprire Home invece di Unmatched Route'
+);
+assert.strictEqual(
+  redirectSystemPath({ path: 'kurosync://pair?code=K7X9P2', initial: false }),
+  null,
+  'Warm-start su kurosync://pair deve preservare la schermata attiva'
+);
+assert.strictEqual(
+  redirectSystemPath({
+    path: 'kurotv://sync?token=qr_ephemeral123&endpoint=https%3A%2F%2Fcustom.workers.dev',
+    initial: true,
+  }),
+  '/',
+  'Cold-start su kurotv://sync deve aprire Home invece di Unmatched Route'
+);
+assert.strictEqual(
+  redirectSystemPath({
+    path: 'kurotv://sync?token=qr_ephemeral123&endpoint=https%3A%2F%2Fcustom.workers.dev',
+    initial: false,
+  }),
+  null,
+  'Warm-start su kurotv://sync deve preservare la schermata attiva'
+);
+assert.strictEqual(
+  redirectSystemPath({ path: 'kurotv://sync', initial: false }),
+  null,
+  'Warm-start su kurotv://sync incompleto deve essere intercettato senza Unmatched Route'
+);
+assert.strictEqual(
+  redirectSystemPath({ path: 'kurosync:///connect?url=https%3A%2F%2Fmy-sync.workers.dev&token=abc', initial: true }),
+  '/',
+  'Cold-start con triplo slash kurosync:///connect deve risolvere su /'
+);
+
+// 2. Deep-link di navigazione in-app standard
+assert.strictEqual(
+  redirectSystemPath({ path: 'kurotv://anime/solo-leveling-ita?title=Solo', initial: true }),
+  '/anime/solo-leveling-ita?title=Solo',
+  'Deep-link kurotv://anime/<id> deve risolvere alla scheda dettagli anime'
+);
+assert.strictEqual(
+  redirectSystemPath({ path: 'kurotv://downloads', initial: false }),
+  '/downloads',
+  'Deep-link kurotv://downloads deve risolvere alla sezione Scaricati'
+);
+assert.strictEqual(
+  redirectSystemPath({ path: 'kurotv://settings/about', initial: false }),
+  '/settings/about',
+  'Deep-link kurotv://settings/about deve risolvere alle info app'
+);
+assert.strictEqual(
+  redirectSystemPath({ path: 'kurotv:///', initial: true }),
+  '/',
+  'Avvio root kurotv:/// deve risolvere su /'
+);
+const devLauncherUrl = 'exp+kurotv-mobile://expo-development-client/?url=http%3A%2F%2F192.168.1.5%3A8081';
+assert.strictEqual(
+  redirectSystemPath({ path: devLauncherUrl, initial: true }),
+  devLauncherUrl,
+  'URL Expo Dev Client devono restare inalterati'
+);
+
+// 3. Hardening parseKuroSyncDeepLink & isKuroSyncActionDeepLink
+assert.strictEqual(
+  parseKuroSyncDeepLink('kurotv://anime/solo-leveling-ita'),
+  null,
+  'parseKuroSyncDeepLink deve restituire null per route anime standard anziché {}'
+);
+assert.strictEqual(
+  parseKuroSyncDeepLink('kurotv://sync'),
+  null,
+  'parseKuroSyncDeepLink deve restituire null per link sync privo di parametri'
+);
+assert.strictEqual(
+  parseKuroSyncDeepLink(devLauncherUrl),
+  null,
+  'parseKuroSyncDeepLink deve ignorare URL expo-development-client'
+);
+const percentTokenParsed = parseKuroSyncDeepLink(
+  'KUROSYNC://connect?url=https%3A%2F%2Fmy-sync.workers.dev&token=tok%25abc'
+);
+assert.strictEqual(
+  percentTokenParsed?.token,
+  'tok%abc',
+  'parseKuroSyncDeepLink deve gestire scheme maiuscoli e caratteri % nei token senza lanciare URIError'
+);
+assert.strictEqual(isKuroSyncActionDeepLink('kurotv://anime/naruto'), false);
+assert.strictEqual(isKuroSyncActionDeepLink('kurotv://sync'), true);
+assert.strictEqual(isKuroSyncActionDeepLink('kurosync://unknown'), true);
+
+// 4. Verifiche statiche MainActivity.kt, plugin Prebuild, _layout.tsx & +not-found.tsx
+const mainActivitySrc = fs.readFileSync(
+  path.resolve(process.cwd(), 'android/app/src/main/java/com/kurotv/mobile/MainActivity.kt'),
+  'utf-8'
+);
+const mainActivityPatchSrc = fs.readFileSync(
+  path.resolve(process.cwd(), 'scripts/patches/MainActivity.kt'),
+  'utf-8'
+);
+const backPluginSrc = fs.readFileSync(
+  path.resolve(process.cwd(), 'plugins/withAndroidBackPress.js'),
+  'utf-8'
+);
+for (const [label, src] of [
+  ['android MainActivity.kt', mainActivitySrc],
+  ['scripts/patches/MainActivity.kt', mainActivityPatchSrc],
+  ['plugins/withAndroidBackPress.js', backPluginSrc],
+]) {
+  assert(src.includes('override fun onNewIntent(intent: Intent)'), `${label} deve fare override di onNewIntent`);
+  assert(src.includes('setIntent(intent)'), `${label} deve invocare setIntent(intent) in onNewIntent`);
+}
+
+const rootLayoutDeepLinkSrc = fs.readFileSync(path.resolve(process.cwd(), 'app/_layout.tsx'), 'utf-8');
+assert(rootLayoutDeepLinkSrc.includes('isKuroSyncActionDeepLink'), '_layout.tsx deve usare isKuroSyncActionDeepLink');
+assert(rootLayoutDeepLinkSrc.includes('lastDeepLinkRef'), '_layout.tsx deve deduplicare eventi deep-link ravvicinati');
+assert(rootLayoutDeepLinkSrc.includes('<Stack.Screen\n          name="+not-found"'), '_layout.tsx deve registrare +not-found nello Stack');
+
+const notFoundSrc = fs.readFileSync(path.resolve(process.cwd(), 'app/+not-found.tsx'), 'utf-8');
+assert(!notFoundSrc.includes('Alert.alert'), 'app/+not-found.tsx non deve usare Alert.alert');
+assert(notFoundSrc.includes('TORNA ALLA HOME'), 'app/+not-found.tsx deve offrire il ritorno esplicito alla Home');
+
+assert.strictEqual(
+  resolveSystemDeepLinkPath({ path: 'kurotv://explore', initial: false }),
+  '/explore',
+  'resolveSystemDeepLinkPath deve normalizzare route tab standard'
+);
+
+console.log('✓ Deep-Link Routing Expo Router (+native-intent, +not-found, MainActivity onNewIntent & CSRF Guard) verificato con successo.');
 
 // -----------------------------------------------------------------------------
 // Fine Test

@@ -1,11 +1,45 @@
 const { withMainActivity } = require('expo/config-plugins');
 
-function modifyMainActivity(contents) {
-  if (contents.includes('OnBackPressedCallback')) {
+function ensureOnNewIntentForwarding(contents) {
+  if (contents.includes('override fun onNewIntent(')) {
     return contents;
   }
 
+  if (!contents.includes('import android.content.Intent')) {
+    contents = contents.replace(
+      'import android.os.Bundle',
+      'import android.content.Intent\nimport android.os.Bundle'
+    );
+  }
+
+  const onNewIntentCode = `
+  override fun onNewIntent(intent: Intent) {
+    // Keep activity.intent up-to-date so Linking.getInitialURL() sees deep-link intents
+    // even if received before React finishes mounting on singleTask launchMode.
+    setIntent(intent)
+    super.onNewIntent(intent)
+  }`;
+
+  const lastBraceIndex = contents.lastIndexOf('}');
+  if (lastBraceIndex !== -1) {
+    contents = contents.slice(0, lastBraceIndex) + onNewIntentCode + '\n}\n';
+  }
+
+  return contents;
+}
+
+function modifyMainActivity(contents) {
+  if (contents.includes('OnBackPressedCallback')) {
+    return ensureOnNewIntentForwarding(contents);
+  }
+
   // 1. Add imports
+  if (!contents.includes('import android.content.Intent')) {
+    contents = contents.replace(
+      'import android.os.Bundle',
+      'import android.content.Intent\nimport android.os.Bundle'
+    );
+  }
   if (!contents.includes('import android.os.Build')) {
     contents = contents.replace(
       'import android.os.Bundle',
@@ -93,7 +127,7 @@ function modifyMainActivity(contents) {
     }
   }
 
-  return contents;
+  return ensureOnNewIntentForwarding(contents);
 }
 
 module.exports = function withAndroidBackPress(config) {

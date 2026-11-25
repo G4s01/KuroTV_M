@@ -2,6 +2,10 @@ import { AppStorage, StorageKeys } from '../storage/app-storage';
 import { KuroSyncClient } from './client';
 import { mergeLocalAndRemote } from './merge';
 import { getDeviceName } from './device-info';
+import {
+  parseKuroSyncDeepLink,
+  type ParsedKuroSyncDeepLink,
+} from './deep-link';
 import type {
   DeltaPushRequest,
   LocalStorageState,
@@ -41,116 +45,7 @@ export function isSyncAuthError(err?: string | null, status?: number): boolean {
   );
 }
 
-export function parseKuroSyncDeepLink(deepLink: string): {
-  url?: string;
-  token?: string;
-  profile?: string;
-  code?: string;
-} | null {
-  if (!deepLink) return null;
-  const cleanLink = deepLink.trim();
-
-  // 1. Support JSON payloads from QR codes
-  if (cleanLink.startsWith('{') && cleanLink.endsWith('}')) {
-    try {
-      const data = JSON.parse(cleanLink);
-      if (data && typeof data === 'object') {
-        const url = (data.url || data.serverUrl || data.baseUrl || '')?.trim() || undefined;
-        const token = (data.token || data.deviceToken || '')?.trim() || undefined;
-        const profile = (data.profile || data.profileId || '')?.trim() || undefined;
-        const rawCode = (data.code || data.pairCode || '')?.trim();
-        const code = rawCode ? rawCode.toUpperCase() : undefined;
-        if (url || token || code || profile) {
-          return { url, token, profile, code };
-        }
-      }
-    } catch {
-      // Ignore JSON error and proceed to URL parsing
-    }
-  }
-
-  // 2. Validate prefix or query parameters
-  const isCustomScheme = cleanLink.startsWith('kurosync://') || cleanLink.startsWith('kurotv://');
-  const hasKnownParams =
-    cleanLink.includes('url=') ||
-    cleanLink.includes('endpoint=') ||
-    cleanLink.includes('server=') ||
-    cleanLink.includes('serverUrl=') ||
-    cleanLink.includes('baseUrl=') ||
-    cleanLink.includes('token=') ||
-    cleanLink.includes('qrToken=') ||
-    cleanLink.includes('exchangeToken=') ||
-    cleanLink.includes('code=') ||
-    cleanLink.includes('/pair') ||
-    cleanLink.includes('/connect');
-
-  if (!isCustomScheme && !hasKnownParams) {
-    return null;
-  }
-
-  try {
-    const isStandardUrl = cleanLink.startsWith('http://') || cleanLink.startsWith('https://');
-    const urlToParse = isStandardUrl
-      ? cleanLink
-      : cleanLink.replace(/^[a-zA-Z0-9_-]+:\/\//, 'https://dummy.local/');
-
-    const parsed = new URL(urlToParse);
-    let url = parsed.searchParams.get('url')
-      ? decodeURIComponent(parsed.searchParams.get('url')!)
-      : parsed.searchParams.get('endpoint')
-      ? decodeURIComponent(parsed.searchParams.get('endpoint')!)
-      : parsed.searchParams.get('server')
-      ? decodeURIComponent(parsed.searchParams.get('server')!)
-      : parsed.searchParams.get('serverUrl')
-      ? decodeURIComponent(parsed.searchParams.get('serverUrl')!)
-      : parsed.searchParams.get('baseUrl')
-      ? decodeURIComponent(parsed.searchParams.get('baseUrl')!)
-      : undefined;
-
-    // Infer server URL from origin if standard HTTP/HTTPS URL and no explicit url param was given
-    if (!url && isStandardUrl && parsed.origin && parsed.origin !== 'null') {
-      url = parsed.origin;
-    }
-
-    const token = parsed.searchParams.get('token')
-      ? decodeURIComponent(parsed.searchParams.get('token')!)
-      : parsed.searchParams.get('qrToken')
-      ? decodeURIComponent(parsed.searchParams.get('qrToken')!)
-      : parsed.searchParams.get('exchangeToken')
-      ? decodeURIComponent(parsed.searchParams.get('exchangeToken')!)
-      : undefined;
-    const profile = parsed.searchParams.get('profile')
-      ? decodeURIComponent(parsed.searchParams.get('profile')!)
-      : parsed.searchParams.get('profileId')
-      ? decodeURIComponent(parsed.searchParams.get('profileId')!)
-      : undefined;
-    const rawCode = parsed.searchParams.get('code') || parsed.searchParams.get('pairCode');
-    const code = rawCode ? decodeURIComponent(rawCode).toUpperCase() : undefined;
-
-    return { url, token, profile, code };
-  } catch {
-    // Fallback regex parsing
-    let url: string | undefined;
-    const urlMatch = cleanLink.match(/[?&](?:url|endpoint|server|baseUrl|serverUrl)=([^&]+)/i);
-    if (urlMatch) {
-      url = decodeURIComponent(urlMatch[1]);
-    } else if (cleanLink.startsWith('http://') || cleanLink.startsWith('https://')) {
-      const originMatch = cleanLink.match(/^(https?:\/\/[^/?#]+)/i);
-      if (originMatch) url = originMatch[1];
-    }
-
-    const tokenMatch = cleanLink.match(/[?&](?:token|qrToken|exchangeToken)=([^&]+)/i);
-    const profileMatch = cleanLink.match(/[?&](?:profile|profileId)=([^&]+)/i);
-    const codeMatch = cleanLink.match(/[?&](?:code|pairCode)=([^&]+)/i);
-
-    return {
-      url,
-      token: tokenMatch ? decodeURIComponent(tokenMatch[1]) : undefined,
-      profile: profileMatch ? decodeURIComponent(profileMatch[1]) : undefined,
-      code: codeMatch ? decodeURIComponent(codeMatch[1]).toUpperCase() : undefined,
-    };
-  }
-}
+export { parseKuroSyncDeepLink, type ParsedKuroSyncDeepLink };
 
 function sanitizePushPayload(payload: DeltaPushRequest): DeltaPushRequest {
   const sanitized: DeltaPushRequest = { ...payload };

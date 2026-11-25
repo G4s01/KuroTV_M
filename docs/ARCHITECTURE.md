@@ -10,6 +10,8 @@ Kuro Mobile è costruito con un'architettura modulare e moderna, progettata per 
 KuroTV_M/
 ├── app/                         # Routing File-Based (Expo Router v58)
 │   ├── _layout.tsx              # Root Layout: ThemeProvider, QueryClient, GestureHandler & Deep-Link Guard
+│   ├── +native-intent.tsx       # Native Intent Interceptor: preserva schermate e reindirizza link KuroSync prima del routing
+│   ├── +not-found.tsx           # Fallback OLED per route non riconosciute dentro RootLayout (con ritorno alla Home)
 │   ├── (tabs)/                  # Navigazione a schede inferiori
 │   │   ├── _layout.tsx          # Configurazione TabBar con tinte reattive & pulsante Profilo rapido
 │   │   ├── index.tsx            # Home: Hero Swiper, Continua a guardare, Raccomandati, Ricerca & pulsante Palinsesto
@@ -37,7 +39,7 @@ KuroTV_M/
 │   └── images/                  # Icone app Android, Splash screen e banner
 ├── modules/                     # Moduli Expo locali nativi (autolinked)
 │   └── kuro-device-controls/    # Modulo Android Kotlin per volume sistema (STREAM_MUSIC), luminosità finestra e verifica/impostazioni risparmio energetico
-├── plugins/                     # Expo Config Plugins nativi (withAndroidBackPress per gesture tablet)
+├── plugins/                     # Expo Config Plugins nativi (withAndroidBackPress per gesture tablet & onNewIntent deep-link)
 ├── src/                         # Moduli core dell'applicazione
 │   ├── components/              # Componenti UI riutilizzabili (FlashList items, Modali touch-native)
 │   │   ├── anime/               # Moduli dettaglio anime (Backdrop, Synopsis, AnimeInfoTable, Controls, anime.styles)
@@ -524,8 +526,11 @@ Per garantire un'esperienza utente affidabile anche in presenza di disconnession
 
 L'applicazione adotta una serie di presidi architetturali per proteggere l'utente e il dispositivo:
 
-1. **Protezione CSRF Deep-Link con `ConfirmModal`**:
-   - Qualsiasi deep link (`kurosync://pair` o `kurosync://connect`) viene intercettato da `app/_layout.tsx` e richiede l'approvazione esplicita dell'utente tramite `ConfirmModal` prima di procedere.
+1. **Protezione CSRF Deep-Link, `+native-intent.tsx` & `MainActivity.onNewIntent`**:
+   - [`app/+native-intent.tsx`](../app/+native-intent.tsx) (`resolveSystemDeepLinkPath` in [`src/services/sync/deep-link.ts`](../src/services/sync/deep-link.ts)) intercetta tutti gli schemi d'azione (`kurosync://connect`, `kurosync://pair`, `kurotv://sync`, `kurotv://connect`, `kurotv://pair`) prima della risoluzione delle rotte Expo Router, evitando la schermata `Unmatched Route` (reindirizzando a `/` al cold start e restituendo `null` al warm start per preservare la vista attiva) e normalizzando invece le rotte di navigazione (`kurotv://anime/<id>`, `kurotv://downloads`, `kurotv://settings/*`).
+   - [`app/+not-found.tsx`](../app/+not-found.tsx) fornisce una vista fallback OLED coerente all'interno di `RootLayout` per qualsiasi path non valido, evitando l'uscita verso `RootUnmatched` esterno al `ThemeProvider`.
+   - `MainActivity.kt` (tramite [`plugins/withAndroidBackPress.js`](../plugins/withAndroidBackPress.js) e [`scripts/patches/MainActivity.kt`](../scripts/patches/MainActivity.kt)) esegue `setIntent(intent)` in `override fun onNewIntent(intent: Intent)` su `singleTask`, garantendo la disponibilità dell'intent in `Linking.getInitialURL()` anche durante l'avvio precoce.
+   - Qualsiasi deep link d'azione (`kurosync://pair`, `kurosync://connect`, `kurotv://sync`) viene intercettato da [`app/_layout.tsx`](../app/_layout.tsx) con deduplicazione ravvicinata (`lastDeepLinkRef`) e richiede l'approvazione esplicita dell'utente tramite `ConfirmModal` prima di procedere, sospendendo temporaneamente `UpdateModal` (`hasBlockingModal`).
    - Vengono mostrati chiaramente il codice TV da autorizzare o l'URL del server a cui connettersi, azzerando qualsiasi hijacking silenzioso della sessione o esfiltrazione dati.
 2. **Hardening Permessi & Backup Android**:
    - Permessi speciali invasivi azzerati: rimosso `android.permission.SYSTEM_ALERT_WINDOW` da `app.json`.

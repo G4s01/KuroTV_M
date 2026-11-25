@@ -10,7 +10,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider, useTheme } from '@/theme';
 import { AppStorage, type NavBarMode } from '@/services/storage';
 import { UpdaterService, UpdateStore } from '@/services/updater';
-import { SyncManager, parseKuroSyncDeepLink } from '@/services/sync';
+import { SyncManager, parseKuroSyncDeepLink, isKuroSyncActionDeepLink } from '@/services/sync';
 import * as Linking from 'expo-linking';
 import { UpdateModal, ConfirmModal, BatteryOptimizationModal } from '@/components';
 import { SyncConnectModal } from '@/components/settings';
@@ -144,13 +144,39 @@ function RootNavigation() {
     };
   }, []);
 
-  // KuroSync deep-link handling (e.g. kurosync://connect?url=...&token=...&profile=... or kurosync://pair?code=...)
+  const lastDeepLinkRef = React.useRef<{ url: string; timestamp: number }>({
+    url: '',
+    timestamp: 0,
+  });
+
+  // KuroSync deep-link handling (e.g. kurosync://connect?url=...&token=...&profile=..., kurosync://pair?code=..., kurotv://sync?...)
   React.useEffect(() => {
+    let isMounted = true;
     const processDeepLink = async (url: string) => {
-      if (!url) return;
-      const parsed = parseKuroSyncDeepLink(url);
+      if (!url || !isMounted) return;
+      const trimmedUrl = url.trim();
+      if (!trimmedUrl) return;
+
+      const now = Date.now();
+      if (
+        lastDeepLinkRef.current.url === trimmedUrl &&
+        now - lastDeepLinkRef.current.timestamp < 800
+      ) {
+        return;
+      }
+      lastDeepLinkRef.current = { url: trimmedUrl, timestamp: now };
+
+      const parsed = parseKuroSyncDeepLink(trimmedUrl);
       if (parsed?.token) {
-        const targetServer = parsed.url || SyncManager.getServerUrl();
+        const targetServer = (parsed.url || SyncManager.getServerUrl() || '').trim();
+        if (!targetServer) {
+          setSyncAlert({
+            visible: true,
+            title: 'LINK NON VALIDO',
+            message: 'Il link o codice QR KuroSync non specifica l\'URL del server di destinazione.',
+          });
+          return;
+        }
         setDeepLinkPrompt({
           type: 'connect',
           title: 'COLLEGA KUROSYNC',
@@ -158,7 +184,7 @@ function RootNavigation() {
           onConfirm: async () => {
             setDeepLinkPrompt(null);
             try {
-              const res = await SyncManager.connectFromDeepLink(url);
+              const res = await SyncManager.connectFromDeepLink(trimmedUrl);
               if (!res.ok) {
                 const isExpired =
                   res.isExpiredQr ||
@@ -227,11 +253,7 @@ function RootNavigation() {
             }
           },
         });
-      } else if (
-        url.startsWith('kurosync://') ||
-        url.includes('token=') ||
-        url.includes('kurosync')
-      ) {
+      } else if (isKuroSyncActionDeepLink(trimmedUrl)) {
         setSyncAlert({
           visible: true,
           title: 'LINK NON VALIDO',
@@ -256,6 +278,7 @@ function RootNavigation() {
 
     const subLinking = Linking.addEventListener('url', handleUrl);
     return () => {
+      isMounted = false;
       subLinking.remove();
     };
   }, []);
@@ -305,8 +328,22 @@ function RootNavigation() {
             animation: 'fade',
           }}
         />
+        <Stack.Screen
+          name="+not-found"
+          options={{
+            headerShown: false,
+            animation: 'fade',
+          }}
+        />
       </Stack>
-      <UpdateModal />
+      <UpdateModal
+        hasBlockingModal={Boolean(
+          connectionFailurePrompt?.visible ||
+          isConnectModalOpen ||
+          deepLinkPrompt ||
+          syncAlert?.visible
+        )}
+      />
       <BatteryOptimizationModal
         hasBlockingModal={Boolean(
           connectionFailurePrompt?.visible ||

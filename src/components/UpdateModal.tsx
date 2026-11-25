@@ -13,12 +13,16 @@ import { Ionicons } from '@expo/vector-icons';
 import { oledTheme, useTheme, getContrastTextColor } from '@/theme';
 import { usePendingUpdate, UpdateStore } from '@/services/updater';
 
-export const UpdateModal: React.FC = React.memo(() => {
+export interface UpdateModalProps {
+  hasBlockingModal?: boolean;
+}
+
+export const UpdateModal: React.FC<UpdateModalProps> = React.memo(({ hasBlockingModal = false }) => {
   const router = useRouter();
   const { theme } = useTheme();
   const { update, isDismissed } = usePendingUpdate();
 
-  if (!update || !update.isUpdateAvailable || !update.manifest || isDismissed) {
+  if (hasBlockingModal || !update || !update.isUpdateAvailable || !update.manifest || isDismissed) {
     return null;
   }
 

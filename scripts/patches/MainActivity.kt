@@ -1,6 +1,7 @@
 package com.kurotv.mobile
 import expo.modules.splashscreen.SplashScreenManager
 
+import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.OnBackPressedCallback
@@ -93,5 +94,12 @@ class MainActivity : ReactActivity() {
     } finally {
       backCallback.isEnabled = true
     }
+  }
+
+  override fun onNewIntent(intent: Intent) {
+    // Keep activity.intent up-to-date so Linking.getInitialURL() sees deep-link intents
+    // even if received before React finishes mounting on singleTask launchMode.
+    setIntent(intent)
+    super.onNewIntent(intent)
   }
 }
