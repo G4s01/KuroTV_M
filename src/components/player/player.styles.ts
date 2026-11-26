@@ -175,6 +175,10 @@ export const playerStyles = StyleSheet.create({
     justifyContent: 'space-between',
     zIndex: 4,
   },
+  osdControlsLayer: {
+    flex: 1,
+    justifyContent: 'space-between',
+  },
   osdCenterRow: {
     flexDirection: 'row',
     alignItems: 'center',

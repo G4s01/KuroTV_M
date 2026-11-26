@@ -340,7 +340,7 @@ Kuro Mobile è un'applicazione concepita **esclusivamente per smartphone Android
 ## 🧪 7. Standard di Test & Verifica Qualità
 
 Prima di ogni commit o push è obbligatorio verificare la conformità tramite:
-1. `npm test`: Suite di test automatizzata a **37 stadi**:
+1. `npm test`: Esegue `tsc --noEmit` + suite principale `tests/core-verification.test.ts` (**39 stadi + Extra**):
    - SemVer e Updater Service.
    - Regole di Stile Mobile & conformità OLED.
    - Storage MMKV (preferiti, cronologia visione).
@@ -378,7 +378,9 @@ Prima di ogni commit o push è obbligatorio verificare la conformità tramite:
    - Allineamento Client KuroSync: Cursori di Replica, Anti-Resurrezione Tombstones & Robustezza Payload (scoping per profilo di `since` / `lastSyncTimestamp`, cache `SYNC_KNOWN_TOMBSTONES`, pruning anti-resurrezione delle mutazioni pendenti, dominanza tombstones su `recordSyncMutation`, validazione e sanitizzazione completa di payload push, deletions e ricerche recenti).
    - Preservazione Orientamento Player (Landscape & Portrait tra episodi su `handleNavigateToEpisode`, OSD e notifiche, parametro di rotta `orientation` e `lastPlayerOrientation`), Rilevamento Buffering/Stall con Watchdog su `timeUpdate` (1.2s) e Contromisure Anti-Duplicazione Tastiere Terze Android (Fleksy, SwiftKey, Emoji Keyboard / Ekatox: rimozione `textTransform`, flag IME nativi, memoizzazione e disaccoppiamento debounced di `HomeSearchHeader`).
    - TextInput Decoupled Anti-Drop per Digitazione Veloce su Tastiere Terze Android (`defaultValue` non controllato per eliminare i reset forzati da `value={localText}`, `setLocalText` limitato alle sole transizioni vuoto/non-vuoto con 0 re-render su digitazione continua, tracking sincrono `isTypingRef` e `lastPropagatedQueryRef` per inibire i reset spuri al commit asincrono del genitore durante lo spamming veloce, `autoFocus` condizionato, rimontaggio `key={inputKey}` circoscritto alle sole selezioni esterne da cronologia), Generazione Automatica ed Esclusiva del Changelog da `build-release.sh` in `src/constants/changelog.ts` (con eliminazione delle note descrittive statiche e visualizzazione esclusiva delle release notes) e Allineamento Migrazioni D1 Cloudflare KuroSync (`0002_server_replication_cursor.sql` con applicazione colonne `server_deleted_at` e `server_updated_at` risolvendo l'errore SQLite 500 su push delta).
-2. `npx expo export --platform android`: Verifica dell'assenza di errori di bundle e corretta generazione del bytecode Hermes.
+   - Live Keyframe Scrubbing, Time-Scrubbing HUD OLED & Quantizzazione Thumbnail (`[38/39]`) e Visualizzazione Capitoli sulla Timeline AniSkip in Stile YouTube (`[39/39]`).
+2. `node --experimental-strip-types --loader ./tests/test-loader.mjs tests/mal-verification.test.ts`: Suite dedicata all'integrazione **MyAnimeList API v2 + KuroSync `malAuth`** (PKCE `plain`, deep-link OAuth, mapping `detail.malId`, diff/PTW/highwater, `autoSyncMode`, soglia *Watching* `1–24`, isolamento per profilo, sync auth-only `malAuth`/`'mal_auth'`, parità contrattuale con `_kurosync_ref` e verifiche statiche anti-leak).
+3. `npx expo export --platform android`: Verifica dell'assenza di errori di bundle e corretta generazione del bytecode Hermes.
 
 ---
 
@@ -427,7 +429,7 @@ Prima di ogni commit o push è obbligatorio verificare la conformità tramite:
    - **Le 7 Sotto-pagine Dedicate nello Stack Nativo (`app/settings/*`, animazione `slide_from_right`)**:
      1. `appearance.tsx` (*APPARENZA*): Tema OLED/Pikachu/Orchid/Rainbow con toggle Dark/Light al tocco e Navbar Android (Auto-hide con swipe vs Sempre visibile);
      2. `playback.tsx` (*PLAYER*): AniSkip completo (`AniSkipSlider` per Auto/Manual/Disabled, `AniSkipDurationSlider` 5s-60s/∞, chip sezioni Intro/Recap/Outro);
-     3. `sync.tsx` (*SINCRONIA*): KuroSync completo (`SyncSettingsCard`, stato backend D1, pairing TV via QR/PIN, sync delta manuale);
+     3. `sync.tsx` (*SINCRONIA*): KuroSync completo (`SyncSettingsCard`, stato backend D1, pairing TV via QR/PIN, sync delta manuale) + riepilogo profilo MAL (`MalSyncSummaryCard`);
      4. `downloads.tsx` (*DOWNLOAD*): Gestione download SAF personalizzato, switch Wi-Fi only, monitoraggio memoria e svuotamento con `ConfirmModal`;
      5. `source.tsx` (*SORGENTE*): TLD AnimeWorld (.ac, .so, .tv), URL personalizzato e avvisi inline;
      6. `history.tsx` (*CRONOLOGIA*): Conservazione cronologia visioni e ricerche stile Google con `HistorySlider` e cancellazione con `ConfirmModal`;
@@ -456,7 +458,8 @@ Kuro Mobile integra il client nativo **KuroSync** per la sincronizzazione del ca
   - `watchHistory`: Cronologia globale con limite a 100 elementi, preservando l'ordinamento cronologico decrescente;
   - `watchProgress`: Mappe di avanzamento discrete per ciascuna puntata sotto `user.progress.<animeId>.<episodeNumber>`;
   - `sharedSettings`: Impostazioni cross-device (AniSkip, server di default, soglie ending, retention policy);
-  - `searchHistory`: Cronologia ricerche Google-style (con limite a 50 voci e ordinamento discendente).
+  - `searchHistory`: Cronologia ricerche Google-style (con limite a 50 voci e ordinamento discendente);
+  - `malAuth`: **Esclusivamente** le credenziali OAuth MyAnimeList del profilo attivo (`profileId?`, `clientId`, `accessToken`, `refreshToken`, `expiresAt`, `tokenType`, `username?`, `userId?`, `picture?`, `updatedAt`) con scope isolato per `profile_id` e capability check sul server. **Mai** sincronizzare `MAL_LIST_CACHE`, `MAL_PENDING_UPDATES`, `MAL_WATCHED_HIGHWATER`, `MAL_SETTINGS`, `MAL_IGNORED_ANIME_IDS` o `MAL_ID_MAP`.
 - **Riconciliazione Bidirezionale delle Code**:
   - Se un elemento cancellato viene ri-aggiunto prima del push (`recordSyncMutation`), il relativo tombstone in coda di cancellazione viene automaticamente rimosso;
   - Se un elemento modificato viene eliminato (`recordSyncDeletion` / `recordSyncDeletions`), la relativa mutazione pendente viene rimossa dalla coda di push;
@@ -518,7 +521,7 @@ Kuro Mobile integra il client nativo **KuroSync** per la sincronizzazione del ca
 
 ### 6. Sanitizzazione e Robustezza dei Payload di Push (`POST /api/sync/push`)
 - **Presenza di `updatedAt`**: Ogni record inviato nel payload di sincronizzazione verso `KuroTV_S` include tassativamente `updatedAt: number` valido (millisecondi epoch).
-- **Whitelist Tipi di Cancellazione**: Il campo `deletions` accetta unicamente i tipi riconosciuti dallo schema D1 (`'favorite' | 'continue_watching' | 'watch_history' | 'watch_progress' | 'shared_settings' | 'search_history'`).
+- **Whitelist Tipi di Cancellazione**: Il campo `deletions` accetta i 6 tipi base dello schema D1 (`'favorite' | 'continue_watching' | 'watch_history' | 'watch_progress' | 'shared_settings' | 'search_history'`), più `'mal_auth'` **esclusivamente** quando il server dichiara il supporto a `malAuth` (`getSyncServerSupportsMalAuth`, rilevato tramite `'malAuth' in remotePull.deltas` per server con migrazione `0003_mal_auth.sql`; le varianti `'mal_auth:default'`, `'mal_auth:malAuth'` e `'mal_auth:malauth'` sono normalizzate nel merge e nelle code locali).
 - **Ordinamento e Validazione Ricerche**: Le voci di `search_history` vengono validate e inviate ordinate per `updatedAt` decrescente con limite massimo di 50 voci.
 
 ### 7. Trigger `pullDeltaIfNeeded` on Focus & Salvaguardia Navigazione Player
@@ -528,3 +531,23 @@ Kuro Mobile integra il client nativo **KuroSync** per la sincronizzazione del ca
   - Metodi `removePendingSyncMutations` e `removePendingSyncDeletions` in `AppStorage` per epurare atomicamente mutazioni o delezioni già riconciliate o confliggenti.
 - **Salvaguardia `hasNavigatedRef` per Unmount Player**:
   - In `app/player/[id].tsx`, il ref `hasNavigatedRef` previene il salvataggio di progressi spuri a inizio puntata (0 secondi) generati durante lo smontaggio del componente player a seguito di un'azione di navigazione ("Indietro" o passaggio alla puntata successiva).
+
+---
+
+## 📊 10. Integrazione MyAnimeList (API v2, OAuth 2.0 PKCE & Isolamento Profilo)
+
+Kuro Mobile integra le API ufficiali **MyAnimeList v2** tramite OAuth 2.0 PKCE (`code_challenge_method=plain`, redirect `kurotv://mal-callback`, Chrome Custom Tabs via `expo-web-browser` e `./plugins/withMalCustomTabs.js`) con i seguenti vincoli architetturali:
+
+1. **Zero Segreti Hardcoded & Zero `node:*`**:
+   - Il `Client ID` OAuth è configurato direttamente dall'utente in-app (con fallback opzionale `EXPO_PUBLIC_MAL_CLIENT_ID`). È vietato inserire `Client ID` privati o `Client Secret` nel repository o nel codice sorgente.
+   - Tutto il codice in `src/services/mal/` e `src/components/mal/` è TypeScript puro Hermes-compatible.
+2. **Invariante `detail.malId` (Mai `anilistId`)**:
+   - Ogni mapping persistente (`mal.idMap`), risoluzione scheda e auto-sync da player (`pureMalIdRef`) deve leggere tassativamente `detail.malId`, senza mai usare `detail.anilistId` come fallback verso MAL.
+3. **Isolamento per Profilo KuroSync & Scope Sync Esclusivo Auth**:
+   - Tutte le chiavi MMKV `StorageKeys.MAL_*` (e `byMalId` in `id-map-store.ts`) sono isolate tramite `getActiveMalProfileScope()` / `getMalScopedKey()`: `'local'` quando KuroSync è disconnesso, `<profileId>` quando connesso.
+   - Su KuroSync (`KuroTV_S`, `0003_mal_auth.sql`) è sincronizzato **esclusivamente** `malAuth` + tombstones `'mal_auth'` (con capability gating `'malAuth' in remotePull.deltas` per server legacy e zero loop in `applyRemoteMalAuthRecordForScope`).
+   - È vietato sincronizzare su KuroSync liste (`MAL_LIST_CACHE`), preferenze (`MAL_SETTINGS`), highwater (`MAL_WATCHED_HIGHWATER`), mapping (`MAL_ID_MAP`), ignorati (`MAL_IGNORED_ANIME_IDS`) o code (`MAL_PENDING_UPDATES`).
+   - `disconnect()` ripulisce i soli dati synced del profilo remoto preservando lo scope `'local'`.
+4. **Policy Errori & Non-Regressione**:
+   - Errori offline/rete/DNS/`5xx` non invalidano la sessione MAL. Su `invalid_grant` nel refresh token, la sessione locale è revocata **senza** emettere un tombstone `'mal_auth'` distruttivo verso altri device; il tombstone `'mal_auth'` è emesso solo al logout esplicito dell'utente (`MalAuthService.logout()`).
+   - Le modalità auto-sync (`autoSyncMode`: `'off' | 'episodes' | 'completed_only'`) e la soglia opzionale *Watching* (`watchingThresholdEnabled` + `watchingThresholdEpisodes` `1–24`, default `3` con `StepSlider` in `MalSettingsModal.tsx`) non modificano mai serie già in `completed` su MAL e aggiornano senza blocco le serie già `watching`. (Specifica completa in [MAL.md](./docs/MAL.md)).

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Platform, AppState, Dimensions, View, Text, ActivityIndicator, StyleSheet } from 'react-native';
-import { Stack } from 'expo-router';
+import { Stack, usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as NavigationBar from 'expo-navigation-bar';
 import * as ScreenOrientation from 'expo-screen-orientation';
@@ -33,6 +33,9 @@ const queryClient = new QueryClient({
 function RootNavigation() {
   const { theme } = useTheme();
   const isLight = theme.name === 'light';
+  const pathname = usePathname();
+  const isPlayerRouteRef = React.useRef(false);
+  isPlayerRouteRef.current = Boolean(pathname?.startsWith('/player'));
 
   const [navBarMode, setNavBarMode] = React.useState<NavBarMode>(() => AppStorage.getNavBarMode());
 
@@ -67,6 +70,7 @@ function RootNavigation() {
     if (Platform.OS !== 'android') return;
 
     const applyNavBarVisibility = (mode: NavBarMode) => {
+      if (isPlayerRouteRef.current) return;
       NavigationBar.setVisibilityAsync(mode === 'auto-hide' ? 'hidden' : 'visible').catch(() => {});
     };
 
@@ -74,7 +78,7 @@ function RootNavigation() {
 
     const subAppState = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
-        if (Platform.OS === 'android') {
+        if (Platform.OS === 'android' && !isPlayerRouteRef.current) {
           applyNavBarVisibility(AppStorage.getNavBarMode());
         }
         if (SyncManager.isConnected()) {

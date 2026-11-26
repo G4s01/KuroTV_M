@@ -253,6 +253,7 @@ export const PlayerEpisodesCarouselSheet: React.FC<PlayerEpisodesCarouselSheetPr
       animationType="fade"
       onRequestClose={onClose}
       statusBarTranslucent={true}
+      navigationBarTranslucent={true}
     >
       <View style={styles.modalOverlay}>
         <TouchableWithoutFeedback onPress={onClose}>

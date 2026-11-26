@@ -84,6 +84,7 @@ export const PlayerInfoSheet: React.FC<PlayerInfoSheetProps> = React.memo(({
       animationType="fade"
       onRequestClose={onClose}
       statusBarTranslucent={true}
+      navigationBarTranslucent={true}
     >
       <View style={styles.modalOverlay}>
         <TouchableWithoutFeedback onPress={onClose}>

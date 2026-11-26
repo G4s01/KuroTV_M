@@ -23,23 +23,25 @@ KuroTV_M/
 │   ├── settings/                # Sotto-pagine Impostazioni Hub & Spoke nello Stack nativo
 │   │   ├── appearance.tsx       # Temi OLED, palette d'accento e Navbar
 │   │   ├── playback.tsx         # AniSkip (modalità e durata) & Player
-│   │   ├── sync.tsx             # KuroSync multi-dispositivo & TV Pairing
+│   │   ├── sync.tsx             # KuroSync multi-dispositivo, TV Pairing & stato rapido MyAnimeList
 │   │   ├── downloads.tsx        # Percorso SAF, vincolo Wi-Fi & Storage
 │   │   ├── source.tsx           # Domini specchio AnimeWorld (.ac, .so, .tv)
 │   │   ├── history.tsx          # Ritenzione cronologia e svuotamento ricerche
 │   │   └── about.tsx            # Info build, licenze & OTA Updater
 │   ├── anime/
-│   │   └── [id].tsx             # Scheda Dettaglio Anime (Header, Trama, Server, Griglia Puntate)
+│   │   └── [id].tsx             # Scheda Dettaglio Anime (Header, Trama, Server, Griglia Puntate, pill MAL)
 │   ├── downloads/
 │   │   └── index.tsx            # Sezione Offline: Monitoraggio storage, download attivi e serie scaricate
+│   ├── mal/
+│   │   └── index.tsx            # Sezione MyAnimeList (3 liste Watching/PTW/Completed, diff App→MAL, match picker)
 │   └── player/
-│       └── [id].tsx             # Player Video Touch Mobile (Gesture, OSD, PiP, MediaStyle notification, AniSkip)
+│       └── [id].tsx             # Player Video Touch Mobile (Gesture, OSD, PiP, MediaStyle notification, AniSkip, auto-sync MAL opt-in)
 ├── assets/                      # Risorse statiche
 │   ├── icons/                   # Icone SVG (temi, youtube, myanimelist, anilist)
 │   └── images/                  # Icone app Android, Splash screen e banner
 ├── modules/                     # Moduli Expo locali nativi (autolinked)
 │   └── kuro-device-controls/    # Modulo Android Kotlin per volume sistema (STREAM_MUSIC), luminosità finestra e verifica/impostazioni risparmio energetico
-├── plugins/                     # Expo Config Plugins nativi (withAndroidBackPress per gesture tablet & onNewIntent deep-link)
+├── plugins/                     # Expo Config Plugins nativi (withAndroidBackPress per gesture tablet & onNewIntent; withMalCustomTabs per Chrome Custom Tabs Android 11+)
 ├── src/                         # Moduli core dell'applicazione
 │   ├── components/              # Componenti UI riutilizzabili (FlashList items, Modali touch-native)
 │   │   ├── anime/               # Moduli dettaglio anime (Backdrop, Synopsis, AnimeInfoTable, Controls, anime.styles)
@@ -47,6 +49,7 @@ KuroTV_M/
 │   │   ├── explore/             # Moduli Palinsesto (explore.styles)
 │   │   ├── history/             # Moduli Cronologia (history.styles)
 │   │   ├── home/                # Moduli Home Screen (HeroBannerSection, RecommendedCarouselSection, HomeSection, ContinueWatching, Search, home.styles, filter-bottom-sheet.styles)
+│   │   ├── mal/                 # Moduli UI MyAnimeList (MalConnectCard, MalAnimeCard, MalSyncDiffModal, MalMatchPickerModal, MalEntrySheet, MalSettingsModal, MalStatusPill, MalSyncSummaryCard, mal.styles)
 │   │   ├── player/              # Moduli isolati video player (Header, Timeline, Footer, Carousel, Info, playback-state, device-controls, player.styles)
 │   │   ├── settings/            # Moduli Impostazioni (settings.styles, ThemeSettings, SourceSettings, DownloadSettings, BatterySettingsCard, SyncSettingsCard, SyncConnectModal, AuthorizeTvModal, SyncProfileModal, QrScannerModal)
 │   │   ├── skeleton/            # Primitive e layout skeleton animati (Zero CLS, OLED #161616)
@@ -62,6 +65,7 @@ KuroTV_M/
 │   │   ├── aniskip/             # Servizio timestamp per skip intro/outro/recap con timeout difensivo
 │   │   ├── battery/             # Verifica risparmio energetico ('Nessuna restrizione'), intent di sistema e stato reattivo
 │   │   ├── downloads/           # Gestore download offline, coda sequenziale, SAF, sanitizzazione anti-traversal e persistenza MMKV
+│   │   ├── mal/                 # Integrazione MyAnimeList API v2 (OAuth PKCE, client REST, id-map-store, mapper SUB/ITA, diff & auto-sync)
 │   │   ├── queries/             # QueryOptions TanStack React Query v5
 │   │   ├── scraper/             # Web Scraper AnimeWorld con cheerio/slim
 │   │   ├── storage/             # Storage locale MMKV v3 (app-storage.ts, continue-watching-sync.ts, barrel privo di cicli)
@@ -71,7 +75,7 @@ KuroTV_M/
 │   └── types/                   # Definizioni TypeScript condivise
 ├── workers/                     # Cloudflare Worker unificato per OTA
 ├── scripts/                     # Tooling DevOps, release pipeline & patch native (apply-patches, build-release, backup-secrets)
-└── tests/                       # Suite di verifica qualità a 36 stadi
+└── tests/                       # Suite di verifica qualità (core-verification a 39 stadi + Extra, mal-verification per MAL & KuroSync malAuth)
 ```
 
 ---
@@ -439,8 +443,8 @@ Kuro Mobile integra un'architettura completa di sincronizzazione self-hosted mul
 - La funzione pura `mergeLocalAndRemote()` applica la dominanza assoluta dei tombstones: qualsiasi record locale o remoto con timestamp $\le$ al rispettivo tombstone viene categoricamente eliminato, impedendo la "resurrezione" dei dati cancellati su altri dispositivi.
 
 ### 6. Sanitizzazione e Robustezza dei Payload di Push (`POST /api/sync/push`)
-- `SyncManager.pushPending()` garantisce che ogni entità (`favorites`, `continueWatching`, `watchHistory`, `watchProgress`, `sharedSettings`, `searchHistory`) contenga un valore `updatedAt: number` valido.
-- Il campo `deletions` è rigorosamente validato contro la whitelist dei 6 tipi ammessi dallo schema D1 SQLite di KuroTV_S (`'favorite' | 'continue_watching' | 'watch_history' | 'watch_progress' | 'shared_settings' | 'search_history'`).
+- `SyncManager.pushPending()` garantisce che ogni entità (`favorites`, `continueWatching`, `watchHistory`, `watchProgress`, `sharedSettings`, `searchHistory`, e opzionalmente `malAuth`) contenga un valore `updatedAt: number` valido.
+- Il campo `deletions` è rigorosamente validato contro la whitelist dei tipi ammessi dallo schema D1 SQLite di KuroTV_S (`'favorite' | 'continue_watching' | 'watch_history' | 'watch_progress' | 'shared_settings' | 'search_history'`, oltre a `'mal_auth'` inviato **solo** quando il server dichiara supporto via `'malAuth' in remotePull.deltas`).
 - La cronologia di ricerca `search_history` viene validata e inviata ordinata per `updatedAt` decrescente con limite massimo di 50 elementi.
 
 ### 7. Trigger `pullDeltaIfNeeded` on Focus & Salvaguardia Navigazione Player
@@ -455,10 +459,20 @@ Kuro Mobile integra un'architettura completa di sincronizzazione self-hosted mul
 - **`QrScannerModal.tsx`**: Scanner fotocamera basato su `CameraView` di `expo-camera` (v17 / SDK 58, `recordAudioAndroid: false`), mirino centrale OLED, torcia e gestione permessi con redirect a `Linking.openSettings()` se bloccati. Montato come frammento disaccoppiato per azzerare crash di finestre modali annidate su Android Fabric.
 - **`AuthorizeTvModal.tsx`**: Modale per autorizzare un dispositivo Android TV inquadrando il QR mostrato sul televisore o digitando il codice a 6 cifre (es. `K7X9P2`) tramite `client.approveTvPairing`.
 
-### 9. Schema Database D1 Cloudflare & Cursori di Replica Server (`0002_server_replication_cursor.sql`)
+### 9. Schema Database D1 Cloudflare, Cursori di Replica & Tabella `mal_auth` (`0002` + `0003`)
 - **Disaccoppiamento Orologio Logico e Cursore di Replica**: Il database relazionale Cloudflare D1 (`kurosync-db`) integra la colonna `server_deleted_at` sulla tabella `tombstones` e `server_updated_at` sulle tabelle di entità (`favorites`, `continue_watching`, `watch_history`, `watch_progress`, `shared_settings`).
-- **Eliminazione Errori SQLite 500 su Push Delta**: Le query di inserimento e aggiornamento in `KuroTV_S` (`INSERT INTO tombstones ... server_deleted_at = excluded.server_deleted_at`) e le query di recupero delta (`SELECT * FROM tombstones WHERE profile_id = ? AND (server_deleted_at > ? OR deleted_at > ?)`) si basano su questa colonna creata tramite la migrazione `migrations/0002_server_replication_cursor.sql`.
+- **Eliminazione Errori SQLite 500 su Push Delta**: Le query di inserimento e aggiornamento in `KuroTV_S` (`INSERT INTO tombstones ... server_deleted_at = excluded.server_deleted_at`) e le query di recupero delta (`SELECT * FROM tombstones WHERE profile_id = ? AND (server_deleted_at > ? OR deleted_at > ?)`) si basano sulla migrazione `migrations/0002_server_replication_cursor.sql`.
 - **Prevenzione Delta Miss**: L'assegnazione lato server di `server_deleted_at = unix_timestamp` garantisce che la propagazione delle cancellazioni verso smartphone e Android TV rimanga strettamente monotona e indipendente da derive temporali dei clock di sistema dei singoli client.
+- **Credenziali MyAnimeList per Profilo (`0003_mal_auth.sql`)**: La tabella `mal_auth` (chiave primaria `profile_id`) e la rebuild di `tombstones` con supporto a `'mal_auth'` permettono a `KuroTV_S` di replicare esclusivamente i token OAuth MAL del singolo profilo (`MalAuthSyncRecord`) con capability detection client (`SYNC_SERVER_SUPPORTS_MAL_AUTH`).
+
+---
+
+## 📊 10. Integrazione MyAnimeList (API v2, OAuth PKCE & Scope per Profilo)
+
+- **Identità Ufficiale & OAuth 2.0 PKCE (`plain`)**: Autenticazione tramite Chrome Custom Tabs (`expo-web-browser` + plugin `plugins/withMalCustomTabs.js`) e `Client ID` personale configurabile in-app senza segreti hardcoded (`kurotv://mal-callback`). Qualsiasi associazione e sincronizzazione automatica si basa esclusivamente su `detail.malId` (mai `detail.anilistId`).
+- **Isolamento Totale per Profilo KuroSync**: Tutto lo stato MAL in MMKV (`clientId`, sessione OAuth, impostazioni, mapping ID, cache liste, highwater, code pendenti e ignorati) è isolato tramite `getActiveMalProfileScope()` / `getMalScopedKey()` (`.p.<profileId>` se connesso a KuroSync, `'local'` se disconnesso). La disconnessione da KuroSync ripulisce solo i dati remoti del profilo senza toccare lo scope `'local'`.
+- **Sincronizzazione Cloud Auth-Only & Capability Gating**: Quando KuroSync è attivo e il server supporta `malAuth` (`'malAuth' in remotePull.deltas`), vengono sincronizzate solo le credenziali OAuth + tombstones `'mal_auth'`, con dominanza tombstones e LWW su `updatedAt`. Liste, episodi highwater, preferenze e code restano esclusivamente locali.
+- **Modalità Auto-Sync & Soglia Watching**: In `MalSettingsModal.tsx` (`MalAutoSyncMode`), l'utente può scegliere tra `off` (default), `episodes` e `completed_only`, con soglia opzionale *Watching* (`1–24` episodi, default `3`) gestita tramite `StepSlider` e stepper touch-safe. Le serie già in `completed` su MAL non vengono mai alterate automaticamente. (Dettagli completi in [`docs/MAL.md`](./MAL.md)).
 
 ---
 

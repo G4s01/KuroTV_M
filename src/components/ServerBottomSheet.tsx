@@ -66,6 +66,7 @@ export const ServerBottomSheet: React.FC<ServerBottomSheetProps> = ({
       animationType="fade"
       onRequestClose={onClose}
       statusBarTranslucent={true}
+      navigationBarTranslucent={true}
     >
       <View style={styles.modalOverlay}>
         <TouchableWithoutFeedback onPress={onClose}>

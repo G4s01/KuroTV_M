@@ -56,6 +56,10 @@ import {
   computeVerticalGestureTravelRange,
   computeSystemVolumeGesture,
   computeWindowBrightnessGesture,
+  DOUBLE_TAP_WINDOW_MS,
+  resolveTapSide,
+  resolvePlayerTapAction,
+  resolveOverlayBackgroundTapAction,
 } from '../src/components/player/index';
 import {
   AnimeHeaderBackdrop,
@@ -6247,6 +6251,99 @@ console.log('✓ Deep-Link Routing Expo Router (+native-intent, +not-found, Main
 // 38. Integrazione MyAnimeList (OAuth PKCE, Client, Mapper, Sync & UI)
 // -----------------------------------------------------------------------------
 await runMalVerificationTests();
+
+// -----------------------------------------------------------------------------
+// 39. Player Instant Tap Overlay & Immersive System Navigation Bar
+// -----------------------------------------------------------------------------
+console.log('\n[39/39] Verifica Player Instant Tap Overlay & Navbar Immersiva a Comparsa...');
+
+assert.strictEqual(resolveTapSide(100, 800), 'left');
+assert.strictEqual(resolveTapSide(450, 800), 'right');
+
+// 1. Primo tap a overlay nascosto: apertura immediata senza attesa double-tap
+const openTap = resolvePlayerTapAction({
+  side: 'right',
+  now: 1000,
+  accumulatedSkip: null,
+  lastOverlayOpenTap: null,
+});
+assert.deepStrictEqual(openTap, { type: 'open_overlay', side: 'right' });
+
+// 2. Secondo tap sullo stesso lato entro DOUBLE_TAP_WINDOW_MS -> double-tap seek
+const rapidOverlayTap = resolveOverlayBackgroundTapAction({
+  side: 'right',
+  pressTime: 1000 + DOUBLE_TAP_WINDOW_MS - 40,
+  lastOverlayOpenTap: { time: 1000, side: 'right' },
+});
+assert.deepStrictEqual(rapidOverlayTap, { type: 'double_tap_seek', side: 'right' });
+
+// 3. Secondo tap sul lato opposto -> chiusura overlay anziché seek errato
+const oppositeOverlayTap = resolveOverlayBackgroundTapAction({
+  side: 'left',
+  pressTime: 1000 + 120,
+  lastOverlayOpenTap: { time: 1000, side: 'right' },
+});
+assert.deepStrictEqual(oppositeOverlayTap, { type: 'close_overlay' });
+
+// 4. Secondo tap dopo la finestra di grazia -> normale chiusura overlay
+const lateOverlayTap = resolveOverlayBackgroundTapAction({
+  side: 'right',
+  pressTime: 1000 + DOUBLE_TAP_WINDOW_MS + 50,
+  lastOverlayOpenTap: { time: 1000, side: 'right' },
+});
+assert.deepStrictEqual(lateOverlayTap, { type: 'close_overlay' });
+
+// 5. Tap singolo durante skip cumulativo attivo -> avanza skip cumulativo
+const cumulativeTap = resolvePlayerTapAction({
+  side: 'right',
+  now: 1500,
+  accumulatedSkip: { direction: 'right', seconds: 10 },
+  lastOverlayOpenTap: null,
+});
+assert.deepStrictEqual(cumulativeTap, { type: 'advance_cumulative', side: 'right' });
+
+// 6. Verifiche statiche: assenza Gesture.Exclusive bloccante & presenza stack NavigationBar + setImmersiveMode
+const playerUxSrc = fs.readFileSync(path.resolve(process.cwd(), 'app/player/[id].tsx'), 'utf-8');
+assert(
+  !playerUxSrc.includes('Gesture.Exclusive(doubleTap, singleTap)'),
+  'app/player/[id].tsx non deve bloccare singleTap con Gesture.Exclusive'
+);
+assert(
+  playerUxSrc.includes('resolvePlayerTapAction') && playerUxSrc.includes('resolveOverlayBackgroundTapAction'),
+  'app/player/[id].tsx deve usare la state machine tap-gestures per risposta immediata'
+);
+assert(
+  playerUxSrc.includes('<NavigationBar.NavigationBar hidden={true} style="light" />'),
+  'app/player/[id].tsx deve montare NavigationBar.NavigationBar hidden={true} nello stack'
+);
+assert(
+  playerUxSrc.includes('setImmersiveMode'),
+  'app/player/[id].tsx deve invocare KuroDeviceControls.setImmersiveMode'
+);
+
+const rootNavLayoutSrc = fs.readFileSync(path.resolve(process.cwd(), 'app/_layout.tsx'), 'utf-8');
+assert(
+  rootNavLayoutSrc.includes('isPlayerRouteRef.current'),
+  'app/_layout.tsx non deve ripristinare la navbar visibile quando il player è attivo'
+);
+
+const immersiveKtSrc = fs.readFileSync(
+  path.resolve(process.cwd(), 'modules/kuro-device-controls/android/src/main/java/expo/modules/kurodevicecontrols/KuroDeviceControlsModule.kt'),
+  'utf-8'
+);
+for (const token of [
+  'setImmersiveMode',
+  'BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE',
+  'WindowInsetsCompat.Type.systemBars()',
+  'OnWindowFocusChangeListener',
+]) {
+  assert(
+    immersiveKtSrc.includes(token),
+    `KuroDeviceControlsModule.kt deve includere ${token} per la navbar a comparsa nel player`
+  );
+}
+
+console.log('✓ Player Instant Tap Overlay & Navbar Immersiva a Comparsa verificati con successo.');
 
 // -----------------------------------------------------------------------------
 // Fine Test

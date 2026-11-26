@@ -53,7 +53,10 @@ Kuro è una suite coordinata per lo streaming anime concepita per coprire ogni s
   <img src="docs/assets/screenshots/mobile-history.jpg" width="32%" alt="Cronologia Visione" />
 </p>
 <p align="center">
-  <em>Home con Hero Spotlight, Player video touch immersivo, Scheda anime, Download offline SAF, Preferiti e Cronologia.</em>
+  <img src="docs/assets/screenshots/mobile-mal.jpg" width="32%" alt="Integrazione MyAnimeList (Liste & Sync)" />
+</p>
+<p align="center">
+  <em>Home con Hero Spotlight, Player video touch immersivo, Scheda anime, Download offline SAF, Preferiti, Cronologia e Liste MyAnimeList.</em>
 </p>
 
 ### 💻 Esperienza Tablet & Grandi Schermi (≥ 600dp)
@@ -93,6 +96,12 @@ Kuro è una suite coordinata per lo streaming anime concepita per coprire ogni s
 - **Ottimizzazione Quote D1**: debounce del playback a 45-60s con salvataggio immediato su pausa, chiusura o termine puntata.
 - **Accoppiamento TV Istantaneo**: autorizzazione Android TV in 1 secondo via scansione QR code o codice PIN a 6 cifre.
 - **Profili Multipli Stile Netflix**: cambio rapido del profilo dalla barra di navigazione con switch atomico su cloud.
+
+### 📊 Integrazione MyAnimeList (API v2)
+- **OAuth 2.0 PKCE Nativo**: accesso tramite Chrome Custom Tabs con Client ID configurabile dall'utente (nessuna credenziale hardcoded) e auto-refresh sicuro dei token.
+- **Gestione Liste & Diff Interattivo**: consultazione di *Watching*, *Plan to Watch* e *Completed*, promozione automatica con *AniWorld Matcher* e allineamento controllato dalla cronologia locale.
+- **Auto-Sync Flessibile & Soglia Watching**: modalità configurabile (*Disattivato*, *Episodi completati* o *Solo anime completati*) e soglia opzionale personalizzabile (`1–24` episodi) prima di aggiungere una serie in *Watching*.
+- **Isolamento per Profilo & Sync Auth su KuroSync**: sessione e preferenze MAL isolate per profilo KuroSync, con sincronizzazione su cloud dei soli token di accesso (`malAuth`).
 
 ### 📅 Palinsesto & Programmazione
 - **Calendario Settimanale**: programmazione uscite in tempo reale con orari di pubblicazione.
@@ -146,6 +155,7 @@ Gli script in [`scripts/`](./scripts) automatizzano il ciclo di compilazione e r
 ## 📚 Documentazione di Dettaglio
 
 - 🏛️ [**Architettura del Progetto**](./docs/ARCHITECTURE.md) — Moduli, routing, storage e convenzioni operative
+- 📘 [**Integrazione MyAnimeList**](./docs/MAL.md) — OAuth PKCE, 3 liste, auto-sync con soglia e sync auth per profilo KuroSync
 - 🎬 [**Specifiche Video Player**](./docs/VIDEO_PLAYER.md) — Live keyframe scrubbing, capitoli timeline e AniSkip
 - 🎨 [**Temi & Design System**](./docs/THEMES_AND_STYLING.md) — Token OLED, palette e contrasto dinamico YIQ
 - 🚀 [**Pipeline OTA & Rilasci**](./docs/OTA_AND_RELEASES.md) — Distribuzione in-app updater su Cloudflare R2

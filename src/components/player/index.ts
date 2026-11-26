@@ -5,3 +5,4 @@ export * from './PlayerEpisodesCarouselSheet';
 export * from './PlayerInfoSheet';
 export * from './playback-state';
 export * from './device-controls';
+export * from './tap-gestures';

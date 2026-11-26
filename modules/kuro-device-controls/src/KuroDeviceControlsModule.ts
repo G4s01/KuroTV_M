@@ -16,6 +16,7 @@ declare class KuroDeviceControlsNativeModule extends NativeModule<KuroDeviceCont
   getWindowBrightness(): number;
   setWindowBrightness(brightness: number): void;
   restoreSystemBrightness(): void;
+  setImmersiveMode(enabled: boolean, keepNavBarHiddenOnExit?: boolean): void;
   getBatteryOptimizationStatus(): BatteryOptimizationStatus;
   requestIgnoreBatteryOptimizations(): BatterySettingsLaunchResult;
   openBatteryOptimizationSettings(): BatterySettingsLaunchResult;

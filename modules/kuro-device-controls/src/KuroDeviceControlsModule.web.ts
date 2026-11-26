@@ -26,6 +26,7 @@ class KuroDeviceControlsWebModule extends NativeModule<KuroDeviceControlsEvents>
   }
   setWindowBrightness(_brightness: number): void {}
   restoreSystemBrightness(): void {}
+  setImmersiveMode(_enabled: boolean, _keepNavBarHiddenOnExit?: boolean): void {}
   getBatteryOptimizationStatus(): BatteryOptimizationStatus {
     return {
       isSupported: false,

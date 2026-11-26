@@ -11,8 +11,8 @@ Benvenuto nella documentazione tecnica ufficiale di **Kuro Mobile**, l'applicazi
 | [**Architettura del Progetto**](./ARCHITECTURE.md) | Struttura modulare del codebase, Expo Router v58, data fetching con TanStack Query v5, MMKV storage sincrono, scraper Hermes-safe, sistema download SAF con visione offline e sincronizzazione self-hosted KuroSync con TV pairing. |
 | [**Video Player Mobile**](./VIDEO_PLAYER.md) | Gesture touch avanzate (doppio tap con accumulo sequenziale, swipe volume/luminosità), OSD immersivo, PiP senza zombie playback, anteprima live dei frame video reali a 60 FPS, carosello puntate FlashList e AniSkip con bordo a consumo temporale. |
 | [**Temi & Design System**](./THEMES_AND_STYLING.md) | Filosofia OLED `#000000`, palette temi (OLED, Pikachu, Orchidea, Rainbow), icone SVG pure, contrasto YIQ, schermata impostazioni minimale con changelog scrollabile e regole touch target $\ge 44$dp. |
+| [**Integrazione MyAnimeList**](./MAL.md) | Client ufficiale MAL API v2 con OAuth 2.0 PKCE, liste *Watching* / *Plan to Watch* / *Completed*, auto-sync configurabile (`off` / `episodes` / `completed_only`), soglia *Watching* (`1–24`), isolamento per profilo KuroSync e sincronizzazione auth-only (`malAuth`). |
 | [**Pipeline di Release & OTA**](./OTA_AND_RELEASES.md) | Architettura Cloudflare Worker, storage R2, manifest `/mobile/manifest.json`, updater automatico in-app e backup cifrati AES-256. |
-| [**Ottimizzazioni & Refactoring**](./REFACTORING_AND_OPTIMIZATIONS.md) | Roadmap modulare completata e tracciata (isolamento OSD, batching adattivo episodi, prefetching immagini e pulizia storage). |
 | [**Regole & Standard (AGENTS.md)**](../AGENTS.md) | Standard architetturali tassativi, divieti TV/D-Pad, convenzioni touch native e checklist di verifica pre-commit. |
 
 ---
@@ -30,8 +30,11 @@ Benvenuto nella documentazione tecnica ufficiale di **Kuro Mobile**, l'applicazi
 # Avvio ambiente di sviluppo con Metro bundler
 npm run start
 
-# Esecuzione completa dei test di verifica (37 stadi)
+# Esecuzione completa dei test principali (`tsc` + 39 stadi + Extra)
 npm test
+
+# Suite dedicata integrazione MyAnimeList API v2 & KuroSync malAuth
+node --experimental-strip-types --loader ./tests/test-loader.mjs tests/mal-verification.test.ts
 
 # Controllo tipi TypeScript
 npm run typecheck

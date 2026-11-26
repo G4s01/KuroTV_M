@@ -56,6 +56,12 @@ import {
   computeVerticalGestureTravelRange,
   computeSystemVolumeGesture,
   computeWindowBrightnessGesture,
+  DOUBLE_TAP_WINDOW_MS,
+  getTapTimestampMs,
+  resolveTapSide,
+  resolvePlayerTapAction,
+  resolveOverlayBackgroundTapAction,
+  type OverlayOpenTapRecord,
 } from '@/components/player';
 import KuroDeviceControls from '../../modules/kuro-device-controls';
 import { playerStyles as styles } from '@/components/player/player.styles';
@@ -296,6 +302,11 @@ export default function VideoPlayerScreen() {
   );
   const screenBrightnessRef = React.useRef<number>(screenBrightness);
   const hasNativeDeviceControls = Boolean(Platform.OS === 'android' && KuroDeviceControls);
+  const enforcePlayerImmersiveBars = React.useCallback(() => {
+    if (Platform.OS !== 'android') return;
+    KuroDeviceControls?.setImmersiveMode?.(true, false);
+    NavigationBar.setVisibilityAsync('hidden').catch(() => {});
+  }, []);
 
   const startVolumeRef = React.useRef(1.0);
   const volumeMaxStepsRef = React.useRef(15);
@@ -682,6 +693,7 @@ export default function VideoPlayerScreen() {
         }
         player.showNowPlayingNotification = true;
         player.playbackRate = playbackSpeedRef.current;
+        enforcePlayerImmersiveBars();
         if (Platform.OS === 'android' && KuroDeviceControls) {
           if (screenBrightnessRef.current >= 0) {
             KuroDeviceControls.setWindowBrightness(screenBrightnessRef.current);
@@ -721,11 +733,12 @@ export default function VideoPlayerScreen() {
       }
       sub.remove();
     };
-  }, [player, syncPlayerStateFromNative]);
+  }, [player, syncPlayerStateFromNative, enforcePlayerImmersiveBars]);
 
-  // Ensure player-only window brightness is active exclusively while player is focused/mounted
+  // Ensure player-only window brightness & immersive system bars are active while player is focused/mounted
   useFocusEffect(
     React.useCallback(() => {
+      enforcePlayerImmersiveBars();
       if (Platform.OS === 'android' && KuroDeviceControls) {
         if (screenBrightnessRef.current >= 0) {
           KuroDeviceControls.setWindowBrightness(screenBrightnessRef.current);
@@ -743,7 +756,7 @@ export default function VideoPlayerScreen() {
           KuroDeviceControls.restoreSystemBrightness();
         }
       };
-    }, [])
+    }, [enforcePlayerImmersiveBars])
   );
 
   // Save latest progress on exit / screen unmount (only when leaving the screen)
@@ -777,23 +790,35 @@ export default function VideoPlayerScreen() {
     const targetOrientation =
       params.orientation || (wasNavigating ? lastPlayerOrientation : null);
 
+    let lockPromise: Promise<void>;
     if (targetOrientation === 'portrait') {
       lastPlayerOrientation = 'portrait';
-      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
+      lockPromise = ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
     } else if (targetOrientation === 'landscape') {
       lastPlayerOrientation = 'landscape';
-      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE).catch(() => {});
+      lockPromise = ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
     } else {
       // 1. Immediately request landscape fullscreen on fresh open from outside
       lastPlayerOrientation = 'landscape';
-      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE).catch(() => {});
+      lockPromise = ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
     }
 
-    if (Platform.OS === 'android') {
-      NavigationBar.setVisibilityAsync('hidden').catch(() => {});
-    }
+    enforcePlayerImmersiveBars();
+    lockPromise
+      .catch(() => {})
+      .finally(() => {
+        if (!hasNavigatedRef.current) {
+          enforcePlayerImmersiveBars();
+        }
+      });
+    const postMountBarTimer = setTimeout(() => {
+      if (!hasNavigatedRef.current) {
+        enforcePlayerImmersiveBars();
+      }
+    }, 220);
 
     return () => {
+      clearTimeout(postMountBarTimer);
       if (hasNavigatedRef.current || isNavigatingToEpisode) {
         // Episode transition within player: retain active orientation and hidden navbar
         return;
@@ -809,17 +834,29 @@ export default function VideoPlayerScreen() {
       }
       if (Platform.OS === 'android') {
         const mode = AppStorage.getNavBarMode();
+        KuroDeviceControls?.setImmersiveMode?.(false, mode === 'auto-hide');
         NavigationBar.setVisibilityAsync(mode === 'auto-hide' ? 'hidden' : 'visible').catch(() => {});
       }
     };
-  }, []);
+  }, [enforcePlayerImmersiveBars]);
 
-  // Video playback always maintains hidden navigation bar for full immersion
+  // Video playback always maintains hidden navigation bar for full immersion (including after orientation relayout)
   React.useEffect(() => {
-    if (Platform.OS === 'android') {
-      NavigationBar.setVisibilityAsync('hidden').catch(() => {});
+    if (Platform.OS !== 'android') return;
+    enforcePlayerImmersiveBars();
+    const postRotateBarTimer = setTimeout(enforcePlayerImmersiveBars, 180);
+    return () => clearTimeout(postRotateBarTimer);
+  }, [isLandscape, enforcePlayerImmersiveBars]);
+
+  // Re-enforce transient immersive bars whenever a bottom sheet modal closes
+  const wasSheetOpenRef = React.useRef(false);
+  React.useEffect(() => {
+    const isAnySheetOpen = isServerSheetVisible || isEpisodesSheetVisible || isInfoSheetVisible;
+    if (wasSheetOpenRef.current && !isAnySheetOpen) {
+      enforcePlayerImmersiveBars();
     }
-  }, [isLandscape]);
+    wasSheetOpenRef.current = isAnySheetOpen;
+  }, [isServerSheetVisible, isEpisodesSheetVisible, isInfoSheetVisible, enforcePlayerImmersiveBars]);
 
   const toggleOrientationFullscreen = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
@@ -831,6 +868,7 @@ export default function VideoPlayerScreen() {
         lastPlayerOrientation = 'landscape';
         await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
       }
+      enforcePlayerImmersiveBars();
     } catch (err) {
       console.warn('[VideoPlayer] toggleOrientationFullscreen error:', err);
     }
@@ -1050,6 +1088,12 @@ export default function VideoPlayerScreen() {
     autoNavigatedEpisodeRef.current = false;
     autoSkippedIdsRef.current.clear();
     skipTriggeredTimeRef.current = 0;
+    lastOverlayOpenTapRef.current = null;
+    if (doubleTapGraceTimerRef.current) {
+      clearTimeout(doubleTapGraceTimerRef.current);
+      doubleTapGraceTimerRef.current = null;
+    }
+    setIsDoubleTapGrace(false);
   }, [episodeId, episodeNumber, params.orientation, initialResumePosition]);
 
   // Fetch AniSkip timestamps & episode batch metadata for advancing next episode
@@ -1163,22 +1207,48 @@ export default function VideoPlayerScreen() {
     [player, isBuffering, showManualReload, resetControlsTimer]
   );
 
-  React.useEffect(() => {
-    if (showControls) {
-      resetControlsTimer();
+  const [isDoubleTapGrace, setIsDoubleTapGrace] = React.useState(false);
+  const lastOverlayOpenTapRef = React.useRef<OverlayOpenTapRecord | null>(null);
+  const doubleTapGraceTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const osdBgPressInRef = React.useRef<{ time: number; x: number } | null>(null);
+
+  const clearDoubleTapGrace = React.useCallback(() => {
+    if (doubleTapGraceTimerRef.current) {
+      clearTimeout(doubleTapGraceTimerRef.current);
+      doubleTapGraceTimerRef.current = null;
     }
+    setIsDoubleTapGrace(false);
+  }, []);
+
+  React.useEffect(() => {
+    return () => {
+      if (doubleTapGraceTimerRef.current) {
+        clearTimeout(doubleTapGraceTimerRef.current);
+        doubleTapGraceTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  React.useEffect(() => {
+    if (!showControls) {
+      clearDoubleTapGrace();
+      return;
+    }
+    resetControlsTimer();
     return () => {
       if (controlsTimeoutRef.current) {
         clearTimeout(controlsTimeoutRef.current);
       }
     };
-  }, [showControls, resetControlsTimer]);
+  }, [showControls, resetControlsTimer, clearDoubleTapGrace]);
 
   const isBufferingOrLoading = Boolean(
     videoUrl && (isLoadingSource || playerStatus === 'loading' || isBuffering)
   );
 
   const toggleControls = () => {
+    lastOverlayOpenTapRef.current = null;
+    clearDoubleTapGrace();
     Haptics.selectionAsync().catch(() => {});
     setShowControls((prev) => !prev);
   };
@@ -1464,35 +1534,85 @@ export default function VideoPlayerScreen() {
     resetControlsTimer();
   };
 
-  // Gesture Handlers
+  // Gesture Handlers: singleTap activates immediately on release without waiting for
+  // a double-tap timeout, while a short grace window catches a rapid 2nd tap.
   const singleTap = Gesture.Tap()
     .numberOfTaps(1)
     .onEnd((e) => {
-      // If a cumulative skip is currently active on this side, advance it!
-      if (accumulatedSkipRef.current) {
-        const side = e.x < windowWidth / 2 ? 'left' : 'right';
-        if (accumulatedSkipRef.current.direction === side) {
-          handleDoubleTap(side);
-          return;
-        }
+      const side = resolveTapSide(e.x, windowWidth);
+      const now = getTapTimestampMs();
+      const action = resolvePlayerTapAction({
+        side,
+        now,
+        accumulatedSkip: accumulatedSkipRef.current,
+        lastOverlayOpenTap: lastOverlayOpenTapRef.current,
+      });
+
+      if (action.type === 'advance_cumulative') {
+        handleDoubleTap(action.side);
+        return;
       }
-      toggleControls();
+
+      if (action.type === 'double_tap_seek') {
+        lastOverlayOpenTapRef.current = null;
+        clearDoubleTapGrace();
+        setShowControls(false);
+        handleDoubleTap(action.side);
+        return;
+      }
+
+      lastOverlayOpenTapRef.current = { time: now, side };
+      if (doubleTapGraceTimerRef.current) {
+        clearTimeout(doubleTapGraceTimerRef.current);
+      }
+      setIsDoubleTapGrace(true);
+      doubleTapGraceTimerRef.current = setTimeout(() => {
+        doubleTapGraceTimerRef.current = null;
+        setIsDoubleTapGrace(false);
+      }, DOUBLE_TAP_WINDOW_MS);
+
+      Haptics.selectionAsync().catch(() => {});
+      setShowControls(true);
     })
     .runOnJS(true);
 
-  const doubleTap = Gesture.Tap()
-    .numberOfTaps(2)
-    .onEnd((e) => {
-      if (e.x < windowWidth / 2) {
-        handleDoubleTap('left');
-      } else {
-        handleDoubleTap('right');
-      }
-    })
-    .runOnJS(true);
+  const handleOsdBackgroundPressIn = (e: any) => {
+    const x =
+      typeof e?.nativeEvent?.locationX === 'number'
+        ? e.nativeEvent.locationX
+        : typeof e?.nativeEvent?.pageX === 'number'
+        ? e.nativeEvent.pageX
+        : windowWidth / 2;
+    osdBgPressInRef.current = { time: getTapTimestampMs(), x };
+  };
 
-  // Exclusive taps: doubleTap takes precedence over singleTap
-  const tapGestures = Gesture.Exclusive(doubleTap, singleTap);
+  const handleOsdBackgroundPress = (e: any) => {
+    const pressIn = osdBgPressInRef.current;
+    osdBgPressInRef.current = null;
+    const x =
+      typeof e?.nativeEvent?.locationX === 'number'
+        ? e.nativeEvent.locationX
+        : typeof e?.nativeEvent?.pageX === 'number'
+        ? e.nativeEvent.pageX
+        : pressIn?.x ?? windowWidth / 2;
+    const side = resolveTapSide(x, windowWidth);
+    const pressTime = pressIn?.time ?? getTapTimestampMs();
+    const action = resolveOverlayBackgroundTapAction({
+      side,
+      pressTime,
+      lastOverlayOpenTap: lastOverlayOpenTapRef.current,
+    });
+
+    if (action.type === 'double_tap_seek') {
+      lastOverlayOpenTapRef.current = null;
+      clearDoubleTapGrace();
+      setShowControls(false);
+      handleDoubleTap(action.side);
+      return;
+    }
+
+    toggleControls();
+  };
 
   // Pan gesture for real system volume and player-window brightness: vertical only, calibrated to available vertical space
   const panGesture = Gesture.Pan()
@@ -1570,8 +1690,8 @@ export default function VideoPlayerScreen() {
     })
     .runOnJS(true);
 
-  // Combine Pan and Taps
-  const composedGestures = Gesture.Race(panGesture, tapGestures);
+  // Combine Pan and immediate singleTap (zero double-tap wait latency)
+  const composedGestures = Gesture.Race(panGesture, singleTap);
 
   const handleDownloadPress = React.useCallback(() => {
     if (downloadStatus === 'completed') {
@@ -1601,6 +1721,9 @@ export default function VideoPlayerScreen() {
   return (
     <View style={styles.root}>
       <StatusBar hidden={true} />
+      {Platform.OS === 'android' && (
+        <NavigationBar.NavigationBar hidden={true} style="light" />
+      )}
 
       {/* Fallback Screen Brightness Overlay (used only when native Android window brightness is unavailable) */}
       {!hasNativeDeviceControls && screenBrightness >= 0 && screenBrightness < 1.0 && (
@@ -1676,6 +1799,7 @@ export default function VideoPlayerScreen() {
                 if (isInPiPRef.current || AppState.currentState !== 'active') {
                   return;
                 }
+                enforcePlayerImmersiveBars();
                 if (Platform.OS === 'android' && KuroDeviceControls) {
                   if (screenBrightnessRef.current >= 0) {
                     KuroDeviceControls.setWindowBrightness(screenBrightnessRef.current);
@@ -1846,129 +1970,138 @@ export default function VideoPlayerScreen() {
         {/* OSD Controls Overlay */}
         {showControls && Boolean(videoUrl) && !sourceError && (
           <View style={styles.osdOverlay}>
-            {/* Background tap handler to dismiss controls */}
-            <Pressable style={StyleSheet.absoluteFill} onPress={toggleControls} />
-
-            {/* OSD Header */}
-            <PlayerHeader
-              animeTitle={animeTitle}
-              episodeNumber={episodeNumber}
-              insets={insets}
-              isOffline={isOffline}
-              downloadStatus={downloadStatus}
-              downloadProgress={downloadProgress}
-              onDownloadPress={handleDownloadPress}
-              onBack={() => router.back()}
-              onStartPiP={handleStartPiP}
-              onOpenOptions={() => {
-                resetControlsTimer();
-                setIsServerSheetVisible(true);
-              }}
-              onOpenInfo={() => {
-                resetControlsTimer();
-                setIsInfoSheetVisible(true);
-              }}
+            {/* Background tap handler to dismiss controls (or resolve double-tap seek within grace window) */}
+            <Pressable
+              style={StyleSheet.absoluteFill}
+              onPressIn={handleOsdBackgroundPressIn}
+              onPress={handleOsdBackgroundPress}
             />
 
-            {/* Central Controls: Prev Ep - Play/Pause - Next Ep */}
             <View
-              style={[
-                styles.osdCenterRow,
-                { gap: isLandscape ? 40 : 24 },
-              ]}
-              pointerEvents="box-none"
+              style={styles.osdControlsLayer}
+              pointerEvents={isDoubleTapGrace ? 'none' : 'box-none'}
             >
-              {prevEpisode ? (
-                <Pressable
-                  style={styles.navEpBtn}
-                  onPress={() => handleNavigateToEpisode(prevEpisode)}
-                  hitSlop={12}
-                  accessibilityLabel={`EPISODIO PRECEDENTE: ${prevEpisode.number}`}
-                >
-                  <Ionicons name="play-skip-back" size={26} color="#FFFFFF" />
-                </Pressable>
-              ) : (
-                <View style={styles.navEpBtnSpacer} />
-              )}
+              {/* OSD Header */}
+              <PlayerHeader
+                animeTitle={animeTitle}
+                episodeNumber={episodeNumber}
+                insets={insets}
+                isOffline={isOffline}
+                downloadStatus={downloadStatus}
+                downloadProgress={downloadProgress}
+                onDownloadPress={handleDownloadPress}
+                onBack={() => router.back()}
+                onStartPiP={handleStartPiP}
+                onOpenOptions={() => {
+                  resetControlsTimer();
+                  setIsServerSheetVisible(true);
+                }}
+                onOpenInfo={() => {
+                  resetControlsTimer();
+                  setIsInfoSheetVisible(true);
+                }}
+              />
 
-              <Pressable
-                style={[styles.centerPlayBtn, { backgroundColor: `${theme.colors.primary}E0` }]}
-                onPress={handlePlayPause}
-                hitSlop={16}
-                accessibilityLabel={isBufferingOrLoading ? 'CARICAMENTO' : isPlaying ? 'PAUSA' : 'RIPRODUCI'}
+              {/* Central Controls: Prev Ep - Play/Pause - Next Ep */}
+              <View
+                style={[
+                  styles.osdCenterRow,
+                  { gap: isLandscape ? 40 : 24 },
+                ]}
+                pointerEvents="box-none"
               >
-                {isBufferingOrLoading ? (
-                  <ActivityIndicator
-                    size="large"
-                    color={getContrastTextColor(theme.colors.primary)}
-                  />
+                {prevEpisode ? (
+                  <Pressable
+                    style={styles.navEpBtn}
+                    onPress={() => handleNavigateToEpisode(prevEpisode)}
+                    hitSlop={12}
+                    accessibilityLabel={`EPISODIO PRECEDENTE: ${prevEpisode.number}`}
+                  >
+                    <Ionicons name="play-skip-back" size={26} color="#FFFFFF" />
+                  </Pressable>
                 ) : (
-                  <Ionicons
-                    name={isPlaying ? 'pause' : 'play'}
-                    size={44}
-                    color={getContrastTextColor(theme.colors.primary)}
-                  />
+                  <View style={styles.navEpBtnSpacer} />
                 )}
-              </Pressable>
 
-              {nextEpisode ? (
                 <Pressable
-                  style={styles.navEpBtn}
-                  onPress={() => handleNavigateToEpisode(nextEpisode)}
-                  hitSlop={12}
-                  accessibilityLabel={`EPISODIO SUCCESSIVO: ${nextEpisode.number}`}
+                  style={[styles.centerPlayBtn, { backgroundColor: `${theme.colors.primary}E0` }]}
+                  onPress={handlePlayPause}
+                  hitSlop={16}
+                  accessibilityLabel={isBufferingOrLoading ? 'CARICAMENTO' : isPlaying ? 'PAUSA' : 'RIPRODUCI'}
                 >
-                  <Ionicons name="play-skip-forward" size={26} color="#FFFFFF" />
+                  {isBufferingOrLoading ? (
+                    <ActivityIndicator
+                      size="large"
+                      color={getContrastTextColor(theme.colors.primary)}
+                    />
+                  ) : (
+                    <Ionicons
+                      name={isPlaying ? 'pause' : 'play'}
+                      size={44}
+                      color={getContrastTextColor(theme.colors.primary)}
+                    />
+                  )}
                 </Pressable>
-              ) : (
-                <View style={styles.navEpBtnSpacer} />
-              )}
-            </View>
 
-            {showManualReload && isBufferingOrLoading && (
-              <View style={styles.osdManualReloadWrap} pointerEvents="box-none">
-                <Pressable
-                  style={styles.stallReloadBtn}
-                  onPress={handleManualReloadStream}
-                  hitSlop={8}
-                  accessibilityRole="button"
-                  accessibilityLabel="RICARICA FLUSSO VIDEO"
-                >
-                  <Ionicons name="refresh" size={16} color="#FFFFFF" />
-                  <Text style={styles.stallReloadText}>RICARICA STREAM</Text>
-                </Pressable>
+                {nextEpisode ? (
+                  <Pressable
+                    style={styles.navEpBtn}
+                    onPress={() => handleNavigateToEpisode(nextEpisode)}
+                    hitSlop={12}
+                    accessibilityLabel={`EPISODIO SUCCESSIVO: ${nextEpisode.number}`}
+                  >
+                    <Ionicons name="play-skip-forward" size={26} color="#FFFFFF" />
+                  </Pressable>
+                ) : (
+                  <View style={styles.navEpBtnSpacer} />
+                )}
               </View>
-            )}
 
-            {/* OSD Footer */}
-            <PlayerFooter
-              insets={insets}
-              player={player}
-              duration={duration}
-              initialTime={currentTimeRef.current || initialResumePosition}
-              playbackSpeed={playbackSpeed}
-              isLandscape={isLandscape}
-              primaryColor={theme.colors.primary}
-              cardColor={theme.colors.card}
-              borderColor={theme.colors.border}
-              textColor={theme.colors.text}
-              thumbnail={thumbnail}
-              onSeek={handleTimelineSeek}
-              onCycleSpeed={handleCycleSpeed}
-              onOpenSpeedSheet={() => {
-                resetControlsTimer();
-                setIsServerSheetVisible(true);
-              }}
-              onToggleFullscreen={toggleOrientationFullscreen}
-              onOpenEpisodes={() => {
-                resetControlsTimer();
-                setIsEpisodesSheetVisible(true);
-              }}
-              onScrubbingChange={handleScrubbingChange}
-              aniSkipResults={aniSkipResults}
-              isLocalSource={Boolean(videoUrl && (videoUrl.startsWith('file://') || videoUrl.startsWith('content://')))}
-              videoUrl={videoUrl || undefined}
-            />
+              {showManualReload && isBufferingOrLoading && (
+                <View style={styles.osdManualReloadWrap} pointerEvents="box-none">
+                  <Pressable
+                    style={styles.stallReloadBtn}
+                    onPress={handleManualReloadStream}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel="RICARICA FLUSSO VIDEO"
+                  >
+                    <Ionicons name="refresh" size={16} color="#FFFFFF" />
+                    <Text style={styles.stallReloadText}>RICARICA STREAM</Text>
+                  </Pressable>
+                </View>
+              )}
+
+              {/* OSD Footer */}
+              <PlayerFooter
+                insets={insets}
+                player={player}
+                duration={duration}
+                initialTime={currentTimeRef.current || initialResumePosition}
+                playbackSpeed={playbackSpeed}
+                isLandscape={isLandscape}
+                primaryColor={theme.colors.primary}
+                cardColor={theme.colors.card}
+                borderColor={theme.colors.border}
+                textColor={theme.colors.text}
+                thumbnail={thumbnail}
+                onSeek={handleTimelineSeek}
+                onCycleSpeed={handleCycleSpeed}
+                onOpenSpeedSheet={() => {
+                  resetControlsTimer();
+                  setIsServerSheetVisible(true);
+                }}
+                onToggleFullscreen={toggleOrientationFullscreen}
+                onOpenEpisodes={() => {
+                  resetControlsTimer();
+                  setIsEpisodesSheetVisible(true);
+                }}
+                onScrubbingChange={handleScrubbingChange}
+                aniSkipResults={aniSkipResults}
+                isLocalSource={Boolean(videoUrl && (videoUrl.startsWith('file://') || videoUrl.startsWith('content://')))}
+                videoUrl={videoUrl || undefined}
+              />
+            </View>
           </View>
         )}
 
