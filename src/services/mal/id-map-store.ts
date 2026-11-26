@@ -1,11 +1,37 @@
 import type { AnimeDetail } from '@/types';
 import { AppStorage, StorageKeys } from '../storage/app-storage';
-import { notifyMalDataListeners } from './config';
+import { getActiveMalProfileScope, notifyMalDataListeners } from './config';
 import type {
   MalIdMapStore,
   MalIdMappingByAnimeId,
   MalIdMappingByMalId,
 } from './types';
+
+function getScopedByMalIdKey(scopeId?: string): string {
+  const resolved = (scopeId ?? getActiveMalProfileScope()).trim() || 'local';
+  return `${StorageKeys.MAL_ID_MAP}.byMalId.p.${resolved}`;
+}
+
+function buildSeededByMalIdMap(
+  byAnimeId: Record<string, MalIdMappingByAnimeId>,
+  existingByMalId: Record<number, MalIdMappingByMalId>
+): Record<number, MalIdMappingByMalId> {
+  const next: Record<number, MalIdMappingByMalId> = { ...existingByMalId };
+  for (const entry of Object.values(byAnimeId)) {
+    if (!entry?.malId || entry.malId <= 0) continue;
+    const prev = next[entry.malId];
+    const candidateSet = new Set<string>(prev?.candidateAnimeIds || []);
+    candidateSet.add(entry.animeId);
+    next[entry.malId] = {
+      malId: entry.malId,
+      primaryAnimeId: prev?.primaryAnimeId || '',
+      candidateAnimeIds: Array.from(candidateSet),
+      title: entry.title || prev?.title || entry.animeId,
+      updatedAt: prev?.updatedAt || entry.updatedAt,
+    };
+  }
+  return next;
+}
 
 export function parsePositiveTotalEpisodes(total?: number | string | null): number | null {
   if (typeof total === 'number') {
@@ -72,22 +98,56 @@ export function detectAnimeWorldAudioVariant(params: {
   return 'sub';
 }
 
-export function getMalIdMapStore(): MalIdMapStore {
+export function getMalIdMapStore(scopeId?: string): MalIdMapStore {
+  const resolvedScope = (scopeId ?? getActiveMalProfileScope()).trim() || 'local';
   const raw = AppStorage.getObject<Partial<MalIdMapStore>>(StorageKeys.MAL_ID_MAP);
+  const byAnimeId =
+    raw?.byAnimeId && typeof raw.byAnimeId === 'object' && !Array.isArray(raw.byAnimeId)
+      ? raw.byAnimeId
+      : {};
+
+  if (resolvedScope === 'local') {
+    return {
+      byAnimeId,
+      byMalId:
+        raw?.byMalId && typeof raw.byMalId === 'object' && !Array.isArray(raw.byMalId)
+          ? raw.byMalId
+          : {},
+    };
+  }
+
+  const scopedByMal = AppStorage.getObject<Record<number, MalIdMappingByMalId>>(
+    getScopedByMalIdKey(resolvedScope)
+  );
+  const baseByMal =
+    scopedByMal && typeof scopedByMal === 'object' && !Array.isArray(scopedByMal)
+      ? scopedByMal
+      : {};
+
   return {
-    byAnimeId:
-      raw?.byAnimeId && typeof raw.byAnimeId === 'object' && !Array.isArray(raw.byAnimeId)
-        ? raw.byAnimeId
-        : {},
-    byMalId:
-      raw?.byMalId && typeof raw.byMalId === 'object' && !Array.isArray(raw.byMalId)
-        ? raw.byMalId
-        : {},
+    byAnimeId,
+    byMalId: buildSeededByMalIdMap(byAnimeId, baseByMal),
   };
 }
 
-export function saveMalIdMapStore(store: MalIdMapStore): void {
-  AppStorage.setObject(StorageKeys.MAL_ID_MAP, store);
+export function saveMalIdMapStore(store: MalIdMapStore, scopeId?: string): void {
+  const resolvedScope = (scopeId ?? getActiveMalProfileScope()).trim() || 'local';
+  const existingGlobal = AppStorage.getObject<Partial<MalIdMapStore>>(StorageKeys.MAL_ID_MAP);
+
+  if (resolvedScope === 'local') {
+    AppStorage.setObject(StorageKeys.MAL_ID_MAP, store);
+  } else {
+    AppStorage.setObject(StorageKeys.MAL_ID_MAP, {
+      byAnimeId: store.byAnimeId,
+      byMalId:
+        existingGlobal?.byMalId &&
+        typeof existingGlobal.byMalId === 'object' &&
+        !Array.isArray(existingGlobal.byMalId)
+          ? existingGlobal.byMalId
+          : {},
+    });
+    AppStorage.setObject(getScopedByMalIdKey(resolvedScope), store.byMalId);
+  }
   notifyMalDataListeners();
 }
 

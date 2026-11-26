@@ -7,7 +7,11 @@ import {
   MAL_OAUTH_TOKEN_URL,
   MAL_REDIRECT_URI,
   clearMalListCache,
+  getActiveKuroSyncProfileInfo,
+  getActiveMalProfileScope,
   getEffectiveMalClientId,
+  getMalAuthSyncRecordForScope,
+  getMalScopedKey,
   isValidMalClientId,
   normalizeMalClientId,
   notifyMalDataListeners,
@@ -47,6 +51,9 @@ export interface MalAuthStatus {
   picture?: string;
   clientId: string;
   hasClientId: boolean;
+  profileScopeId: string;
+  kuroSyncProfileName?: string;
+  isKuroSyncLinked: boolean;
 }
 
 type MalAuthListener = (status: MalAuthStatus) => void;
@@ -201,8 +208,10 @@ class MalAuthServiceClass {
     return this.loginInFlight;
   }
 
-  getSession(): MalAuthSession | null {
-    const raw = AppStorage.getObject<Partial<MalAuthSession>>(StorageKeys.MAL_AUTH_SESSION);
+  getSession(scopeId?: string): MalAuthSession | null {
+    const raw = AppStorage.getObject<Partial<MalAuthSession>>(
+      getMalScopedKey(StorageKeys.MAL_AUTH_SESSION, scopeId)
+    );
     if (!raw || typeof raw.accessToken !== 'string' || !raw.accessToken.trim()) {
       return null;
     }
@@ -214,6 +223,7 @@ class MalAuthServiceClass {
       username: typeof raw.username === 'string' ? raw.username : undefined,
       userId: typeof raw.userId === 'number' ? raw.userId : undefined,
       picture: typeof raw.picture === 'string' ? raw.picture : undefined,
+      updatedAt: typeof raw.updatedAt === 'number' ? raw.updatedAt : undefined,
     };
   }
 
@@ -222,8 +232,9 @@ class MalAuthServiceClass {
   }
 
   getStatus(): MalAuthStatus {
-    const session = this.getSession();
-    const clientId = getEffectiveMalClientId();
+    const profileInfo = getActiveKuroSyncProfileInfo();
+    const session = this.getSession(profileInfo.profileId);
+    const clientId = getEffectiveMalClientId(profileInfo.profileId);
     return {
       isConnected: Boolean(session?.accessToken),
       username: session?.username,
@@ -231,6 +242,9 @@ class MalAuthServiceClass {
       picture: session?.picture,
       clientId,
       hasClientId: isValidMalClientId(clientId),
+      profileScopeId: profileInfo.profileId,
+      kuroSyncProfileName: profileInfo.profileName,
+      isKuroSyncLinked: profileInfo.isConnected,
     };
   }
 
@@ -258,24 +272,54 @@ class MalAuthServiceClass {
     };
   }
 
-  private saveSession(session: MalAuthSession): void {
-    AppStorage.setObject(StorageKeys.MAL_AUTH_SESSION, session);
-    this.notify();
-  }
-
-  private clearSessionInternal(clearLists = false): void {
-    AppStorage.remove(StorageKeys.MAL_AUTH_SESSION);
-    AppStorage.remove(StorageKeys.MAL_OAUTH_PENDING);
-    if (clearLists) {
-      clearMalListCache();
-      AppStorage.remove(StorageKeys.MAL_PENDING_UPDATES);
-      AppStorage.remove(StorageKeys.MAL_LAST_SYNC_TIME);
+  private saveSession(session: MalAuthSession, scopeId?: string): void {
+    const targetScope = (scopeId ?? getActiveMalProfileScope()).trim() || 'local';
+    const nextSession: MalAuthSession = {
+      ...session,
+      updatedAt: typeof session.updatedAt === 'number' && session.updatedAt > 0 ? session.updatedAt : Date.now(),
+    };
+    AppStorage.setObject(getMalScopedKey(StorageKeys.MAL_AUTH_SESSION, targetScope), nextSession);
+    if (targetScope !== 'local' && targetScope === getActiveMalProfileScope()) {
+      const syncRecord = getMalAuthSyncRecordForScope(targetScope);
+      if (syncRecord) {
+        AppStorage.recordSyncMutation('malAuth', syncRecord);
+      }
     }
     this.notify();
   }
 
+  private clearSessionInternal(
+    clearLists = false,
+    options?: { scopeId?: string; recordDeletion?: boolean }
+  ): void {
+    const targetScope = (options?.scopeId ?? getActiveMalProfileScope()).trim() || 'local';
+    AppStorage.remove(getMalScopedKey(StorageKeys.MAL_AUTH_SESSION, targetScope));
+    AppStorage.remove(getMalScopedKey(StorageKeys.MAL_OAUTH_PENDING, targetScope));
+    if (clearLists) {
+      clearMalListCache(targetScope);
+      AppStorage.remove(getMalScopedKey(StorageKeys.MAL_PENDING_UPDATES, targetScope));
+      AppStorage.remove(getMalScopedKey(StorageKeys.MAL_LAST_SYNC_TIME, targetScope));
+    }
+    if (options?.recordDeletion && targetScope !== 'local' && targetScope === getActiveMalProfileScope()) {
+      AppStorage.recordSyncDeletion('mal_auth', 'default');
+    }
+    this.notify();
+  }
+
+  handleSyncScopeChanged(): void {
+    this.refreshInFlight = null;
+    this.loginInFlight = false;
+    this.inFlightCallbackKey = null;
+    this.inFlightCallbackPromise = null;
+    this.handledCallbackResults.clear();
+    this.lastLoginCallbackResult = null;
+    this.notify();
+  }
+
   async startLogin(overrideClientId?: string): Promise<MalAuthLoginResult> {
-    const candidateClientId = normalizeMalClientId(overrideClientId) || getEffectiveMalClientId();
+    const targetScope = getActiveMalProfileScope();
+    const candidateClientId =
+      normalizeMalClientId(overrideClientId) || getEffectiveMalClientId(targetScope);
     if (!isValidMalClientId(candidateClientId)) {
       return {
         ok: false,
@@ -284,7 +328,7 @@ class MalAuthServiceClass {
     }
 
     if (overrideClientId) {
-      setStoredMalClientId(candidateClientId);
+      setStoredMalClientId(candidateClientId, targetScope);
     }
 
     const codeVerifier = generatePkceCodeVerifier(64);
@@ -296,7 +340,8 @@ class MalAuthServiceClass {
       clientId: candidateClientId,
       createdAt: Date.now(),
     };
-    AppStorage.setObject(StorageKeys.MAL_OAUTH_PENDING, pending);
+    const pendingKey = getMalScopedKey(StorageKeys.MAL_OAUTH_PENDING, targetScope);
+    AppStorage.setObject(pendingKey, pending);
 
     const authUrl = buildMalAuthorizeUrl({
       clientId: candidateClientId,
@@ -327,16 +372,16 @@ class MalAuthServiceClass {
         return callbackOutcome.result;
       }
 
-      const activePending = AppStorage.getObject<MalOAuthPending>(StorageKeys.MAL_OAUTH_PENDING);
+      const activePending = AppStorage.getObject<MalOAuthPending>(pendingKey);
       if (!activePending && this.isConnected()) {
         return {
           ok: true,
           alreadyHandled: true,
-          session: this.getSession()!,
+          session: this.getSession(targetScope)!,
         };
       }
 
-      AppStorage.remove(StorageKeys.MAL_OAUTH_PENDING);
+      AppStorage.remove(pendingKey);
       return {
         ok: false,
         cancelled: true,
@@ -352,7 +397,7 @@ class MalAuthServiceClass {
       if (callbackOutcome && callbackOutcome.state === state) {
         return callbackOutcome.result;
       }
-      AppStorage.remove(StorageKeys.MAL_OAUTH_PENDING);
+      AppStorage.remove(pendingKey);
       return {
         ok: false,
         error: err?.message || 'IMPOSSIBILE APRIRE IL BROWSER PER IL LOGIN MYANIMELIST.',
@@ -363,12 +408,14 @@ class MalAuthServiceClass {
   }
 
   async handleCallbackUrl(callbackUrl: string): Promise<MalAuthLoginResult> {
+    const targetScope = getActiveMalProfileScope();
+    const pendingKey = getMalScopedKey(StorageKeys.MAL_OAUTH_PENDING, targetScope);
     const parsed = parseMalCallbackUrl(callbackUrl);
     if (!parsed) {
       return { ok: false, error: 'URL DI RITORNO MYANIMELIST NON VALIDO.' };
     }
 
-    const callbackKey = `${parsed.code || parsed.error || ''}:${parsed.state || ''}`;
+    const callbackKey = `${targetScope}:${parsed.code || parsed.error || ''}:${parsed.state || ''}`;
     if (this.inFlightCallbackKey === callbackKey && this.inFlightCallbackPromise) {
       return await this.inFlightCallbackPromise;
     }
@@ -381,7 +428,7 @@ class MalAuthServiceClass {
       }
     }
 
-    if (callbackKey !== ':') {
+    if (!callbackKey.endsWith(':')) {
       const cached = this.handledCallbackResults.get(callbackKey);
       if (cached) {
         return {
@@ -391,7 +438,7 @@ class MalAuthServiceClass {
       }
     }
 
-    const pending = AppStorage.getObject<MalOAuthPending>(StorageKeys.MAL_OAUTH_PENDING);
+    const pending = AppStorage.getObject<MalOAuthPending>(pendingKey);
     if (!pending) {
       return {
         ok: false,
@@ -400,13 +447,13 @@ class MalAuthServiceClass {
     }
 
     if (parsed.error) {
-      AppStorage.remove(StorageKeys.MAL_OAUTH_PENDING);
+      AppStorage.remove(pendingKey);
       const errRes: MalAuthLoginResult = {
         ok: false,
         cancelled: parsed.error === 'access_denied',
         error: parsed.errorDescription || `AUTORIZZAZIONE RIFIUTATA (${parsed.error.toUpperCase()}).`,
       };
-      if (callbackKey !== ':') {
+      if (!callbackKey.endsWith(':')) {
         this.handledCallbackResults.set(callbackKey, { result: errRes, ts: Date.now() });
       }
       this.lastLoginCallbackResult = { state: pending.state, result: errRes };
@@ -414,7 +461,7 @@ class MalAuthServiceClass {
     }
 
     if (!parsed.state || parsed.state !== pending.state) {
-      AppStorage.remove(StorageKeys.MAL_OAUTH_PENDING);
+      AppStorage.remove(pendingKey);
       const csrfRes: MalAuthLoginResult = {
         ok: false,
         error: 'VERIFICA DI SICUREZZA (STATE CSRF) FALLITA. LOGIN ANNULLATO.',
@@ -424,7 +471,7 @@ class MalAuthServiceClass {
     }
 
     if (!parsed.code) {
-      AppStorage.remove(StorageKeys.MAL_OAUTH_PENDING);
+      AppStorage.remove(pendingKey);
       const codeErrRes: MalAuthLoginResult = {
         ok: false,
         error: 'CODICE DI AUTORIZZAZIONE MANCANTE NEL CALLBACK.',
@@ -434,12 +481,13 @@ class MalAuthServiceClass {
     }
 
     // Delete pending state immediately before exchange for idempotency
-    AppStorage.remove(StorageKeys.MAL_OAUTH_PENDING);
+    AppStorage.remove(pendingKey);
 
     const exchangePromise = this.exchangeAuthorizationCode({
       code: parsed.code,
       clientId: pending.clientId,
       codeVerifier: pending.codeVerifier,
+      scopeId: targetScope,
     }).finally(() => {
       if (this.inFlightCallbackKey === callbackKey) {
         this.inFlightCallbackKey = null;
@@ -451,7 +499,7 @@ class MalAuthServiceClass {
     this.inFlightCallbackPromise = exchangePromise;
 
     const res = await exchangePromise;
-    if (callbackKey !== ':') {
+    if (!callbackKey.endsWith(':')) {
       this.handledCallbackResults.set(callbackKey, { result: res, ts: Date.now() });
     }
     this.lastLoginCallbackResult = { state: pending.state, result: res };
@@ -462,6 +510,7 @@ class MalAuthServiceClass {
     code: string;
     clientId: string;
     codeVerifier: string;
+    scopeId?: string;
   }): Promise<MalAuthLoginResult> {
     try {
       const form = new URLSearchParams();
@@ -492,6 +541,7 @@ class MalAuthServiceClass {
         refreshToken: typeof data.refresh_token === 'string' ? data.refresh_token : '',
         expiresAt: Date.now() + expiresIn * 1000,
         tokenType: typeof data.token_type === 'string' ? data.token_type : 'Bearer',
+        updatedAt: Date.now(),
       };
 
       // Best-effort fetch user profile before persisting final session
@@ -506,7 +556,7 @@ class MalAuthServiceClass {
         // Non-blocking: session tokens are already valid
       }
 
-      this.saveSession(session);
+      this.saveSession(session, params.scopeId);
       return { ok: true, session };
     } catch (err: any) {
       const info = extractHttpErrorInfo(err);
@@ -536,24 +586,30 @@ class MalAuthServiceClass {
   }
 
   async refreshProfile(): Promise<MalUserProfile | null> {
+    const scopeId = getActiveMalProfileScope();
     const token = await this.getValidAccessToken();
     const profile = await this.fetchProfileWithToken(token);
     if (profile) {
-      const current = this.getSession();
+      const current = this.getSession(scopeId);
       if (current) {
-        this.saveSession({
-          ...current,
-          username: profile.name,
-          userId: profile.id,
-          picture: profile.picture,
-        });
+        this.saveSession(
+          {
+            ...current,
+            username: profile.name,
+            userId: profile.id,
+            picture: profile.picture,
+            updatedAt: Date.now(),
+          },
+          scopeId
+        );
       }
     }
     return profile;
   }
 
   async getValidAccessToken(forceRefresh = false): Promise<string> {
-    const session = this.getSession();
+    const scopeId = getActiveMalProfileScope();
+    const session = this.getSession(scopeId);
     if (!session || !session.accessToken) {
       throw new MalAuthError('Account MyAnimeList non connesso', { status: 401, isRevoked: false });
     }
@@ -573,15 +629,15 @@ class MalAuthServiceClass {
       return await this.refreshInFlight;
     }
 
-    this.refreshInFlight = this.performTokenRefresh(session).finally(() => {
+    this.refreshInFlight = this.performTokenRefresh(session, scopeId).finally(() => {
       this.refreshInFlight = null;
     });
 
     return await this.refreshInFlight;
   }
 
-  private async performTokenRefresh(session: MalAuthSession): Promise<string> {
-    const clientId = getEffectiveMalClientId();
+  private async performTokenRefresh(session: MalAuthSession, scopeId: string): Promise<string> {
+    const clientId = getEffectiveMalClientId(scopeId);
     if (!isValidMalClientId(clientId)) {
       throw new MalAuthError('Client ID MyAnimeList mancante o non valido', {
         status: 400,
@@ -617,9 +673,10 @@ class MalAuthServiceClass {
             : session.refreshToken,
         expiresAt: Date.now() + expiresIn * 1000,
         tokenType: typeof data.token_type === 'string' ? data.token_type : session.tokenType || 'Bearer',
+        updatedAt: Date.now(),
       };
 
-      this.saveSession(updatedSession);
+      this.saveSession(updatedSession, scopeId);
       return updatedSession.accessToken;
     } catch (err: any) {
       if (err instanceof MalAuthError) throw err;
@@ -627,7 +684,7 @@ class MalAuthServiceClass {
       const info = extractHttpErrorInfo(err);
       const shouldRevoke = shouldRevokeMalSessionOnRefreshError(info.status, info.errorCode);
       if (shouldRevoke) {
-        this.clearSessionInternal(false);
+        this.clearSessionInternal(false, { scopeId, recordDeletion: false });
         throw new MalAuthError(
           `Sessione MyAnimeList scaduta o revocata (${info.status || info.errorCode})`,
           { status: info.status, code: info.errorCode, isRevoked: true }
@@ -644,7 +701,7 @@ class MalAuthServiceClass {
   }
 
   revokeSessionOnAuthFailure(): void {
-    this.clearSessionInternal(false);
+    this.clearSessionInternal(false, { recordDeletion: false });
   }
 
   logout(): void {
@@ -654,7 +711,7 @@ class MalAuthServiceClass {
     this.inFlightCallbackPromise = null;
     this.handledCallbackResults.clear();
     this.lastLoginCallbackResult = null;
-    this.clearSessionInternal(true);
+    this.clearSessionInternal(true, { recordDeletion: true });
   }
 }
 

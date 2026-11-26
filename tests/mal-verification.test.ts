@@ -6,27 +6,33 @@ import { pathToFileURL } from 'node:url';
 import * as WebBrowser from 'expo-web-browser';
 import { AppStorage, StorageKeys } from '../src/services/storage/app-storage';
 import {
-  addMalIgnoredAnimeIds,
-  buildMalAuthorizeUrl,
-  clearMalIgnoredAnimeIds,
-  clearMalListCache,
-  computeLocalAppToMalDiffSnapshot,
-  detectAnimeWorldAudioVariant,
-  generateOAuthState,
-  generatePkceCodeVerifier,
-  getEffectiveMalClientId,
-  getLocalCompletedEpisodesForAnime,
-  getMalIdMapStore,
-  getMalIgnoredAnimeIds,
-  getMalListCache,
-  getMalSettings,
-  getMappingByAnimeId,
-  isOngoingAnimeDetail,
-  isValidMalClientId,
   MalAuthError,
   MalAuthService,
   MalClient,
   MalSyncService,
+  addMalIgnoredAnimeIds,
+  applyRemoteMalAuthRecordForScope,
+  buildMalAuthorizeUrl,
+  clearMalIgnoredAnimeIds,
+  clearMalListCache,
+  clearSyncedMalProfileData,
+  computeLocalAppToMalDiffSnapshot,
+  detectAnimeWorldAudioVariant,
+  generateOAuthState,
+  generatePkceCodeVerifier,
+  getActiveMalProfileScope,
+  getEffectiveMalClientId,
+  getLocalCompletedEpisodesForAnime,
+  getMalAuthSyncRecordForScope,
+  getMalIdMapStore,
+  getMalIgnoredAnimeIds,
+  getMalListCache,
+  getMalScopedKey,
+  getMalSettings,
+  getMappingByAnimeId,
+  getMappingByMalId,
+  isOngoingAnimeDetail,
+  isValidMalClientId,
   parseMalCallbackUrl,
   parsePositiveTotalEpisodes,
   recordAnimeMalMapping,
@@ -39,6 +45,7 @@ import {
   setStoredMalClientId,
   shouldRevokeMalSessionOnRefreshError,
 } from '../src/services/mal';
+import { mergeLocalAndRemote } from '../src/services/sync/merge';
 import { isMalAuthCallbackDeepLink, resolveSystemDeepLinkPath } from '../src/services/sync/deep-link';
 import { redirectSystemPath } from '../app/+native-intent';
 import type { AnimeDetail } from '../src/types';
@@ -55,21 +62,37 @@ function resetMalTestEnvironment(): void {
   MalSyncService.clearSessionAutoSyncCacheForTest();
   MalAuthService.logout();
 
-  AppStorage.remove(StorageKeys.MAL_CLIENT_ID);
-  AppStorage.remove(StorageKeys.MAL_SETTINGS);
+  AppStorage.remove(StorageKeys.SYNC_SERVER_URL);
+  AppStorage.remove('sync.server_url_backup');
+  AppStorage.remove(StorageKeys.SYNC_DEVICE_TOKEN);
+  AppStorage.remove(StorageKeys.SYNC_PROFILE_ID);
+  AppStorage.remove(StorageKeys.SYNC_PROFILE_NAME);
+  AppStorage.remove(StorageKeys.SYNC_IS_ENABLED);
+  AppStorage.remove(StorageKeys.SYNC_SERVER_SUPPORTS_MAL_AUTH);
+  AppStorage.clearKnownTombstones();
+
+  for (const scope of ['local', 'prof-1', 'prof-2', 'prof-sync']) {
+    AppStorage.remove(getMalScopedKey(StorageKeys.MAL_CLIENT_ID, scope));
+    AppStorage.remove(getMalScopedKey(StorageKeys.MAL_SETTINGS, scope));
+    AppStorage.remove(getMalScopedKey(StorageKeys.MAL_IGNORED_ANIME_IDS, scope));
+    AppStorage.remove(getMalScopedKey(StorageKeys.MAL_WATCHED_HIGHWATER, scope));
+    AppStorage.remove(getMalScopedKey(StorageKeys.MAL_PENDING_UPDATES, scope));
+    AppStorage.remove(getMalScopedKey(StorageKeys.MAL_LIST_CACHE, scope));
+    AppStorage.remove(getMalScopedKey(StorageKeys.MAL_LAST_SYNC_TIME, scope));
+    AppStorage.remove(getMalScopedKey(StorageKeys.MAL_OAUTH_PENDING, scope));
+    AppStorage.remove(getMalScopedKey(StorageKeys.MAL_AUTH_SESSION, scope));
+    if (scope !== 'local') {
+      AppStorage.remove(`${StorageKeys.MAL_ID_MAP}.byMalId.p.${scope}`);
+    }
+  }
   AppStorage.remove(StorageKeys.MAL_ID_MAP);
-  AppStorage.remove(StorageKeys.MAL_IGNORED_ANIME_IDS);
-  AppStorage.remove(StorageKeys.MAL_WATCHED_HIGHWATER);
-  AppStorage.remove(StorageKeys.MAL_PENDING_UPDATES);
-  AppStorage.remove(StorageKeys.MAL_LIST_CACHE);
-  AppStorage.remove(StorageKeys.MAL_LAST_SYNC_TIME);
-  AppStorage.remove(StorageKeys.MAL_OAUTH_PENDING);
-  AppStorage.remove(StorageKeys.MAL_AUTH_SESSION);
 
   AppStorage.clearWatchHistory();
   AppStorage.setObject(StorageKeys.FAVORITES, []);
   AppStorage.remove(StorageKeys.SYNC_PENDING_MUTATIONS);
   AppStorage.remove(StorageKeys.SYNC_PENDING_DELETIONS);
+  MalAuthService.handleSyncScopeChanged();
+  MalSyncService.handleSyncScopeChanged();
 }
 
 function makeFakeMalEntry(overrides: {
@@ -1295,10 +1318,18 @@ export async function runMalVerificationTests(): Promise<void> {
       assert(sSrc.includes('headerPanHandlers'), `${sheetFile} deve esporre headerPanHandlers`);
       assert(sSrc.includes('animationType="fade"'), `${sheetFile} deve usare animationType="fade"`);
       assert(!sSrc.includes('animationType="slide"'), `${sheetFile} non deve combinare slide con drag dismiss`);
-      if (sSrc.includes('<TextInput')) {
-        assert(!/\bvalue=\{/.test(sSrc), `${sheetFile} deve usare TextInput non controllato (defaultValue)`);
+      const textInputTags = sSrc.match(/<TextInput[\s\S]*?\/>/g) || [];
+      for (const tiTag of textInputTags) {
+        assert(!/\bvalue=\{/.test(tiTag), `${sheetFile} deve usare TextInput non controllato (defaultValue)`);
       }
     }
+
+    assert(
+      malSettingsModalSrc.includes('StepSlider') &&
+        malSettingsModalSrc.includes('completed_only') &&
+        malSettingsModalSrc.includes('watchingThresholdEnabled'),
+      'MalSettingsModal deve usare StepSlider per modalità auto-sync e controlli threshold'
+    );
 
     const connectCardSrc = fs.readFileSync(path.join(projectRoot, 'src/components/mal/MalConnectCard.tsx'), 'utf-8');
     assert(!/\bvalue=\{/.test(connectCardSrc), 'MalConnectCard deve usare TextInput non controllato (defaultValue)');
@@ -1330,9 +1361,349 @@ export async function runMalVerificationTests(): Promise<void> {
     assert(rootLayoutSrc.includes('flushPendingUpdates'), '_layout.tsx deve svuotare la coda offline MAL su foreground');
 
     const kuroSyncMgrSrc = fs.readFileSync(path.join(projectRoot, 'src/services/sync/sync-manager.ts'), 'utf-8');
-    assert(!kuroSyncMgrSrc.includes('MAL_'), 'KuroSync sync-manager non deve mai toccare o sincronizzare chiavi MAL');
+    assert(
+      !kuroSyncMgrSrc.includes('MAL_LIST_CACHE') &&
+        !kuroSyncMgrSrc.includes('MAL_PENDING_UPDATES') &&
+        !kuroSyncMgrSrc.includes('MAL_WATCHED_HIGHWATER') &&
+        !kuroSyncMgrSrc.includes('MAL_SETTINGS') &&
+        !kuroSyncMgrSrc.includes('MAL_ID_MAP'),
+      'KuroSync sync-manager deve sincronizzare esclusivamente malAuth e mai liste/impostazioni/highwater MAL'
+    );
+    assert(
+      kuroSyncMgrSrc.includes('getMalAuthSyncRecordForScope') &&
+        kuroSyncMgrSrc.includes('applyRemoteMalAuthRecordForScope') &&
+        kuroSyncMgrSrc.includes('clearSyncedMalProfileData'),
+      'KuroSync sync-manager deve gestire malAuth per-profilo con capability detection'
+    );
 
-    console.log('✓ Integrazione MyAnimeList (OAuth PKCE, Client, Mapper, Sync Diff, Auto-Sync Offline, Isolamento KuroSync & UI) verificata con successo.');
+    // -------------------------------------------------------------------------
+    // 11. Nuove Modalità Auto-Sync (completed_only & threshold) + Profili KuroSync
+    // -------------------------------------------------------------------------
+    resetMalTestEnvironment();
+
+    // 11a. Legacy settings migration (autoSyncOnComplete: true -> autoSyncMode: 'episodes')
+    AppStorage.setObject(StorageKeys.MAL_SETTINGS, {
+      autoSyncOnComplete: true,
+      audioPreference: 'sub',
+    });
+    const migratedSettings = getMalSettings();
+    assert.strictEqual(migratedSettings.autoSyncMode, 'episodes', 'Migrazione legacy autoSyncOnComplete=true -> episodes');
+    assert.strictEqual(migratedSettings.autoSyncOnComplete, true);
+    assert.strictEqual(migratedSettings.watchingThresholdEnabled, false);
+    assert.strictEqual(migratedSettings.watchingThresholdEpisodes, 3);
+
+    // Setup authenticated mock MAL client for mode & threshold behavioral tests
+    let modePatchCalls: Array<{ malId: number; status?: string; numWatched?: number }> = [];
+    setStoredMalClientId(TEST_CLIENT_ID);
+    AppStorage.setObject(StorageKeys.MAL_AUTH_SESSION, {
+      accessToken: 'mode-access-tok',
+      refreshToken: 'mode-refresh-tok',
+      expiresAt: Date.now() + 3600_000,
+      tokenType: 'Bearer',
+      username: 'mode_user',
+      updatedAt: Date.now(),
+    });
+    MalClient.setAxiosInstanceForTest({
+      request: async (cfg: any) => {
+        const malId = Number(String(cfg.url || '').match(/anime\/(\d+)/)?.[1] || 0);
+        const form = new URLSearchParams(cfg.data);
+        const status = form.get('status') || undefined;
+        const numWatched = Number(form.get('num_watched_episodes') || 0);
+        modePatchCalls.push({ malId, status, numWatched });
+        return {
+          data: {
+            status,
+            score: 0,
+            num_episodes_watched: numWatched,
+            updated_at: new Date().toISOString(),
+          },
+        };
+      },
+    } as any);
+
+    // 11b. autoSyncMode === 'completed_only'
+    saveMalSettings({ autoSyncMode: 'completed_only', watchingThresholdEnabled: false });
+    saveMalListCache({ watching: [], plan_to_watch: [], completed: [], updatedAt: Date.now() });
+
+    const coEp5 = await MalSyncService.enqueueOrAutoSyncEpisode({
+      animeId: 'completed-only.1',
+      malId: 80001,
+      episodeNumber: 5,
+      title: 'Completed Only Anime',
+      totalEpisodes: 12,
+      isOngoingSeries: false,
+    });
+    assert.strictEqual(coEp5.status, 'skipped_completed_only', 'completed_only deve saltare episodi intermedi');
+    assert.strictEqual(modePatchCalls.length, 0);
+
+    const coOngoing = await MalSyncService.enqueueOrAutoSyncEpisode({
+      animeId: 'completed-only-ongoing.1',
+      malId: 80002,
+      episodeNumber: 12,
+      title: 'Ongoing Anime',
+      totalEpisodes: 12,
+      isOngoingSeries: true,
+    });
+    assert.strictEqual(coOngoing.status, 'skipped_completed_only', 'completed_only non deve segnare completed le serie ongoing');
+    assert.strictEqual(modePatchCalls.length, 0);
+
+    const coEp12 = await MalSyncService.enqueueOrAutoSyncEpisode({
+      animeId: 'completed-only.1',
+      malId: 80001,
+      episodeNumber: 12,
+      title: 'Completed Only Anime',
+      totalEpisodes: 12,
+      isOngoingSeries: false,
+    });
+    assert.strictEqual(coEp12.status, 'synced', 'completed_only deve sincronizzare al completamento serie');
+    assert.strictEqual(coEp12.targetStatus, 'completed');
+    assert.strictEqual(coEp12.targetEpisodes, 12);
+    assert.strictEqual(modePatchCalls.length, 1);
+
+    // 11c. autoSyncMode === 'episodes' with watchingThresholdEnabled = true (default 3)
+    modePatchCalls = [];
+    MalSyncService.clearSessionAutoSyncCacheForTest();
+    saveMalSettings({
+      autoSyncMode: 'episodes',
+      watchingThresholdEnabled: true,
+      watchingThresholdEpisodes: 3,
+    });
+    saveMalListCache({
+      watching: [
+        makeFakeMalEntry({ malId: 80020, title: 'Already Watching', status: 'watching', watchedEpisodes: 1, numEpisodes: 12 }),
+      ],
+      plan_to_watch: [
+        makeFakeMalEntry({ malId: 80011, title: 'PTW Show', status: 'plan_to_watch', watchedEpisodes: 0, numEpisodes: 12 }),
+      ],
+      completed: [],
+      updatedAt: Date.now(),
+    });
+
+    const thNewEp1 = await MalSyncService.enqueueOrAutoSyncEpisode({
+      animeId: 'binge-test.1',
+      malId: 80010,
+      episodeNumber: 1,
+      totalEpisodes: 12,
+    });
+    const thNewEp2 = await MalSyncService.enqueueOrAutoSyncEpisode({
+      animeId: 'binge-test.1',
+      malId: 80010,
+      episodeNumber: 2,
+      totalEpisodes: 12,
+    });
+    const thPtwEp2 = await MalSyncService.enqueueOrAutoSyncEpisode({
+      animeId: 'ptw-threshold.1',
+      malId: 80011,
+      episodeNumber: 2,
+      totalEpisodes: 12,
+    });
+    assert.strictEqual(thNewEp1.status, 'below_watching_threshold', 'Ep 1 non in lista deve rispettare threshold 3');
+    assert.strictEqual(thNewEp2.status, 'below_watching_threshold', 'Ep 2 non in lista deve rispettare threshold 3');
+    assert.strictEqual(thPtwEp2.status, 'below_watching_threshold', 'PTW Ep 2 deve rispettare threshold 3');
+    assert.strictEqual(modePatchCalls.length, 0);
+
+    // Ep 3 reaches threshold -> syncs as watching
+    const thNewEp3 = await MalSyncService.enqueueOrAutoSyncEpisode({
+      animeId: 'binge-test.1',
+      malId: 80010,
+      episodeNumber: 3,
+      totalEpisodes: 12,
+    });
+    assert.strictEqual(thNewEp3.status, 'synced');
+    assert.strictEqual(thNewEp3.targetStatus, 'watching');
+    assert.strictEqual(thNewEp3.targetEpisodes, 3);
+
+    // Already watching at ep 1 -> advancing to ep 2 MUST still sync despite threshold 3
+    const thAlreadyWatchingEp2 = await MalSyncService.enqueueOrAutoSyncEpisode({
+      animeId: 'already-watching.1',
+      malId: 80020,
+      episodeNumber: 2,
+      totalEpisodes: 12,
+    });
+    assert.strictEqual(thAlreadyWatchingEp2.status, 'synced', 'Serie già in watching deve aggiornarsi anche sotto threshold');
+    assert.strictEqual(thAlreadyWatchingEp2.targetStatus, 'watching');
+    assert.strictEqual(thAlreadyWatchingEp2.targetEpisodes, 2);
+
+    // Short 1-ep movie / 2-ep OVA reaching completion MUST NOT be blocked by threshold 3
+    const thShortMovie = await MalSyncService.enqueueOrAutoSyncEpisode({
+      animeId: 'short-movie.1',
+      malId: 80030,
+      episodeNumber: 1,
+      totalEpisodes: 1,
+      isOngoingSeries: false,
+    });
+    assert.strictEqual(thShortMovie.status, 'synced', 'Film 1 episodio completato non deve essere bloccato dal threshold');
+    assert.strictEqual(thShortMovie.targetStatus, 'completed');
+    assert.strictEqual(thShortMovie.targetEpisodes, 1);
+
+    // 11d. Per-KuroSync-Profile Isolation & Auth-Only Sync Preparation
+    resetMalTestEnvironment();
+
+    // Local (disconnected) MAL setup
+    setStoredMalClientId(TEST_CLIENT_ID);
+    AppStorage.setObject(StorageKeys.MAL_AUTH_SESSION, {
+      accessToken: 'local-tok',
+      refreshToken: 'local-ref',
+      expiresAt: Date.now() + 3600_000,
+      tokenType: 'Bearer',
+      username: 'local_user',
+      updatedAt: 1000,
+    });
+    AppStorage.recordMalWatchedHighwater('shared-anime.1', 4);
+    assert.strictEqual(getActiveMalProfileScope(), 'local');
+    assert.strictEqual(MalAuthService.getStatus().username, 'local_user');
+
+    // Connect KuroSync on prof-1 ("Marco") -> scope switches cleanly without leaking 'local'
+    AppStorage.setString(StorageKeys.SYNC_SERVER_URL, 'https://sync.example');
+    AppStorage.setString(StorageKeys.SYNC_DEVICE_TOKEN, 'sync-dev-tok-1');
+    AppStorage.setString(StorageKeys.SYNC_PROFILE_ID, 'prof-1');
+    AppStorage.setString(StorageKeys.SYNC_PROFILE_NAME, 'Marco');
+    MalAuthService.handleSyncScopeChanged();
+
+    assert.strictEqual(getActiveMalProfileScope(), 'prof-1');
+    assert.strictEqual(MalAuthService.isConnected(), false, 'prof-1 non deve ereditare sessione MAL locale');
+    assert.strictEqual(AppStorage.getMalWatchedHighwaterForAnime('shared-anime.1'), 0, 'Highwater deve essere isolato per profilo');
+
+    // Shared catalog byAnimeId vs per-profile byMalId pick
+    recordAnimeMalMapping(makeFakeDetail({ id: 'hero-sub.1', title: 'Hero Academia', malId: 90001 }));
+    setManualAnimeMalMapping({ malId: 90001, animeId: 'hero-ita.1', title: 'Hero Academia (ITA)', audio: 'ITA' });
+    assert.strictEqual(getMappingByMalId(90001)?.primaryAnimeId, 'hero-ita.1');
+
+    // Link MAL on prof-1 via callback -> emits malAuth sync mutation (tokens + clientId ONLY)
+    setStoredMalClientId(TEST_CLIENT_ID);
+    MalAuthService.setHttpClientForTest({
+      post: async () => ({
+        data: { access_token: 'p1-acc', refresh_token: 'p1-ref', expires_in: 3600, token_type: 'Bearer' },
+      }),
+      get: async () => ({
+        data: { id: 101, name: 'marco_mal', picture: 'https://cdn.example/marco.png' },
+      }),
+    } as any);
+    (WebBrowser as any).setMockOpenAuthSessionHandler(async (authUrl: string) => {
+      const stateParam = new URL(authUrl).searchParams.get('state');
+      return { type: 'success', url: `kurotv://mal-callback?code=c1&state=${stateParam}` };
+    });
+    const loginP1 = await MalAuthService.startLogin(TEST_CLIENT_ID);
+    assert.strictEqual(loginP1.ok, true);
+    assert.strictEqual(MalAuthService.getStatus().profileScopeId, 'prof-1');
+    assert.strictEqual(MalAuthService.getStatus().kuroSyncProfileName, 'Marco');
+
+    const pendingMutP1 = AppStorage.getPendingSyncMutations();
+    assert(pendingMutP1.malAuth, 'Login MAL su profilo KuroSync deve preparare pendingMutations.malAuth');
+    assert.strictEqual(pendingMutP1.malAuth.username, 'marco_mal');
+    assert.strictEqual(pendingMutP1.malAuth.clientId, TEST_CLIENT_ID);
+
+    // Switch to prof-2 ("Giulia")
+    AppStorage.clearPendingSyncMutations();
+    AppStorage.setString(StorageKeys.SYNC_PROFILE_ID, 'prof-2');
+    AppStorage.setString(StorageKeys.SYNC_PROFILE_NAME, 'Giulia');
+    MalAuthService.handleSyncScopeChanged();
+
+    assert.strictEqual(getActiveMalProfileScope(), 'prof-2');
+    assert.strictEqual(MalAuthService.isConnected(), false, 'prof-2 deve essere disconnesso indipendentemente da prof-1');
+    assert.strictEqual(getMappingByMalId(90001)?.primaryAnimeId || '', '', 'Scelta ITA su prof-1 non deve sovrascrivere prof-2');
+    assert.strictEqual(getMappingByAnimeId('hero-sub.1')?.malId, 90001, 'byAnimeId catalogo rimane condiviso');
+
+    // Remote malAuth applied for prof-2 without triggering redundant push mutation
+    const appliedP2 = applyRemoteMalAuthRecordForScope('prof-2', {
+      profileId: 'prof-2',
+      clientId: 'remoteclientid1234567890abcdef12',
+      accessToken: 'p2-remote-acc',
+      refreshToken: 'p2-remote-ref',
+      expiresAt: Date.now() + 7200_000,
+      tokenType: 'Bearer',
+      username: 'giulia_mal',
+      updatedAt: 5000,
+    });
+    assert.strictEqual(appliedP2, true);
+    MalAuthService.handleSyncScopeChanged();
+    assert.strictEqual(MalAuthService.isConnected(), true);
+    assert.strictEqual(MalAuthService.getStatus().username, 'giulia_mal');
+    assert.strictEqual(Object.keys(AppStorage.getPendingSyncMutations()).length, 0, 'applyRemoteMalAuth non deve ri-emettere mutazioni push');
+
+    // Logout on prof-2 records 'mal_auth' deletion tombstone
+    MalAuthService.logout();
+    assert.strictEqual(MalAuthService.isConnected(), false);
+    const delP2 = AppStorage.getPendingSyncDeletions();
+    assert(delP2.some((d) => d.type === 'mal_auth' && d.key === 'default'), 'Logout su profilo KuroSync deve registrare tombstone mal_auth');
+
+    // Switch back to prof-1 -> marco_mal still preserved!
+    AppStorage.setString(StorageKeys.SYNC_PROFILE_ID, 'prof-1');
+    AppStorage.setString(StorageKeys.SYNC_PROFILE_NAME, 'Marco');
+    MalAuthService.handleSyncScopeChanged();
+    assert.strictEqual(MalAuthService.isConnected(), true);
+    assert.strictEqual(MalAuthService.getStatus().username, 'marco_mal');
+
+    // mergeLocalAndRemote LWW + 'mal_auth' tombstone dominance checks
+    const baseLocalSync = {
+      favorites: [],
+      continueWatching: [],
+      watchHistory: [],
+      watchProgress: [],
+      sharedSettings: {},
+      searchHistory: [],
+      malAuth: getMalAuthSyncRecordForScope('prof-1'),
+    };
+    const remoteNewerToken = mergeLocalAndRemote(
+      baseLocalSync,
+      {
+        serverTime: 9000,
+        deltas: {
+          favorites: [],
+          continueWatching: [],
+          watchHistory: [],
+          watchProgress: [],
+          sharedSettings: {},
+          searchHistory: [],
+          malAuth: {
+            clientId: TEST_CLIENT_ID,
+            accessToken: 'refreshed-remote-acc',
+            refreshToken: 'refreshed-remote-ref',
+            expiresAt: 9999999999,
+            tokenType: 'Bearer',
+            username: 'marco_mal',
+            updatedAt: (baseLocalSync.malAuth?.updatedAt || 0) + 5000,
+          },
+        },
+        tombstones: [],
+      }
+    );
+    assert.strictEqual(remoteNewerToken.state.malAuth?.accessToken, 'refreshed-remote-acc', 'Token remoto più recente deve vincere via LWW');
+
+    const remoteLogoutTombstone = mergeLocalAndRemote(
+      baseLocalSync,
+      {
+        serverTime: 9999,
+        deltas: {
+          favorites: [],
+          continueWatching: [],
+          watchHistory: [],
+          watchProgress: [],
+          sharedSettings: {},
+          searchHistory: [],
+          malAuth: null,
+        },
+        tombstones: [
+          {
+            type: 'mal_auth',
+            key: 'default',
+            deletedAt: (baseLocalSync.malAuth?.updatedAt || 0) + 10000,
+          },
+        ],
+      }
+    );
+    assert.strictEqual(remoteLogoutTombstone.state.malAuth, null, 'Tombstone mal_auth più recente deve sloggare il profilo');
+
+    // Disconnecting KuroSync purges synced profile tokens & reverts cleanly to 'local' scope
+    clearSyncedMalProfileData('prof-1');
+    AppStorage.remove(StorageKeys.SYNC_DEVICE_TOKEN);
+    AppStorage.remove(StorageKeys.SYNC_PROFILE_ID);
+    AppStorage.remove(StorageKeys.SYNC_PROFILE_NAME);
+    MalAuthService.handleSyncScopeChanged();
+    assert.strictEqual(getActiveMalProfileScope(), 'local');
+    assert.strictEqual(MalAuthService.getStatus().username, 'local_user', 'Scollando KuroSync si ritorna intatti allo scope locale');
+
+    console.log('✓ Integrazione MyAnimeList (OAuth PKCE, Client, Mapper, Sync Diff, Auto-Sync Mode/Threshold, Profili KuroSync & UI) verificata con successo.');
   } finally {
     resetMalTestEnvironment();
   }

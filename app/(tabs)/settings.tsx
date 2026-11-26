@@ -197,7 +197,9 @@ export default function SettingsScreen() {
     : 'NON CONNESSO';
 
   const malSubtitle = malStatus.isConnected
-    ? `CONNESSO • @${(malStatus.username || 'UTENTE').toUpperCase()}`
+    ? `CONNESSO • @${(malStatus.username || 'UTENTE').toUpperCase()}${malStatus.isKuroSyncLinked ? ` • ${(malStatus.kuroSyncProfileName || 'KUROSYNC').toUpperCase()}` : ''}`
+    : malStatus.isKuroSyncLinked
+    ? `NON CONNESSO • ${(malStatus.kuroSyncProfileName || 'PRINCIPALE').toUpperCase()}`
     : 'NON CONNESSO • LISTE & SYNC';
 
   const downloadSubtitle = `${storageInfo.appDownloadsFormatted} OCCUPATI • SOLO WI-FI: ${downloadSettings.wifiOnly ? 'ON' : 'OFF'}`;

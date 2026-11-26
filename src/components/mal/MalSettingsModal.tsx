@@ -16,12 +16,16 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { ConfirmModal } from '@/components/ConfirmModal';
+import { StepSlider, type StepItem } from '@/components/StepSlider';
 import { useBottomSheetDragDismiss } from '@/components/useBottomSheetDragDismiss';
 import { useResponsiveLayout } from '@/hooks';
 import { getContrastTextColor, useTheme } from '@/theme';
 import {
+  MAX_MAL_WATCHING_THRESHOLD_EPISODES,
+  MIN_MAL_WATCHING_THRESHOLD_EPISODES,
   MalAuthService,
   MalSyncService,
+  addMalDataListener,
   clearMalIgnoredAnimeIds,
   getEffectiveMalClientId,
   getMalIgnoredAnimeIds,
@@ -30,6 +34,7 @@ import {
   saveMalSettings,
   setStoredMalClientId,
   type MalAudioPreference,
+  type MalAutoSyncMode,
   type MalSettings,
 } from '@/services/mal';
 import { malStyles as styles } from './mal.styles';
@@ -47,6 +52,24 @@ const AUDIO_OPTIONS: Array<{ value: MalAudioPreference; label: string }> = [
   { value: 'ita', label: 'ITA' },
 ];
 
+const AUTO_SYNC_STEPS: StepItem<MalAutoSyncMode>[] = [
+  {
+    value: 'off',
+    label: 'OFF',
+    description: 'DISATTIVATO — AGGIORNA MAL SOLO MANUALMENTE DALL\'APP.',
+  },
+  {
+    value: 'episodes',
+    label: 'EPISODI',
+    description: 'AGGIORNA AUTOMATICAMENTE OGNI EPISODIO COMPLETATO NEL PLAYER.',
+  },
+  {
+    value: 'completed_only',
+    label: 'SOLO FINITI',
+    description: 'AGGIORNA MAL SOLO AL COMPLETAMENTO FINALE DELLA SERIE (NON ONGOING).',
+  },
+];
+
 export const MalSettingsModal: React.FC<MalSettingsModalProps> = ({
   isVisible,
   onClose,
@@ -60,6 +83,7 @@ export const MalSettingsModal: React.FC<MalSettingsModalProps> = ({
   const isLandscape = windowWidth > windowHeight;
   const primaryContrast = getContrastTextColor(theme.colors.primary);
 
+  const [authStatus, setAuthStatus] = React.useState(() => MalAuthService.getStatus());
   const [settings, setSettings] = React.useState<MalSettings>(() => getMalSettings());
   const [ignoredCount, setIgnoredCount] = React.useState(() => getMalIgnoredAnimeIds().length);
   const [pendingCount, setPendingCount] = React.useState(() =>
@@ -73,16 +97,26 @@ export const MalSettingsModal: React.FC<MalSettingsModalProps> = ({
   const clientIdInputRef = React.useRef<React.ComponentRef<typeof TextInput>>(null);
   const lastClientIdRef = React.useRef(getEffectiveMalClientId());
 
+  const refreshModalState = React.useCallback(() => {
+    setAuthStatus(MalAuthService.getStatus());
+    setSettings(getMalSettings());
+    setIgnoredCount(getMalIgnoredAnimeIds().length);
+    setPendingCount(MalSyncService.getPendingUpdatesCount());
+  }, []);
+
   React.useEffect(() => {
     if (isVisible) {
-      setSettings(getMalSettings());
-      setIgnoredCount(getMalIgnoredAnimeIds().length);
-      setPendingCount(MalSyncService.getPendingUpdatesCount());
+      refreshModalState();
       setFeedbackMsg(null);
       lastClientIdRef.current = getEffectiveMalClientId();
       setInputKey((k) => k + 1);
     }
-  }, [isVisible]);
+  }, [isVisible, refreshModalState]);
+
+  React.useEffect(() => {
+    const unsub = addMalDataListener(refreshModalState);
+    return unsub;
+  }, [refreshModalState]);
 
   const handleClose = React.useCallback(() => {
     Keyboard.dismiss();
@@ -94,14 +128,41 @@ export const MalSettingsModal: React.FC<MalSettingsModalProps> = ({
     onClose: handleClose,
   });
 
-  const authStatus = MalAuthService.getStatus();
+  const handleSelectAutoSyncMode = React.useCallback(
+    (mode: MalAutoSyncMode) => {
+      const next = saveMalSettings({ autoSyncMode: mode });
+      setSettings(next);
+      onSettingsChanged?.();
+    },
+    [onSettingsChanged]
+  );
 
-  const handleToggleAutoSync = React.useCallback(() => {
+  const handleToggleWatchingThreshold = React.useCallback(() => {
     Haptics.selectionAsync().catch(() => {});
-    const next = saveMalSettings({ autoSyncOnComplete: !settings.autoSyncOnComplete });
+    const next = saveMalSettings({
+      watchingThresholdEnabled: !settings.watchingThresholdEnabled,
+    });
     setSettings(next);
     onSettingsChanged?.();
-  }, [settings.autoSyncOnComplete, onSettingsChanged]);
+  }, [settings.watchingThresholdEnabled, onSettingsChanged]);
+
+  const handleStepWatchingThreshold = React.useCallback(
+    (delta: number) => {
+      Haptics.selectionAsync().catch(() => {});
+      const nextCount = Math.max(
+        MIN_MAL_WATCHING_THRESHOLD_EPISODES,
+        Math.min(
+          MAX_MAL_WATCHING_THRESHOLD_EPISODES,
+          settings.watchingThresholdEpisodes + delta
+        )
+      );
+      if (nextCount === settings.watchingThresholdEpisodes) return;
+      const next = saveMalSettings({ watchingThresholdEpisodes: nextCount });
+      setSettings(next);
+      onSettingsChanged?.();
+    },
+    [settings.watchingThresholdEpisodes, onSettingsChanged]
+  );
 
   const handleSelectAudio = React.useCallback(
     (pref: MalAudioPreference) => {
@@ -238,62 +299,188 @@ export const MalSettingsModal: React.FC<MalSettingsModalProps> = ({
               showsVerticalScrollIndicator={false}
               nestedScrollEnabled={true}
             >
-              {/* Auto-Sync Player Opt-In Toggle */}
-              <Pressable
+              {/* KuroSync Profile Scope Info */}
+              <View
                 style={[
-                  styles.diffRow,
+                  styles.inlineBanner,
                   {
-                    marginBottom: 0,
+                    marginHorizontal: 0,
+                    marginTop: 0,
                     backgroundColor: theme.colors.surface,
-                    borderColor: settings.autoSyncOnComplete
+                    borderColor: authStatus.isKuroSyncLinked
                       ? theme.colors.primary
                       : theme.colors.border,
                   },
                 ]}
-                onPress={handleToggleAutoSync}
-                accessibilityRole="switch"
-                accessibilityState={{ checked: settings.autoSyncOnComplete }}
-                accessibilityLabel="AUTO-SYNC AL COMPLETAMENTO EPISODIO"
               >
-                <View style={styles.diffBody}>
-                  <Text style={[styles.diffTitle, { color: theme.colors.text }]}>
-                    AUTO-SYNC AL COMPLETAMENTO
-                  </Text>
-                  <Text style={[styles.diffTransition, { color: theme.colors.textSecondary }]}>
-                    AGGIORNA MAL AUTOMATICAMENTE QUANDO COMPLETI UN EPISODIO NEL PLAYER
-                  </Text>
-                </View>
-
-                <View
-                  style={{
-                    minWidth: 50,
-                    paddingHorizontal: 10,
-                    paddingVertical: 6,
-                    borderRadius: 8,
-                    borderWidth: 1,
-                    backgroundColor: settings.autoSyncOnComplete
-                      ? theme.colors.primary
-                      : theme.colors.card,
-                    borderColor: settings.autoSyncOnComplete
-                      ? theme.colors.primary
-                      : theme.colors.border,
-                    alignItems: 'center',
-                  }}
+                <Ionicons
+                  name={authStatus.isKuroSyncLinked ? 'sync-outline' : 'phone-portrait-outline'}
+                  size={16}
+                  color={authStatus.isKuroSyncLinked ? theme.colors.primary : theme.colors.textMuted}
+                />
+                <Text
+                  style={[
+                    styles.inlineBannerText,
+                    {
+                      color: authStatus.isKuroSyncLinked
+                        ? theme.colors.text
+                        : theme.colors.textSecondary,
+                    },
+                  ]}
                 >
-                  <Text
+                  {authStatus.isKuroSyncLinked
+                    ? `PROFILO KUROSYNC: ${(authStatus.kuroSyncProfileName || 'PRINCIPALE').toUpperCase()} • LOGIN E TOKEN MAL ISOLATI PER PROFILO.`
+                    : 'PROFILO LOCALE • COLLEGA KUROSYNC PER SEPARARE E SINCRONIZZARE I TOKEN MAL TRA PROFILI.'}
+                </Text>
+              </View>
+
+              {/* Auto-Sync Player Mode (StepSlider) */}
+              <View>
+                <Text style={[styles.sheetSectionLabel, { color: theme.colors.textSecondary }]}>
+                  MODALITÀ AUTO-SYNC NEL PLAYER
+                </Text>
+                <StepSlider<MalAutoSyncMode>
+                  steps={AUTO_SYNC_STEPS}
+                  value={settings.autoSyncMode}
+                  onChange={handleSelectAutoSyncMode}
+                  theme={theme}
+                  isInactive={(step) => step.value === 'off'}
+                  accessibilityLabelPrefix="AUTO-SYNC MYANIMELIST"
+                  compactLabels={true}
+                />
+              </View>
+
+              {/* Watching Threshold Setting (for episode mode) */}
+              <View style={{ opacity: settings.autoSyncMode === 'episodes' ? 1 : 0.55 }}>
+                <Pressable
+                  style={[
+                    styles.diffRow,
+                    {
+                      marginBottom: settings.watchingThresholdEnabled ? 10 : 0,
+                      backgroundColor: theme.colors.surface,
+                      borderColor:
+                        settings.autoSyncMode === 'episodes' && settings.watchingThresholdEnabled
+                          ? theme.colors.primary
+                          : theme.colors.border,
+                    },
+                  ]}
+                  onPress={handleToggleWatchingThreshold}
+                  accessibilityRole="switch"
+                  accessibilityState={{ checked: settings.watchingThresholdEnabled }}
+                  accessibilityLabel="ABILITA SOGLIA EPISODI PER IN CORSO"
+                >
+                  <View style={styles.diffBody}>
+                    <Text style={[styles.diffTitle, { color: theme.colors.text }]}>
+                      SOGLIA &quot;IN CORSO&quot; ({settings.watchingThresholdEpisodes} EP.)
+                    </Text>
+                    <Text style={[styles.diffTransition, { color: theme.colors.textSecondary }]}>
+                      {settings.autoSyncMode === 'completed_only'
+                        ? 'NON ATTIVA CON MODALITÀ SOLO FINITI.'
+                        : `PASSA AUTOMATICAMENTE IN "IN CORSO" SU MAL SOLO DA EP. ${settings.watchingThresholdEpisodes} IN POI (NON BLOCCA LE SERIE COMPLETATE).`}
+                    </Text>
+                  </View>
+
+                  <View
+                    style={{
+                      minWidth: 50,
+                      paddingHorizontal: 10,
+                      paddingVertical: 6,
+                      borderRadius: 8,
+                      borderWidth: 1,
+                      backgroundColor: settings.watchingThresholdEnabled
+                        ? theme.colors.primary
+                        : theme.colors.card,
+                      borderColor: settings.watchingThresholdEnabled
+                        ? theme.colors.primary
+                        : theme.colors.border,
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.secondaryBtnText,
+                        {
+                          color: settings.watchingThresholdEnabled
+                            ? primaryContrast
+                            : theme.colors.textMuted,
+                        },
+                      ]}
+                    >
+                      {settings.watchingThresholdEnabled ? 'ON' : 'OFF'}
+                    </Text>
+                  </View>
+                </Pressable>
+
+                {settings.watchingThresholdEnabled && (
+                  <View
                     style={[
-                      styles.secondaryBtnText,
+                      styles.episodeStepperCard,
                       {
-                        color: settings.autoSyncOnComplete
-                          ? primaryContrast
-                          : theme.colors.textMuted,
+                        backgroundColor: theme.colors.surface,
+                        borderColor: theme.colors.border,
                       },
                     ]}
                   >
-                    {settings.autoSyncOnComplete ? 'ON' : 'OFF'}
-                  </Text>
-                </View>
-              </Pressable>
+                    <Pressable
+                      style={[
+                        styles.stepperBtn,
+                        {
+                          backgroundColor: theme.colors.card,
+                          borderColor: theme.colors.border,
+                        },
+                      ]}
+                      onPress={() => handleStepWatchingThreshold(-1)}
+                      disabled={
+                        settings.watchingThresholdEpisodes <= MIN_MAL_WATCHING_THRESHOLD_EPISODES
+                      }
+                      accessibilityRole="button"
+                      accessibilityLabel="RIDUCI SOGLIA EPISODI IN CORSO"
+                    >
+                      <Ionicons
+                        name="remove"
+                        size={18}
+                        color={
+                          settings.watchingThresholdEpisodes <= MIN_MAL_WATCHING_THRESHOLD_EPISODES
+                            ? theme.colors.textMuted
+                            : theme.colors.text
+                        }
+                      />
+                    </Pressable>
+
+                    <View style={styles.stepperValueBox}>
+                      <Text style={[styles.stepperValueText, { color: theme.colors.primary }]}>
+                        DA EPISODIO {settings.watchingThresholdEpisodes}
+                      </Text>
+                    </View>
+
+                    <Pressable
+                      style={[
+                        styles.stepperBtn,
+                        {
+                          backgroundColor: theme.colors.card,
+                          borderColor: theme.colors.border,
+                        },
+                      ]}
+                      onPress={() => handleStepWatchingThreshold(1)}
+                      disabled={
+                        settings.watchingThresholdEpisodes >= MAX_MAL_WATCHING_THRESHOLD_EPISODES
+                      }
+                      accessibilityRole="button"
+                      accessibilityLabel="AUMENTA SOGLIA EPISODI IN CORSO"
+                    >
+                      <Ionicons
+                        name="add"
+                        size={18}
+                        color={
+                          settings.watchingThresholdEpisodes >= MAX_MAL_WATCHING_THRESHOLD_EPISODES
+                            ? theme.colors.textMuted
+                            : theme.colors.text
+                        }
+                      />
+                    </Pressable>
+                  </View>
+                )}
+              </View>
 
               {/* Audio Preference SUB vs ITA */}
               <View>

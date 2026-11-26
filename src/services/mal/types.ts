@@ -2,6 +2,7 @@ export type MalListStatusValue = 'watching' | 'plan_to_watch' | 'completed';
 export type MalEditableStatus = MalListStatusValue | 'on_hold' | 'dropped';
 export type MalMediaStatus = 'finished_airing' | 'currently_airing' | 'not_yet_aired' | string;
 export type MalAudioPreference = 'ask' | 'sub' | 'ita';
+export type MalAutoSyncMode = 'off' | 'episodes' | 'completed_only';
 export type MalSortOption = 'recent' | 'title' | 'score';
 
 export interface MalAuthSession {
@@ -12,6 +13,7 @@ export interface MalAuthSession {
   username?: string;
   userId?: number;
   picture?: string;
+  updatedAt?: number;
 }
 
 export interface MalOAuthPending {
@@ -22,7 +24,10 @@ export interface MalOAuthPending {
 }
 
 export interface MalSettings {
+  autoSyncMode: MalAutoSyncMode;
   autoSyncOnComplete: boolean;
+  watchingThresholdEnabled: boolean;
+  watchingThresholdEpisodes: number;
   audioPreference: MalAudioPreference;
 }
 
@@ -163,6 +168,8 @@ export interface MalAutoSyncResult {
     | 'invalid'
     | 'deduped'
     | 'skipped_completed'
+    | 'skipped_completed_only'
+    | 'below_watching_threshold'
     | 'skipped_already_ahead'
     | 'synced'
     | 'queued'

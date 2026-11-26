@@ -136,6 +136,7 @@ export const StorageKeys = {
   SYNC_PENDING_DELETIONS: 'sync.pending_deletions',
   SYNC_IS_ENABLED: 'sync.is_enabled',
   SYNC_KNOWN_TOMBSTONES: 'sync.known_tombstones',
+  SYNC_SERVER_SUPPORTS_MAL_AUTH: 'sync.server_supports_mal_auth',
   MAL_CLIENT_ID: 'mal.clientId',
   MAL_AUTH_SESSION: 'mal.authSession',
   MAL_OAUTH_PENDING: 'mal.oauthPending',
@@ -1677,6 +1678,9 @@ export const AppStorage = {
               (s: any) => (s.query || '').toLowerCase() !== item.key.toLowerCase()
             );
             if (pendingMutations.searchHistory.length !== before) mutModified = true;
+          } else if (item.type === 'mal_auth' && pendingMutations.malAuth !== undefined) {
+            delete pendingMutations.malAuth;
+            mutModified = true;
           }
         }
         if (mutModified) {
@@ -1873,6 +1877,14 @@ export const AppStorage = {
         }
       }
 
+      if (current.malAuth && typeof current.malAuth === 'object') {
+        const t = tombMap.get('mal_auth:default') ?? tombMap.get('mal_auth:malauth');
+        if (t !== undefined && (current.malAuth.updatedAt || 0) <= t) {
+          delete current.malAuth;
+          changed = true;
+        }
+      }
+
       if (changed) {
         if (Object.keys(current).length === 0) {
           AppStorage.remove(StorageKeys.SYNC_PENDING_MUTATIONS);
@@ -1920,7 +1932,8 @@ export const AppStorage = {
       | 'watchHistory'
       | 'watchProgress'
       | 'searchHistory'
-      | 'sharedSettings',
+      | 'sharedSettings'
+      | 'malAuth',
     item: any
   ): void => {
     if (!type || !item) return;
@@ -1942,6 +1955,9 @@ export const AppStorage = {
       } else if (type === 'searchHistory') {
         tombType = 'search_history';
         tombKey = (item.query || '').trim();
+      } else if (type === 'malAuth') {
+        tombType = 'mal_auth';
+        tombKey = 'default';
       }
 
       if (tombType && tombKey) {
@@ -1985,6 +2001,8 @@ export const AppStorage = {
         AppStorage.getObject<Record<string, any>>(StorageKeys.SYNC_PENDING_MUTATIONS) || {};
       if (type === 'sharedSettings') {
         pending.sharedSettings = { ...(pending.sharedSettings || {}), ...item };
+      } else if (type === 'malAuth') {
+        pending.malAuth = item;
       } else {
         const list = Array.isArray(pending[type]) ? [...pending[type]] : [];
         if (type === 'favorites') {
@@ -2103,6 +2121,12 @@ export const AppStorage = {
         }
       }
 
+      if (processed.malAuth && current.malAuth) {
+        if ((current.malAuth.updatedAt || 0) <= (processed.malAuth.updatedAt || 0)) {
+          delete current.malAuth;
+        }
+      }
+
       if (Object.keys(current).length === 0) {
         AppStorage.remove(StorageKeys.SYNC_PENDING_MUTATIONS);
       } else {
@@ -2128,10 +2152,70 @@ export const AppStorage = {
   },
 
   // ----------------------------------------------------
-  // MAL Local Watched Highwater (Isolated from KuroSync & Cache Clear)
+  // MAL Profile Scoping & Watched Highwater
   // ----------------------------------------------------
-  getMalWatchedHighwater: (): Record<string, number> => {
-    const raw = AppStorage.getObject<Record<string, unknown>>(StorageKeys.MAL_WATCHED_HIGHWATER);
+  getActiveMalScopeId: (): string => {
+    const token = AppStorage.getString(StorageKeys.SYNC_DEVICE_TOKEN)?.trim();
+    const serverUrl = (
+      AppStorage.getString(StorageKeys.SYNC_SERVER_URL) ||
+      AppStorage.getString('sync.server_url_backup')
+    )?.trim();
+    const profileId = AppStorage.getString(StorageKeys.SYNC_PROFILE_ID)?.trim();
+    if (token && serverUrl && profileId) {
+      return profileId;
+    }
+    return 'local';
+  },
+
+  getMalScopedStorageKey: (baseKey: string, scopeId?: string): string => {
+    const resolvedScope = (scopeId ?? AppStorage.getActiveMalScopeId()).trim() || 'local';
+    if (resolvedScope === 'local') {
+      return baseKey;
+    }
+    return `${baseKey}.p.${resolvedScope}`;
+  },
+
+  getSyncServerSupportsMalAuth: (serverUrl?: string): boolean => {
+    const normalized = (
+      serverUrl ||
+      AppStorage.getString(StorageKeys.SYNC_SERVER_URL) ||
+      AppStorage.getString('sync.server_url_backup') ||
+      ''
+    )
+      .trim()
+      .replace(/\/+$/, '');
+    if (!normalized) return false;
+    const raw = AppStorage.getObject<Record<string, boolean>>(
+      StorageKeys.SYNC_SERVER_SUPPORTS_MAL_AUTH
+    );
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+      return Boolean(raw[normalized]);
+    }
+    return false;
+  },
+
+  setSyncServerSupportsMalAuth: (supported: boolean, serverUrl?: string): void => {
+    const normalized = (
+      serverUrl ||
+      AppStorage.getString(StorageKeys.SYNC_SERVER_URL) ||
+      AppStorage.getString('sync.server_url_backup') ||
+      ''
+    )
+      .trim()
+      .replace(/\/+$/, '');
+    if (!normalized) return;
+    const raw = AppStorage.getObject<Record<string, boolean>>(
+      StorageKeys.SYNC_SERVER_SUPPORTS_MAL_AUTH
+    );
+    const next = raw && typeof raw === 'object' && !Array.isArray(raw) ? { ...raw } : {};
+    if (next[normalized] === supported) return;
+    next[normalized] = supported;
+    AppStorage.setObject(StorageKeys.SYNC_SERVER_SUPPORTS_MAL_AUTH, next);
+  },
+
+  getMalWatchedHighwater: (scopeId?: string): Record<string, number> => {
+    const key = AppStorage.getMalScopedStorageKey(StorageKeys.MAL_WATCHED_HIGHWATER, scopeId);
+    const raw = AppStorage.getObject<Record<string, unknown>>(key);
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
       return {};
     }
@@ -2144,24 +2228,26 @@ export const AppStorage = {
     return clean;
   },
 
-  getMalWatchedHighwaterForAnime: (animeId: string): number => {
+  getMalWatchedHighwaterForAnime: (animeId: string, scopeId?: string): number => {
     if (!animeId) return 0;
-    const map = AppStorage.getMalWatchedHighwater();
+    const map = AppStorage.getMalWatchedHighwater(scopeId);
     return map[animeId] || 0;
   },
 
-  recordMalWatchedHighwater: (animeId: string, episodeNumber: number): void => {
+  recordMalWatchedHighwater: (animeId: string, episodeNumber: number, scopeId?: string): void => {
     if (!animeId || !Number.isInteger(episodeNumber) || episodeNumber <= 0) return;
-    const current = AppStorage.getMalWatchedHighwater();
+    const current = AppStorage.getMalWatchedHighwater(scopeId);
     const prev = current[animeId] || 0;
     if (episodeNumber > prev) {
       current[animeId] = episodeNumber;
-      AppStorage.setObject(StorageKeys.MAL_WATCHED_HIGHWATER, current);
+      const key = AppStorage.getMalScopedStorageKey(StorageKeys.MAL_WATCHED_HIGHWATER, scopeId);
+      AppStorage.setObject(key, current);
     }
   },
 
-  clearMalWatchedHighwater: (): void => {
-    AppStorage.remove(StorageKeys.MAL_WATCHED_HIGHWATER);
+  clearMalWatchedHighwater: (scopeId?: string): void => {
+    const key = AppStorage.getMalScopedStorageKey(StorageKeys.MAL_WATCHED_HIGHWATER, scopeId);
+    AppStorage.remove(key);
   },
 
   clearCache: (): void => {

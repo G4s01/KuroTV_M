@@ -288,6 +288,32 @@ export function mergeLocalAndRemote(
     (a, b) => (b.timestamp || 0) - (a.timestamp || 0)
   );
 
+  // --------------------------------------------------------------------------
+  // 7. MAL Auth Credentials (per-profile LWW + 'mal_auth' tombstone dominance)
+  // --------------------------------------------------------------------------
+  const malAuthTomb =
+    tombstoneMap.get('mal_auth:default') ??
+    tombstoneMap.get('mal_auth:malAuth') ??
+    tombstoneMap.get('mal_auth:malauth');
+
+  let mergedMalAuth = local.malAuth ?? null;
+  if (mergedMalAuth && malAuthTomb !== undefined && (mergedMalAuth.updatedAt || 0) <= malAuthTomb) {
+    mergedMalAuth = null;
+    appliedDeletions++;
+  }
+
+  const remoteMalAuth = remote.deltas?.malAuth ?? null;
+  if (remoteMalAuth && remoteMalAuth.accessToken && remoteMalAuth.refreshToken) {
+    const isSupersededByTomb =
+      malAuthTomb !== undefined && (remoteMalAuth.updatedAt || 0) <= malAuthTomb;
+    if (!isSupersededByTomb) {
+      if (!mergedMalAuth || (remoteMalAuth.updatedAt || 0) >= (mergedMalAuth.updatedAt || 0)) {
+        mergedMalAuth = { ...remoteMalAuth };
+        appliedUpserts++;
+      }
+    }
+  }
+
   return {
     state: {
       favorites: sortedFavorites,
@@ -296,6 +322,12 @@ export function mergeLocalAndRemote(
       watchProgress: Array.from(wpMap.values()),
       sharedSettings,
       searchHistory: sortedSearchHistory,
+      ...(mergedMalAuth !== null ||
+      local.malAuth !== undefined ||
+      remote.deltas?.malAuth !== undefined ||
+      malAuthTomb !== undefined
+        ? { malAuth: mergedMalAuth }
+        : {}),
     },
     appliedDeletions,
     appliedUpserts,

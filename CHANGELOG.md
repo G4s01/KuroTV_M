@@ -184,7 +184,7 @@ e questo progetto aderisce al [Semantic Versioning](https://semver.org/lang/it/)
 
 Minor Player Fixes
 
-## [1.0.0] - 2026-11-25
+## [1.0.0] - 2026-11-26
 
 - Ripresa della visione dal Play Button nella Scheda Dettagli;
 - Fix escursione gesture volume e luminosità del player nonché azione ora nativa;

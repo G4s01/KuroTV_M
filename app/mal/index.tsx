@@ -49,7 +49,7 @@ import {
 } from '@/services/mal';
 import malSvg from '../../assets/icons/myanimelist.svg';
 
-const MAL_QUERY_KEY = ['mal', 'lists'] as const;
+const getMalQueryKey = (scopeId: string) => ['mal', 'lists', scopeId] as const;
 
 const SORT_LABELS: Record<MalSortOption, string> = {
   recent: 'RECENTI',
@@ -100,6 +100,10 @@ export default function MalScreen() {
   const primaryContrast = getContrastTextColor(theme.colors.primary);
 
   const [authStatus, setAuthStatus] = React.useState(() => MalAuthService.getStatus());
+  const malQueryKey = React.useMemo(
+    () => getMalQueryKey(authStatus.profileScopeId),
+    [authStatus.profileScopeId]
+  );
   const [activeTab, setActiveTab] = React.useState<MalListStatusValue>('watching');
   const [sortBy, setSortBy] = React.useState<MalSortOption>('recent');
 
@@ -149,11 +153,11 @@ export default function MalScreen() {
   const syncCacheIntoQuery = React.useCallback(() => {
     const latestCache = getMalListCache();
     if (!latestCache) return;
-    const existing = queryClient.getQueryData<MalListCache>(MAL_QUERY_KEY);
+    const existing = queryClient.getQueryData<MalListCache>(malQueryKey);
     if (!existing || latestCache.updatedAt > (existing.updatedAt || 0)) {
-      queryClient.setQueryData(MAL_QUERY_KEY, latestCache);
+      queryClient.setQueryData(malQueryKey, latestCache);
     }
-  }, [queryClient]);
+  }, [malQueryKey, queryClient]);
 
   React.useEffect(() => {
     isMountedRef.current = true;
@@ -175,7 +179,7 @@ export default function MalScreen() {
   }, [syncCacheIntoQuery]);
 
   const listsQuery = useQuery<MalListCache>({
-    queryKey: MAL_QUERY_KEY,
+    queryKey: malQueryKey,
     enabled: authStatus.isConnected,
     queryFn: async () => {
       await MalSyncService.flushPendingUpdates().catch(() => {});
@@ -291,7 +295,7 @@ export default function MalScreen() {
     try {
       await MalSyncService.flushPendingUpdates().catch(() => {});
       const fresh = await MalClient.fetchAllTrackedLists();
-      queryClient.setQueryData(MAL_QUERY_KEY, fresh);
+      queryClient.setQueryData(malQueryKey, fresh);
       setDataRevision((r) => r + 1);
     } catch (err: any) {
       setBannerMessage({
@@ -301,7 +305,7 @@ export default function MalScreen() {
     } finally {
       setIsRefreshing(false);
     }
-  }, [authStatus.isConnected, queryClient]);
+  }, [authStatus.isConnected, malQueryKey, queryClient]);
 
   const handleOpenSyncDiff = React.useCallback(async () => {
     if (!authStatus.isConnected) return;
@@ -314,7 +318,7 @@ export default function MalScreen() {
       let currentLists = listsQuery.data || getMalListCache();
       if (!currentLists) {
         currentLists = await MalClient.fetchAllTrackedLists();
-        queryClient.setQueryData(MAL_QUERY_KEY, currentLists);
+        queryClient.setQueryData(malQueryKey, currentLists);
       }
       const res = await MalSyncService.computeAppToMalDiff({
         resolveMissingMappings: true,
@@ -334,15 +338,15 @@ export default function MalScreen() {
       setIsLoadingDiff(false);
       setMappingProgress(null);
     }
-  }, [authStatus.isConnected, listsQuery.data, queryClient]);
+  }, [authStatus.isConnected, listsQuery.data, malQueryKey, queryClient]);
 
   const handleProposalsApplied = React.useCallback(
     (result: MalSyncApplyResult) => {
       const updatedCache = getMalListCache();
       if (updatedCache) {
-        queryClient.setQueryData(MAL_QUERY_KEY, updatedCache);
+        queryClient.setQueryData(malQueryKey, updatedCache);
       } else {
-        queryClient.invalidateQueries({ queryKey: MAL_QUERY_KEY }).catch(() => {});
+        queryClient.invalidateQueries({ queryKey: malQueryKey }).catch(() => {});
       }
       setDataRevision((r) => r + 1);
       setBannerMessage({
@@ -353,7 +357,7 @@ export default function MalScreen() {
             : `SINCRONIZZAZIONE COMPLETATA (${result.succeeded} AGGIORNATI SU MAL).`,
       });
     },
-    [queryClient]
+    [malQueryKey, queryClient]
   );
 
   const handleCardPress = React.useCallback(
@@ -586,6 +590,9 @@ export default function MalScreen() {
                 numberOfLines={1}
               >
                 @{authStatus.username}
+                {authStatus.isKuroSyncLinked
+                  ? ` • ${(authStatus.kuroSyncProfileName || 'KUROSYNC').toUpperCase()}`
+                  : ''}
               </Text>
             ) : null}
           </View>
@@ -668,8 +675,9 @@ export default function MalScreen() {
         >
           <MalConnectCard
             onConnected={() => {
-              setAuthStatus(MalAuthService.getStatus());
-              queryClient.invalidateQueries({ queryKey: MAL_QUERY_KEY }).catch(() => {});
+              const next = MalAuthService.getStatus();
+              setAuthStatus(next);
+              queryClient.invalidateQueries({ queryKey: getMalQueryKey(next.profileScopeId) }).catch(() => {});
             }}
           />
         </ScrollView>
@@ -1026,7 +1034,7 @@ export default function MalScreen() {
         onUpdated={() => {
           const updatedCache = getMalListCache();
           if (updatedCache) {
-            queryClient.setQueryData(MAL_QUERY_KEY, updatedCache);
+            queryClient.setQueryData(malQueryKey, updatedCache);
           }
           setDataRevision((r) => r + 1);
         }}
@@ -1037,7 +1045,7 @@ export default function MalScreen() {
         isVisible={isSettingsVisible}
         onClose={() => setIsSettingsVisible(false)}
         onLoggedOut={() => {
-          queryClient.removeQueries({ queryKey: MAL_QUERY_KEY });
+          queryClient.removeQueries({ queryKey: malQueryKey });
           setAuthStatus(MalAuthService.getStatus());
           setDataRevision((r) => r + 1);
         }}

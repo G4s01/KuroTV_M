@@ -16,6 +16,7 @@ import {
   MAL_API_CONFIG_URL,
   MAL_REDIRECT_URI,
   MalAuthService,
+  addMalDataListener,
   getEffectiveMalClientId,
   isValidMalClientId,
   setStoredMalClientId,
@@ -32,6 +33,7 @@ export const MalConnectCard: React.FC<MalConnectCardProps> = React.memo(
     const { theme } = useTheme();
     const primaryContrast = getContrastTextColor(theme.colors.primary);
 
+    const [authStatus, setAuthStatus] = React.useState(() => MalAuthService.getStatus());
     const initialClientId = React.useMemo(() => getEffectiveMalClientId(), []);
     const inputRef = React.useRef<React.ComponentRef<typeof TextInput>>(null);
     const lastNativeTextRef = React.useRef<string>(initialClientId);
@@ -47,7 +49,21 @@ export const MalConnectCard: React.FC<MalConnectCardProps> = React.memo(
     const [errorMsg, setErrorMsg] = React.useState<string | null>(null);
 
     React.useEffect(() => {
+      const unsub = addMalDataListener(() => {
+        const nextStatus = MalAuthService.getStatus();
+        setAuthStatus((prev) => {
+          if (prev.profileScopeId !== nextStatus.profileScopeId) {
+            const scopedId = getEffectiveMalClientId();
+            lastNativeTextRef.current = scopedId;
+            setHasText(scopedId.length > 0);
+            setIsClientIdValid(isValidMalClientId(scopedId));
+            setInputKey((k) => k + 1);
+          }
+          return nextStatus;
+        });
+      });
       return () => {
+        unsub();
         if (copyTimerRef.current) {
           clearTimeout(copyTimerRef.current);
         }
@@ -137,7 +153,9 @@ export const MalConnectCard: React.FC<MalConnectCardProps> = React.memo(
               COLLEGA MYANIMELIST
             </Text>
             <Text style={[styles.connectSubtitle, { color: theme.colors.textSecondary }]}>
-              SFOGLIA IN CORSO, DA GUARDARE E COMPLETATI • SINCRONIA APP → MAL LOCALE AL DISPOSITIVO
+              {authStatus.isKuroSyncLinked
+                ? `PROFILO KUROSYNC: ${(authStatus.kuroSyncProfileName || 'PRINCIPALE').toUpperCase()} • ACCOUNT E TOKEN MAL LEGATI A QUESTO PROFILO`
+                : 'SFOGLIA IN CORSO, DA GUARDARE E COMPLETATI • PROFILO LOCALE DISCONNESSO DA KUROSYNC'}
             </Text>
           </View>
         </View>

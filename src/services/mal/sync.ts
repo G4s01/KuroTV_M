@@ -3,8 +3,10 @@ import { MalAuthService } from './auth';
 import { MalApiError, MalClient } from './client';
 import {
   findEntryInMalListCache,
+  getActiveMalProfileScope,
   getMalIgnoredAnimeIds,
   getMalListCache,
+  getMalScopedKey,
   getMalSettings,
   notifyMalDataListeners,
   setMalLastSyncTime,
@@ -439,8 +441,15 @@ class MalSyncServiceClass {
     this.sessionAutoSyncedKeys.clear();
   }
 
-  getPendingUpdates(): MalPendingUpdate[] {
-    const raw = AppStorage.getObject<unknown>(StorageKeys.MAL_PENDING_UPDATES);
+  handleSyncScopeChanged(): void {
+    this.sessionAutoSyncedKeys.clear();
+    this.flushInFlight = null;
+  }
+
+  getPendingUpdates(scopeId?: string): MalPendingUpdate[] {
+    const raw = AppStorage.getObject<unknown>(
+      getMalScopedKey(StorageKeys.MAL_PENDING_UPDATES, scopeId)
+    );
     if (!Array.isArray(raw)) return [];
     return raw.filter(
       (item): item is MalPendingUpdate =>
@@ -448,15 +457,16 @@ class MalSyncServiceClass {
     );
   }
 
-  getPendingUpdatesCount(): number {
-    return this.getPendingUpdates().length;
+  getPendingUpdatesCount(scopeId?: string): number {
+    return this.getPendingUpdates(scopeId).length;
   }
 
-  private savePendingUpdates(items: MalPendingUpdate[]): void {
+  private savePendingUpdates(items: MalPendingUpdate[], scopeId?: string): void {
+    const key = getMalScopedKey(StorageKeys.MAL_PENDING_UPDATES, scopeId);
     if (items.length === 0) {
-      AppStorage.remove(StorageKeys.MAL_PENDING_UPDATES);
+      AppStorage.remove(key);
     } else {
-      AppStorage.setObject(StorageKeys.MAL_PENDING_UPDATES, items);
+      AppStorage.setObject(key, items);
     }
     notifyMalDataListeners();
   }
@@ -595,7 +605,7 @@ class MalSyncServiceClass {
     isOngoingSeries?: boolean;
   }): Promise<MalAutoSyncResult> {
     const settings = getMalSettings();
-    if (!settings.autoSyncOnComplete) {
+    if (settings.autoSyncMode === 'off') {
       return { status: 'disabled' };
     }
 
@@ -615,8 +625,9 @@ class MalSyncServiceClass {
       return { status: 'invalid' };
     }
 
+    const scopeId = getActiveMalProfileScope();
     const normalizedMalId = Math.floor(malId);
-    const dedupKey = `${normalizedMalId}:${ep}`;
+    const dedupKey = `${scopeId}:${normalizedMalId}:${ep}`;
     if (this.sessionAutoSyncedKeys.has(dedupKey)) {
       return { status: 'deduped' };
     }
@@ -650,8 +661,22 @@ class MalSyncServiceClass {
 
     const targetStatus: MalListStatusValue = qualifiesCompleted ? 'completed' : 'watching';
 
+    if (settings.autoSyncMode === 'completed_only' && targetStatus !== 'completed') {
+      return { status: 'skipped_completed_only', targetStatus, targetEpisodes };
+    }
+
+    const isAlreadyWatching = cached?.status === 'watching';
     if (
-      cached?.status === 'watching' &&
+      settings.watchingThresholdEnabled &&
+      targetStatus === 'watching' &&
+      !isAlreadyWatching &&
+      targetEpisodes < settings.watchingThresholdEpisodes
+    ) {
+      return { status: 'below_watching_threshold', targetStatus, targetEpisodes };
+    }
+
+    if (
+      isAlreadyWatching &&
       cached.watchedEpisodes >= targetEpisodes &&
       targetStatus !== 'completed'
     ) {

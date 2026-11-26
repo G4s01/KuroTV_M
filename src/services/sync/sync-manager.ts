@@ -6,6 +6,14 @@ import {
   parseKuroSyncDeepLink,
   type ParsedKuroSyncDeepLink,
 } from './deep-link';
+import {
+  applyRemoteMalAuthRecordForScope,
+  clearSyncedMalProfileData,
+  getActiveMalProfileScope,
+  getMalAuthSyncRecordForScope,
+} from '../mal/config';
+import { MalAuthService } from '../mal/auth';
+import { MalSyncService } from '../mal/sync';
 import type {
   DeltaPushRequest,
   LocalStorageState,
@@ -47,8 +55,33 @@ export function isSyncAuthError(err?: string | null, status?: number): boolean {
 
 export { parseKuroSyncDeepLink, type ParsedKuroSyncDeepLink };
 
-function sanitizePushPayload(payload: DeltaPushRequest): DeltaPushRequest {
+function sanitizePushPayload(
+  payload: DeltaPushRequest,
+  includeMalAuth = AppStorage.getSyncServerSupportsMalAuth()
+): DeltaPushRequest {
   const sanitized: DeltaPushRequest = { ...payload };
+
+  if (includeMalAuth && sanitized.malAuth) {
+    const ma = sanitized.malAuth;
+    if (ma.clientId && ma.accessToken && ma.refreshToken) {
+      sanitized.malAuth = {
+        profileId: ma.profileId,
+        clientId: ma.clientId.trim(),
+        accessToken: ma.accessToken,
+        refreshToken: ma.refreshToken,
+        expiresAt: typeof ma.expiresAt === 'number' ? ma.expiresAt : 0,
+        tokenType: ma.tokenType || 'Bearer',
+        username: ma.username,
+        userId: ma.userId,
+        picture: ma.picture,
+        updatedAt: typeof ma.updatedAt === 'number' && ma.updatedAt > 0 ? ma.updatedAt : Date.now(),
+      };
+    } else {
+      delete sanitized.malAuth;
+    }
+  } else {
+    delete sanitized.malAuth;
+  }
 
   if (Array.isArray(sanitized.favorites)) {
     sanitized.favorites = sanitized.favorites.map((f) => ({
@@ -124,6 +157,9 @@ function sanitizePushPayload(payload: DeltaPushRequest): DeltaPushRequest {
       'shared_settings',
       'search_history',
     ]);
+    if (includeMalAuth) {
+      validTypes.add('mal_auth');
+    }
     sanitized.deletions = sanitized.deletions
       .filter((d) => d && typeof d.key === 'string' && validTypes.has(d.type))
       .map((d) => ({
@@ -575,14 +611,20 @@ class SyncManagerClass {
       AppStorage.setString(StorageKeys.SYNC_PROFILE_NAME, activeName);
       AppStorage.setBoolean(StorageKeys.SYNC_IS_ENABLED, true);
       this.resetLastSyncTimestamp(profileId);
+      MalAuthService.handleSyncScopeChanged();
+      MalSyncService.handleSyncScopeChanged();
 
       // Trigger initial full sync
       const syncRes = await this.performFullSync(0);
       if (!syncRes.ok && syncRes.error && (syncRes.error.includes('401') || syncRes.error.toLowerCase().includes('unauthorized'))) {
         AppStorage.remove(StorageKeys.SYNC_DEVICE_TOKEN);
         AppStorage.remove(StorageKeys.SYNC_DEVICE_ID);
+        AppStorage.remove(StorageKeys.SYNC_PROFILE_ID);
+        AppStorage.remove(StorageKeys.SYNC_PROFILE_NAME);
         AppStorage.setBoolean(StorageKeys.SYNC_IS_ENABLED, false);
         this.client.setDeviceToken(undefined);
+        MalAuthService.handleSyncScopeChanged();
+        MalSyncService.handleSyncScopeChanged();
         this.isSyncing = false;
         this.lastError = syncRes.error;
         this.notify();
@@ -729,14 +771,20 @@ class SyncManagerClass {
       if (activeProfileName) AppStorage.setString(StorageKeys.SYNC_PROFILE_NAME, activeProfileName);
       AppStorage.setBoolean(StorageKeys.SYNC_IS_ENABLED, true);
       this.resetLastSyncTimestamp(activeProfileId);
+      MalAuthService.handleSyncScopeChanged();
+      MalSyncService.handleSyncScopeChanged();
 
       // Trigger initial full sync
       const syncRes = await this.performFullSync(0);
       if (!syncRes.ok && syncRes.error && (syncRes.error.includes('401') || syncRes.error.toLowerCase().includes('unauthorized'))) {
         AppStorage.remove(StorageKeys.SYNC_DEVICE_TOKEN);
         AppStorage.remove(StorageKeys.SYNC_DEVICE_ID);
+        AppStorage.remove(StorageKeys.SYNC_PROFILE_ID);
+        AppStorage.remove(StorageKeys.SYNC_PROFILE_NAME);
         AppStorage.setBoolean(StorageKeys.SYNC_IS_ENABLED, false);
         this.client.setDeviceToken(undefined);
+        MalAuthService.handleSyncScopeChanged();
+        MalSyncService.handleSyncScopeChanged();
         this.isSyncing = false;
         this.lastError = syncRes.error;
         this.notify();
@@ -823,6 +871,8 @@ class SyncManagerClass {
       AppStorage.setString(StorageKeys.SYNC_PROFILE_NAME, activeProfileName);
       AppStorage.setBoolean(StorageKeys.SYNC_IS_ENABLED, true);
       this.resetLastSyncTimestamp(activeProfileId);
+      MalAuthService.handleSyncScopeChanged();
+      MalSyncService.handleSyncScopeChanged();
 
       this.client.setDeviceToken(token);
 
@@ -831,8 +881,12 @@ class SyncManagerClass {
       if (!syncRes.ok && syncRes.error && (syncRes.error.includes('401') || syncRes.error.toLowerCase().includes('unauthorized'))) {
         AppStorage.remove(StorageKeys.SYNC_DEVICE_TOKEN);
         AppStorage.remove(StorageKeys.SYNC_DEVICE_ID);
+        AppStorage.remove(StorageKeys.SYNC_PROFILE_ID);
+        AppStorage.remove(StorageKeys.SYNC_PROFILE_NAME);
         AppStorage.setBoolean(StorageKeys.SYNC_IS_ENABLED, false);
         this.client.setDeviceToken(undefined);
+        MalAuthService.handleSyncScopeChanged();
+        MalSyncService.handleSyncScopeChanged();
         this.isSyncing = false;
         this.lastError = syncRes.error;
         this.notify();
@@ -914,6 +968,8 @@ class SyncManagerClass {
       if (activeProfileName) AppStorage.setString(StorageKeys.SYNC_PROFILE_NAME, activeProfileName);
       AppStorage.setBoolean(StorageKeys.SYNC_IS_ENABLED, true);
       this.resetLastSyncTimestamp(activeProfileId);
+      MalAuthService.handleSyncScopeChanged();
+      MalSyncService.handleSyncScopeChanged();
 
       this.client.setDeviceToken(token);
 
@@ -940,6 +996,10 @@ class SyncManagerClass {
     } catch {
       // Invalida credenziali locali anche se offline o token già revocato
     } finally {
+      const disconnectingProfileId = AppStorage.getString(StorageKeys.SYNC_PROFILE_ID)?.trim();
+      if (disconnectingProfileId) {
+        clearSyncedMalProfileData(disconnectingProfileId);
+      }
       this.cancelAutoSync();
       this.stopPeriodicSync();
       AppStorage.remove(StorageKeys.SYNC_DEVICE_TOKEN);
@@ -957,6 +1017,8 @@ class SyncManagerClass {
       this.client.setDeviceToken(undefined);
       this.lastError = null;
       this.isSyncing = false;
+      MalAuthService.handleSyncScopeChanged();
+      MalSyncService.handleSyncScopeChanged();
       this.notify();
     }
   }
@@ -1051,6 +1113,12 @@ class SyncManagerClass {
       // 2. Perform complete pull (since = 0) to load fresh state for the new profile
       // Safe order: pull BEFORE clearing/mutating local MMKV state so that network failures do not corrupt data
       const pullRes = await this.client.pullDelta(0);
+      const serverSupportsMalAuth = Boolean(pullRes?.deltas && 'malAuth' in pullRes.deltas);
+      AppStorage.setSyncServerSupportsMalAuth(serverSupportsMalAuth);
+
+      const existingTargetMalAuth = serverSupportsMalAuth
+        ? getMalAuthSyncRecordForScope(profileId)
+        : undefined;
 
       // 3. Clear pending mutations and deletions from previous profile
       AppStorage.clearPendingSyncMutations();
@@ -1068,6 +1136,7 @@ class SyncManagerClass {
         watchProgress: [],
         sharedSettings: {},
         searchHistory: [],
+        ...(serverSupportsMalAuth ? { malAuth: existingTargetMalAuth } : {}),
       };
       const { state: mergedState } = mergeLocalAndRemote(emptyLocalState, pullRes);
 
@@ -1089,10 +1158,15 @@ class SyncManagerClass {
       if (mergedState.sharedSettings && Object.keys(mergedState.sharedSettings).length > 0) {
         AppStorage.saveSettings(mergedState.sharedSettings);
       }
+      if (serverSupportsMalAuth) {
+        applyRemoteMalAuthRecordForScope(profileId, mergedState.malAuth ?? null, { notify: false });
+      }
 
       this.setLastSyncTimestamp(pullRes.serverTime, profileId);
       AppStorage.setNumber(StorageKeys.SYNC_LAST_TIME, Date.now());
       AppStorage.notifyStorageChanged();
+      MalAuthService.handleSyncScopeChanged();
+      MalSyncService.handleSyncScopeChanged();
 
       this.isSyncing = false;
       this.notify();
@@ -1247,6 +1321,8 @@ class SyncManagerClass {
 
       // 1. Pull deltas from server
       const remotePull = await this.client.pullDelta(since);
+      const serverSupportsMalAuth = Boolean(remotePull?.deltas && 'malAuth' in remotePull.deltas);
+      AppStorage.setSyncServerSupportsMalAuth(serverSupportsMalAuth);
 
       // Record incoming remote tombstones and prune superseded local mutations
       if (Array.isArray(remotePull.tombstones) && remotePull.tombstones.length > 0) {
@@ -1269,6 +1345,11 @@ class SyncManagerClass {
         searchHistoryRetentionDays: settings.searchHistoryRetentionDays,
       };
 
+      const activeScopeId = getActiveMalProfileScope();
+      const localMalAuth = serverSupportsMalAuth
+        ? getMalAuthSyncRecordForScope(activeScopeId)
+        : undefined;
+
       const localState: LocalStorageState = {
         favorites: AppStorage.getFavorites(),
         continueWatching: AppStorage.getContinueWatching(),
@@ -1276,6 +1357,7 @@ class SyncManagerClass {
         watchProgress: AppStorage.getAllWatchProgress(),
         sharedSettings,
         searchHistory: AppStorage.getSearchHistory(),
+        ...(serverSupportsMalAuth ? { malAuth: localMalAuth } : {}),
       };
 
       // 3. Merge local and remote
@@ -1314,6 +1396,16 @@ class SyncManagerClass {
       if (mergedState.sharedSettings) {
         AppStorage.saveSettings(mergedState.sharedSettings, true);
       }
+      if (serverSupportsMalAuth && activeScopeId !== 'local') {
+        const malAuthChanged = applyRemoteMalAuthRecordForScope(
+          activeScopeId,
+          mergedState.malAuth ?? null,
+          { notify: false }
+        );
+        if (malAuthChanged) {
+          MalAuthService.handleSyncScopeChanged();
+        }
+      }
       AppStorage.notifyStorageChanged();
 
       // 5. Gather and push pending local changes
@@ -1326,24 +1418,31 @@ class SyncManagerClass {
       // If initial bootstrap (since === 0), also push current local data to populate the profile
       let pushPayload: DeltaPushRequest;
       if (since === 0) {
-        pushPayload = sanitizePushPayload({
-          favorites: mergedState.favorites,
-          continueWatching: mergedState.continueWatching,
-          watchHistory: mergedState.watchHistory,
-          watchProgress: mergedState.watchProgress,
-          sharedSettings: mergedState.sharedSettings,
-          searchHistory: mergedState.searchHistory,
-          deletions: pendingDeletions,
-        });
+        pushPayload = sanitizePushPayload(
+          {
+            favorites: mergedState.favorites,
+            continueWatching: mergedState.continueWatching,
+            watchHistory: mergedState.watchHistory,
+            watchProgress: mergedState.watchProgress,
+            sharedSettings: mergedState.sharedSettings,
+            searchHistory: mergedState.searchHistory,
+            ...(serverSupportsMalAuth && mergedState.malAuth ? { malAuth: mergedState.malAuth } : {}),
+            deletions: pendingDeletions,
+          },
+          serverSupportsMalAuth
+        );
       } else if (hasPending) {
         const hasSearchChanges =
           Array.isArray(pendingMutations.searchHistory) ||
           pendingDeletions.some((d) => d.type === 'search_history');
 
-        pushPayload = sanitizePushPayload({
-          ...pendingMutations,
-          deletions: pendingDeletions,
-        });
+        pushPayload = sanitizePushPayload(
+          {
+            ...pendingMutations,
+            deletions: pendingDeletions,
+          },
+          serverSupportsMalAuth
+        );
         if (hasSearchChanges) {
           pushPayload.searchHistory = mergedState.searchHistory;
         }
@@ -1351,13 +1450,24 @@ class SyncManagerClass {
         pushPayload = {};
       }
 
+      const hasSanitizedPushData = Boolean(
+        (pushPayload.favorites && pushPayload.favorites.length > 0) ||
+          (pushPayload.continueWatching && pushPayload.continueWatching.length > 0) ||
+          (pushPayload.watchHistory && pushPayload.watchHistory.length > 0) ||
+          (pushPayload.watchProgress && pushPayload.watchProgress.length > 0) ||
+          (pushPayload.sharedSettings && Object.keys(pushPayload.sharedSettings).length > 0) ||
+          (pushPayload.searchHistory && pushPayload.searchHistory.length > 0) ||
+          pushPayload.malAuth ||
+          (pushPayload.deletions && pushPayload.deletions.length > 0)
+      );
+
       let newServerTime = remotePull.serverTime;
-      if (since === 0 || hasPending) {
+      if (since === 0 || hasSanitizedPushData) {
         const pushRes = await this.client.pushDelta(pushPayload);
         if (pushRes.serverTime) {
           newServerTime = pushRes.serverTime;
         }
-        AppStorage.removePendingSyncDeletions(pendingDeletions);
+        AppStorage.removePendingSyncDeletions(pushPayload.deletions || []);
         AppStorage.removePendingSyncMutations(pushPayload);
       }
 
@@ -1565,18 +1675,37 @@ class SyncManagerClass {
         Array.isArray(pendingMutations.searchHistory) ||
         pendingDeletions.some((d) => d.type === 'search_history');
 
-      const pushPayload: DeltaPushRequest = sanitizePushPayload({
-        ...pendingMutations,
-        deletions: pendingDeletions,
-      });
+      const serverSupportsMalAuth = AppStorage.getSyncServerSupportsMalAuth();
+      const pushPayload: DeltaPushRequest = sanitizePushPayload(
+        {
+          ...pendingMutations,
+          deletions: pendingDeletions,
+        },
+        serverSupportsMalAuth
+      );
 
       if (hasSearchChanges) {
         pushPayload.searchHistory = AppStorage.getSearchHistory();
       }
 
+      const hasSanitizedContent = Boolean(
+        (pushPayload.favorites && pushPayload.favorites.length > 0) ||
+          (pushPayload.continueWatching && pushPayload.continueWatching.length > 0) ||
+          (pushPayload.watchHistory && pushPayload.watchHistory.length > 0) ||
+          (pushPayload.watchProgress && pushPayload.watchProgress.length > 0) ||
+          (pushPayload.sharedSettings && Object.keys(pushPayload.sharedSettings).length > 0) ||
+          (pushPayload.searchHistory && pushPayload.searchHistory.length > 0) ||
+          pushPayload.malAuth ||
+          (pushPayload.deletions && pushPayload.deletions.length > 0)
+      );
+
+      if (!force && !hasSanitizedContent) {
+        return { ok: true };
+      }
+
       await this.client.pushDelta(pushPayload);
 
-      AppStorage.removePendingSyncDeletions(pendingDeletions);
+      AppStorage.removePendingSyncDeletions(pushPayload.deletions || []);
       AppStorage.removePendingSyncMutations(pushPayload);
       AppStorage.setNumber(StorageKeys.SYNC_LAST_TIME, Date.now());
       return { ok: true };

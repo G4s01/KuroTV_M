@@ -105,11 +105,25 @@ export const MalSyncSummaryCard: React.FC = React.memo(function MalSyncSummaryCa
             </Text>
           </View>
           <View style={[styles.syncRow, { borderBottomColor: theme.colors.border }]}>
+            <Text style={[styles.syncRowLabel, { color: theme.colors.textMuted }]}>PROFILO</Text>
+            <Text style={[styles.syncRowValue, { color: theme.colors.text }]} numberOfLines={1}>
+              {authStatus.isKuroSyncLinked
+                ? `${(authStatus.kuroSyncProfileName || 'PRINCIPALE').toUpperCase()} (KUROSYNC)`
+                : 'LOCALE'}
+            </Text>
+          </View>
+          <View style={[styles.syncRow, { borderBottomColor: theme.colors.border }]}>
             <Text style={[styles.syncRowLabel, { color: theme.colors.textMuted }]}>
               AUTO-SYNC PLAYER
             </Text>
             <Text style={[styles.syncRowValue, { color: theme.colors.text }]}>
-              {malSettings.autoSyncOnComplete ? 'ON' : 'OFF'}
+              {malSettings.autoSyncMode === 'episodes'
+                ? malSettings.watchingThresholdEnabled
+                  ? `EPISODI (EP. ${malSettings.watchingThresholdEpisodes}+)`
+                  : 'EPISODI'
+                : malSettings.autoSyncMode === 'completed_only'
+                ? 'SOLO FINITI'
+                : 'OFF'}
             </Text>
           </View>
           <View style={[styles.syncRow, { borderBottomColor: theme.colors.border }]}>
@@ -133,7 +147,9 @@ export const MalSyncSummaryCard: React.FC = React.memo(function MalSyncSummaryCa
         </View>
       ) : (
         <Text style={[styles.syncDesc, { color: theme.colors.textMuted }]}>
-          CONSULTA LE TUE LISTE MYANIMELIST E INVIA I PROGRESSI DALL&apos;APP (SOLO LOCALE, SEPARATO DA KUROSYNC).
+          {authStatus.isKuroSyncLinked
+            ? `COLLEGAMENTO MYANIMELIST LEGATO AL PROFILO ${(authStatus.kuroSyncProfileName || 'PRINCIPALE').toUpperCase()} DI KUROSYNC.`
+            : 'CONSULTA LE TUE LISTE MYANIMELIST E INVIA I PROGRESSI DALL\'APP (MODALITÀ LOCALE).'}
         </Text>
       )}
 

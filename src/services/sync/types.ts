@@ -208,14 +208,41 @@ export interface SwitchProfileResponse {
   profile: ProfileItem;
 }
 
+export interface MalAuthSyncRecord {
+  profileId?: string;
+  clientId: string;
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: number;
+  tokenType: string;
+  username?: string;
+  userId?: number;
+  picture?: string;
+  updatedAt: number;
+}
+
 export interface TombstoneItem {
-  type: 'favorite' | 'continue_watching' | 'watch_history' | 'watch_progress' | 'search_history' | string;
+  type:
+    | 'favorite'
+    | 'continue_watching'
+    | 'watch_history'
+    | 'watch_progress'
+    | 'search_history'
+    | 'mal_auth'
+    | string;
   key: string;
   deletedAt: number;
 }
 
 export interface DeltaPushDeletion {
-  type: 'favorite' | 'continue_watching' | 'watch_history' | 'watch_progress' | 'search_history' | string;
+  type:
+    | 'favorite'
+    | 'continue_watching'
+    | 'watch_history'
+    | 'watch_progress'
+    | 'search_history'
+    | 'mal_auth'
+    | string;
   key: string;
   deletedAt?: number;
 }
@@ -227,6 +254,7 @@ export interface DeltaPushRequest {
   watchProgress?: WatchProgressItem[];
   sharedSettings?: Record<string, any>;
   searchHistory?: SearchHistoryItem[];
+  malAuth?: MalAuthSyncRecord | null;
   deletions?: DeltaPushDeletion[];
 }
 
@@ -246,6 +274,7 @@ export interface RemotePullResponse {
     watchProgress: WatchProgressItem[];
     sharedSettings: Record<string, any>;
     searchHistory: SearchHistoryItem[];
+    malAuth?: MalAuthSyncRecord | null;
   };
   tombstones: TombstoneItem[];
 }
@@ -259,6 +288,7 @@ export interface BackupExportData {
   watchHistory: any[];
   watchProgress: any[];
   sharedSettings: any[];
+  malAuth?: any[];
   tombstones: any[];
 }
 
@@ -278,6 +308,7 @@ export interface LocalStorageState {
   watchProgress: WatchProgressItem[];
   sharedSettings: Record<string, any>;
   searchHistory: SearchHistoryItem[];
+  malAuth?: MalAuthSyncRecord | null;
 }
 
 export interface MergeResult {
