@@ -227,6 +227,7 @@ export interface TombstoneItem {
     | 'continue_watching'
     | 'watch_history'
     | 'watch_progress'
+    | 'shared_settings'
     | 'search_history'
     | 'mal_auth'
     | string;
@@ -240,6 +241,7 @@ export interface DeltaPushDeletion {
     | 'continue_watching'
     | 'watch_history'
     | 'watch_progress'
+    | 'shared_settings'
     | 'search_history'
     | 'mal_auth'
     | string;

@@ -291,12 +291,14 @@ export function mergeLocalAndRemote(
   // --------------------------------------------------------------------------
   // 7. MAL Auth Credentials (per-profile LWW + 'mal_auth' tombstone dominance)
   // --------------------------------------------------------------------------
-  const malAuthTomb =
-    tombstoneMap.get('mal_auth:default') ??
-    tombstoneMap.get('mal_auth:malAuth') ??
-    tombstoneMap.get('mal_auth:malauth');
+  const malTombTimes = [
+    tombstoneMap.get('mal_auth:default'),
+    tombstoneMap.get('mal_auth:malAuth'),
+    tombstoneMap.get('mal_auth:malauth'),
+  ].filter((t): t is number => typeof t === 'number');
+  const malAuthTomb = malTombTimes.length > 0 ? Math.max(...malTombTimes) : undefined;
 
-  let mergedMalAuth = local.malAuth ?? null;
+  let mergedMalAuth = local.malAuth ? { ...local.malAuth } : null;
   if (mergedMalAuth && malAuthTomb !== undefined && (mergedMalAuth.updatedAt || 0) <= malAuthTomb) {
     mergedMalAuth = null;
     appliedDeletions++;

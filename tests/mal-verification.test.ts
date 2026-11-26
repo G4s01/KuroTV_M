@@ -46,6 +46,7 @@ import {
   shouldRevokeMalSessionOnRefreshError,
 } from '../src/services/mal';
 import { mergeLocalAndRemote } from '../src/services/sync/merge';
+import { SyncManager } from '../src/services/sync/sync-manager';
 import { isMalAuthCallbackDeepLink, resolveSystemDeepLinkPath } from '../src/services/sync/deep-link';
 import { redirectSystemPath } from '../app/+native-intent';
 import type { AnimeDetail } from '../src/types';
@@ -61,13 +62,20 @@ function resetMalTestEnvironment(): void {
   }
   MalSyncService.clearSessionAutoSyncCacheForTest();
   MalAuthService.logout();
+  SyncManager.cancelAutoSync();
+  SyncManager.stopPeriodicSync();
 
   AppStorage.remove(StorageKeys.SYNC_SERVER_URL);
   AppStorage.remove('sync.server_url_backup');
   AppStorage.remove(StorageKeys.SYNC_DEVICE_TOKEN);
+  AppStorage.remove(StorageKeys.SYNC_DEVICE_ID);
   AppStorage.remove(StorageKeys.SYNC_PROFILE_ID);
   AppStorage.remove(StorageKeys.SYNC_PROFILE_NAME);
   AppStorage.remove(StorageKeys.SYNC_IS_ENABLED);
+  AppStorage.remove(StorageKeys.SYNC_LAST_TIMESTAMP);
+  AppStorage.remove('sync.last_timestamp.prof-1');
+  AppStorage.remove('sync.last_timestamp.prof-2');
+  AppStorage.remove('sync.last_timestamp.prof-sync');
   AppStorage.remove(StorageKeys.SYNC_SERVER_SUPPORTS_MAL_AUTH);
   AppStorage.clearKnownTombstones();
 
@@ -1703,7 +1711,612 @@ export async function runMalVerificationTests(): Promise<void> {
     assert.strictEqual(getActiveMalProfileScope(), 'local');
     assert.strictEqual(MalAuthService.getStatus().username, 'local_user', 'Scollando KuroSync si ritorna intatti allo scope locale');
 
-    console.log('✓ Integrazione MyAnimeList (OAuth PKCE, Client, Mapper, Sync Diff, Auto-Sync Mode/Threshold, Profili KuroSync & UI) verificata con successo.');
+    // -------------------------------------------------------------------------
+    // 12. Parità Contrattuale _kurosync_ref & Flussi End-to-End SyncManager + MAL
+    // -------------------------------------------------------------------------
+    resetMalTestEnvironment();
+
+    // 12a. Parità contrattuale e schema contro _kurosync_ref
+    const refRoot = path.join(projectRoot, '_kurosync_ref');
+    if (fs.existsSync(refRoot)) {
+      const mig003 = fs.readFileSync(path.join(refRoot, 'migrations/0003_mal_auth.sql'), 'utf-8');
+      assert(mig003.includes('CREATE TABLE IF NOT EXISTS mal_auth'), '0003_mal_auth.sql deve creare mal_auth');
+      assert(mig003.includes('server_updated_at'), '0003_mal_auth.sql deve includere server_updated_at');
+      assert(mig003.includes('server_deleted_at'), '0003_mal_auth.sql deve preservare server_deleted_at su tombstones');
+      assert(mig003.includes("'mal_auth'"), '0003_mal_auth.sql deve consentire entity_type mal_auth');
+
+      const refTypes = fs.readFileSync(path.join(refRoot, 'packages/sync-client/src/types.ts'), 'utf-8').replace(/"/g, "'");
+      const mobileTypes = fs.readFileSync(path.join(projectRoot, 'src/services/sync/types.ts'), 'utf-8').replace(/"/g, "'");
+      for (const symbol of ['MalAuthSyncRecord', 'malAuth?: MalAuthSyncRecord | null;', "'mal_auth'", "'shared_settings'"]) {
+        assert(refTypes.includes(symbol), `_kurosync_ref types.ts deve definire ${symbol}`);
+        assert(mobileTypes.includes(symbol), `KuroTV_M sync/types.ts deve allinearsi su ${symbol}`);
+      }
+
+      const refSyncRoute = fs.readFileSync(path.join(refRoot, 'src/worker/routes/sync.ts'), 'utf-8');
+      assert(refSyncRoute.includes('malAuth,'), '_kurosync_ref GET /api/sync/pull deve esporre sempre la chiave malAuth');
+    }
+
+    // 12b. mergeLocalAndRemote parity checks for all 'mal_auth' key variants & null preservation
+    const sampleMalAuth = {
+      profileId: 'prof-sync',
+      clientId: TEST_CLIENT_ID,
+      accessToken: 'acc-keep',
+      refreshToken: 'ref-keep',
+      expiresAt: 9_999_999_999_000,
+      tokenType: 'Bearer',
+      username: 'keep_user',
+      updatedAt: 5000,
+    };
+
+    const mergeNullDeltaPreservesLocal = mergeLocalAndRemote(
+      {
+        favorites: [],
+        continueWatching: [],
+        watchHistory: [],
+        watchProgress: [],
+        sharedSettings: {},
+        searchHistory: [],
+        malAuth: sampleMalAuth,
+      },
+      {
+        serverTime: 6000,
+        deltas: {
+          favorites: [],
+          continueWatching: [],
+          watchHistory: [],
+          watchProgress: [],
+          sharedSettings: {},
+          searchHistory: [],
+          malAuth: null,
+        },
+        tombstones: [],
+      }
+    );
+    assert.strictEqual(
+      mergeNullDeltaPreservesLocal.state.malAuth?.accessToken,
+      'acc-keep',
+      'deltas.malAuth === null senza tombstone deve preservare local.malAuth'
+    );
+
+    const mergeMaxAltTombWins = mergeLocalAndRemote(
+      {
+        favorites: [],
+        continueWatching: [],
+        watchHistory: [],
+        watchProgress: [],
+        sharedSettings: {},
+        searchHistory: [],
+        malAuth: { ...sampleMalAuth, updatedAt: 6000 },
+      },
+      {
+        serverTime: 8000,
+        deltas: {
+          favorites: [],
+          continueWatching: [],
+          watchHistory: [],
+          watchProgress: [],
+          sharedSettings: {},
+          searchHistory: [],
+          malAuth: { ...sampleMalAuth, updatedAt: 6500 },
+        },
+        tombstones: [
+          { type: 'mal_auth', key: 'default', deletedAt: 4000 },
+          { type: 'mal_auth', key: 'malAuth', deletedAt: 7000 },
+        ],
+      }
+    );
+    assert.strictEqual(mergeMaxAltTombWins.state.malAuth, null, 'Il timestamp maggiore tra default e malAuth deve vincere');
+    assert.strictEqual(mergeMaxAltTombWins.appliedDeletions, 1);
+
+    // 12c. AppStorage tombstone variants ('default', 'malAuth', 'malauth') & deletion ordering
+    AppStorage.clearKnownTombstones();
+    AppStorage.clearPendingSyncMutations();
+    AppStorage.clearPendingSyncDeletions();
+
+    AppStorage.recordSyncDeletions([{ type: 'mal_auth', key: 'malAuth', deletedAt: 20000 }]);
+    AppStorage.recordKnownTombstones([{ type: 'mal_auth', key: 'malauth', deletedAt: 20000 }]);
+
+    AppStorage.recordSyncMutation('malAuth', {
+      clientId: TEST_CLIENT_ID,
+      accessToken: 'stale-acc',
+      refreshToken: 'stale-ref',
+      expiresAt: 99999,
+      tokenType: 'Bearer',
+      updatedAt: 15000,
+    });
+    assert.strictEqual(
+      AppStorage.getPendingSyncMutations().malAuth,
+      undefined,
+      'recordSyncMutation(malAuth) con updatedAt <= tombstone malAuth/malauth deve essere scartata'
+    );
+
+    AppStorage.recordSyncMutation('malAuth', {
+      clientId: TEST_CLIENT_ID,
+      accessToken: 'fresh-acc',
+      refreshToken: 'fresh-ref',
+      expiresAt: 99999,
+      tokenType: 'Bearer',
+      updatedAt: 25000,
+    });
+    assert(AppStorage.getPendingSyncMutations().malAuth, 'Re-login > tombstone deve essere accettato');
+    assert.strictEqual(
+      AppStorage.getKnownTombstones().some((t) => t.type === 'mal_auth'),
+      false,
+      'Re-login malAuth deve ripulire tutte le varianti mal_auth da SYNC_KNOWN_TOMBSTONES'
+    );
+    assert.strictEqual(
+      AppStorage.getPendingSyncDeletions().some((d) => d.type === 'mal_auth'),
+      false,
+      'Re-login malAuth deve ripulire tutte le varianti mal_auth da SYNC_PENDING_DELETIONS'
+    );
+
+    // Older deletion must NOT erase newer pending re-login
+    AppStorage.recordSyncDeletions([{ type: 'mal_auth', key: 'default', deletedAt: 22000 }]);
+    assert(
+      AppStorage.getPendingSyncMutations().malAuth?.accessToken === 'fresh-acc',
+      'recordSyncDeletions più vecchio della mutation malAuth non deve cancellarla'
+    );
+    AppStorage.recordSyncDeletions([{ type: 'mal_auth', key: 'default', deletedAt: 30000 }]);
+    assert.strictEqual(
+      AppStorage.getPendingSyncMutations().malAuth,
+      undefined,
+      'recordSyncDeletions >= updatedAt deve cancellare pendingMutations.malAuth'
+    );
+
+    // 12d. Full SyncManager + MalAuthService E2E with stateful _kurosync_ref mock server
+    resetMalTestEnvironment();
+    const originalFetch = globalThis.fetch;
+
+    type MockServerProfileState = {
+      id: string;
+      name: string;
+      malAuth: any | null;
+      malServerUpdatedAt: number;
+      tombstones: Array<{ type: string; key: string; deletedAt: number; serverDeletedAt: number }>;
+    };
+
+    const serverProfiles = new Map<string, MockServerProfileState>([
+      ['prof-1', { id: 'prof-1', name: 'Marco', malAuth: null, malServerUpdatedAt: 0, tombstones: [] }],
+      ['prof-2', { id: 'prof-2', name: 'Giulia', malAuth: null, malServerUpdatedAt: 0, tombstones: [] }],
+    ]);
+    const sessionBindings = new Map<string, string>([
+      ['devA-tok', 'prof-1'],
+      ['devB-tok', 'prof-1'],
+    ]);
+    const capturedPushPayloads: Array<{ profileId: string; payload: any }> = [];
+    let legacyServerMode = false;
+    let mockClock = 1_750_000_000_000;
+
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const urlStr = typeof input === 'string' ? input : input.toString();
+      const parsedUrl = new URL(urlStr);
+      const authHeader = (init?.headers as Record<string, string> | undefined)?.Authorization || '';
+      const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+      const jsonBody = init?.body ? JSON.parse(String(init.body)) : {};
+
+      if (parsedUrl.pathname === '/api/auth/device-login') {
+        const pid = jsonBody.profileId || 'prof-1';
+        const prof = serverProfiles.get(pid) || serverProfiles.get('prof-1')!;
+        const tok = jsonBody.deviceName === 'DevB' ? 'devB-tok' : 'devA-tok';
+        sessionBindings.set(tok, prof.id);
+        return new Response(
+          JSON.stringify({
+            ok: true,
+            deviceToken: tok,
+            deviceId: tok === 'devB-tok' ? 'dev-b' : 'dev-a',
+            profile: { id: prof.id, name: prof.name },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+
+      if (parsedUrl.pathname === '/api/auth/switch-profile') {
+        const targetId = jsonBody.profileId;
+        const prof = serverProfiles.get(targetId);
+        if (!prof) return new Response(JSON.stringify({ error: 'Not found' }), { status: 404 });
+        if (token) sessionBindings.set(token, prof.id);
+        return new Response(
+          JSON.stringify({ ok: true, profileId: prof.id, profile: { id: prof.id, name: prof.name, avatarColor: '#E50914' } }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+
+      if (parsedUrl.pathname === '/api/auth/logout') {
+        return new Response(JSON.stringify({ ok: true, message: 'Logged out' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      if (parsedUrl.pathname === '/api/auth/exchange') {
+        const pid = sessionBindings.get(jsonBody.token) || 'prof-1';
+        return new Response(
+          JSON.stringify({
+            ok: true,
+            deviceToken: jsonBody.token,
+            deviceId: jsonBody.token === 'devB-tok' ? 'dev-b' : 'dev-a',
+            profileId: pid,
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+
+      if (parsedUrl.pathname === '/api/profiles') {
+        return new Response(
+          JSON.stringify({
+            ok: true,
+            profiles: Array.from(serverProfiles.values()).map((p) => ({
+              id: p.id,
+              name: p.name,
+              avatarColor: '#E50914',
+            })),
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+
+      if (parsedUrl.pathname === '/api/sync/pull') {
+        const pid = sessionBindings.get(token) || 'prof-1';
+        const prof = serverProfiles.get(pid)!;
+        const since = Number(parsedUrl.searchParams.get('since') || 0);
+        const now = ++mockClock;
+        const malDelta =
+          prof.malAuth && (since <= 0 || prof.malServerUpdatedAt > since || prof.malAuth.updatedAt > since)
+            ? prof.malAuth
+            : null;
+        const activeTombs = prof.tombstones
+          .filter((t) => since <= 0 || t.serverDeletedAt > since || t.deletedAt > since)
+          .map((t) => ({ type: t.type, key: t.key, deletedAt: t.deletedAt }));
+        const deltas: any = {
+          favorites: [],
+          continueWatching: [],
+          watchHistory: [],
+          watchProgress: [],
+          sharedSettings: {},
+          searchHistory: [],
+        };
+        if (!legacyServerMode) {
+          deltas.malAuth = malDelta;
+        }
+        return new Response(
+          JSON.stringify({
+            serverTime: now,
+            profile: { id: prof.id, name: prof.name },
+            deltas,
+            tombstones: activeTombs,
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+
+      if (parsedUrl.pathname === '/api/sync/push') {
+        const pid = sessionBindings.get(token) || 'prof-1';
+        const prof = serverProfiles.get(pid)!;
+        const now = ++mockClock;
+        capturedPushPayloads.push({ profileId: pid, payload: jsonBody });
+
+        if (legacyServerMode) {
+          if (Array.isArray(jsonBody.deletions) && jsonBody.deletions.some((d: any) => d.type === 'mal_auth')) {
+            return new Response(JSON.stringify({ error: 'SQLITE_CONSTRAINT' }), { status: 500 });
+          }
+        }
+
+        if (Array.isArray(jsonBody.deletions)) {
+          for (const del of jsonBody.deletions) {
+            if (del.type === 'mal_auth') {
+              const delKey = del.key || 'default';
+              const delAt = typeof del.deletedAt === 'number' ? del.deletedAt : now;
+              prof.tombstones = prof.tombstones.filter((t) => !(t.type === 'mal_auth' && t.key === delKey));
+              prof.tombstones.push({ type: 'mal_auth', key: delKey, deletedAt: delAt, serverDeletedAt: now });
+              if (prof.malAuth && (prof.malAuth.updatedAt || 0) <= delAt) {
+                prof.malAuth = null;
+                prof.malServerUpdatedAt = 0;
+              }
+            }
+          }
+        }
+
+        if (jsonBody.malAuth && typeof jsonBody.malAuth === 'object') {
+          const incoming = jsonBody.malAuth;
+          if (!incoming.clientId || !incoming.accessToken || !incoming.refreshToken) {
+            return new Response(JSON.stringify({ error: 'Invalid malAuth' }), { status: 400 });
+          }
+          const incomingAt = typeof incoming.updatedAt === 'number' ? incoming.updatedAt : now;
+          const maxTomb = prof.tombstones
+            .filter((t) => t.type === 'mal_auth')
+            .reduce((mx, t) => Math.max(mx, t.deletedAt), -1);
+          if (maxTomb < 0 || incomingAt > maxTomb) {
+            prof.tombstones = prof.tombstones.filter((t) => t.type !== 'mal_auth');
+            if (!prof.malAuth || incomingAt >= (prof.malAuth.updatedAt || 0)) {
+              prof.malAuth = { ...incoming, profileId: pid, updatedAt: incomingAt };
+              prof.malServerUpdatedAt = Math.max(now, incomingAt);
+            }
+          }
+        }
+
+        return new Response(JSON.stringify({ ok: true, serverTime: now, appliedCount: 1 }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      throw new Error(`Unexpected fetch URL in E2E mock: ${urlStr}`);
+    }) as typeof fetch;
+
+    try {
+      // Save an unlinked 'local' MAL user BEFORE connecting KuroSync
+      setStoredMalClientId(TEST_CLIENT_ID, 'local');
+      AppStorage.setObject(getMalScopedKey(StorageKeys.MAL_AUTH_SESSION, 'local'), {
+        accessToken: 'local-preserve-acc',
+        refreshToken: 'local-preserve-ref',
+        expiresAt: mockClock + 3_600_000,
+        tokenType: 'Bearer',
+        username: 'local_safe_user',
+        updatedAt: mockClock,
+      });
+
+      // Helper to simulate switching between Device A and Device B clean MMKV states
+      const snapshotDeviceState = (): Record<string, string | undefined> => {
+        const out: Record<string, string | undefined> = {};
+        const keys = [
+          StorageKeys.SYNC_SERVER_URL,
+          'sync.server_url_backup',
+          StorageKeys.SYNC_DEVICE_TOKEN,
+          StorageKeys.SYNC_DEVICE_ID,
+          StorageKeys.SYNC_PROFILE_ID,
+          StorageKeys.SYNC_PROFILE_NAME,
+          StorageKeys.SYNC_LAST_TIMESTAMP,
+          'sync.last_timestamp.prof-1',
+          'sync.last_timestamp.prof-2',
+          StorageKeys.SYNC_PENDING_MUTATIONS,
+          StorageKeys.SYNC_PENDING_DELETIONS,
+          StorageKeys.SYNC_KNOWN_TOMBSTONES,
+          StorageKeys.SYNC_SERVER_SUPPORTS_MAL_AUTH,
+          StorageKeys.SYNC_IS_ENABLED,
+          getMalScopedKey(StorageKeys.MAL_CLIENT_ID, 'prof-1'),
+          getMalScopedKey(StorageKeys.MAL_AUTH_SESSION, 'prof-1'),
+          getMalScopedKey(StorageKeys.MAL_CLIENT_ID, 'prof-2'),
+          getMalScopedKey(StorageKeys.MAL_AUTH_SESSION, 'prof-2'),
+        ];
+        for (const k of keys) {
+          out[k] = AppStorage.getString(k);
+        }
+        return out;
+      };
+      const restoreDeviceState = (snap: Record<string, string | undefined>): void => {
+        for (const [k, v] of Object.entries(snap)) {
+          if (v === undefined) AppStorage.remove(k);
+          else AppStorage.setString(k, v);
+        }
+        MalAuthService.handleSyncScopeChanged();
+        MalSyncService.handleSyncScopeChanged();
+      };
+
+      // Device A connects to KuroSync prof-1 ("Marco") -> links MAL -> pushes malAuth ONLY
+      const connA = await SyncManager.loginDeviceWithProfile({
+        serverUrl: 'https://kurosync.test',
+        password: 'master-pass',
+        profileId: 'prof-1',
+        profileName: 'Marco',
+      });
+      assert.strictEqual(connA.ok, true);
+      SyncManager.cancelAutoSync();
+
+      setStoredMalClientId(TEST_CLIENT_ID);
+      MalAuthService.setHttpClientForTest({
+        post: async (_url: string, body: string) => {
+          const form = new URLSearchParams(body);
+          const grantType = form.get('grant_type');
+          if (grantType === 'refresh_token') {
+            return {
+              data: {
+                access_token: 'devA-rotated-acc',
+                refresh_token: 'devA-rotated-ref',
+                expires_in: 3600,
+                token_type: 'Bearer',
+              },
+            };
+          }
+          return {
+            data: {
+              access_token: 'devA-initial-acc',
+              refresh_token: 'devA-initial-ref',
+              expires_in: 10, // short expiry so next check / force refresh can test rotation
+              token_type: 'Bearer',
+            },
+          };
+        },
+        get: async () => ({
+          data: { id: 777, name: 'devA_mal', picture: 'https://cdn.example/a.png' },
+        }),
+      } as any);
+      (WebBrowser as any).setMockOpenAuthSessionHandler(async (authUrl: string) => {
+        const stateParam = new URL(authUrl).searchParams.get('state');
+        return { type: 'success', url: `kurotv://mal-callback?code=codeA&state=${stateParam}` };
+      });
+
+      const loginDevA = await MalAuthService.startLogin(TEST_CLIENT_ID);
+      assert.strictEqual(loginDevA.ok, true);
+      SyncManager.cancelAutoSync();
+      const pushDevA = await SyncManager.pushPending(true);
+      assert.strictEqual(pushDevA.ok, true, 'Device A deve fare push di malAuth su prof-1');
+
+      const pushedA = capturedPushPayloads[capturedPushPayloads.length - 1];
+      assert.strictEqual(pushedA.payload.malAuth?.accessToken, 'devA-initial-acc');
+      assert.strictEqual(pushedA.payload.malAuth?.username, 'devA_mal');
+      assert(!pushedA.payload.sharedSettings?.malSettings, 'sharedSettings non deve mai contenere impostazioni MAL');
+      assert(!('malListCache' in pushedA.payload), 'Payload push non deve mai contenere liste MAL');
+      assert(!('malWatchedHighwater' in pushedA.payload), 'Payload push non deve mai contenere highwater MAL');
+
+      // Snapshot Device A, wipe sync/profile storage to simulate fresh Device B connecting to prof-1
+      const snapA = snapshotDeviceState();
+      restoreDeviceState(Object.fromEntries(Object.keys(snapA).map((k) => [k, undefined])));
+
+      // Simulate Device B using loginWithToken for prof-1 (already linked on server by DevA)
+      const connB = await SyncManager.connectWithToken('https://kurosync.test', 'devB-tok', 'prof-1', 'Marco');
+      assert.strictEqual(connB.ok, true);
+      SyncManager.cancelAutoSync();
+      assert.strictEqual(MalAuthService.isConnected(), true, 'Device B su prof-1 deve idratarsi automaticamente con account MAL di DevA');
+      assert.strictEqual(MalAuthService.getStatus().username, 'devA_mal');
+      assert.strictEqual(MalAuthService.getSession()?.accessToken, 'devA-initial-acc');
+
+      // Incremental pull when deltas.malAuth === null (unchanged since watermark) preserves DevB session
+      const incPullB = await SyncManager.pullDelta();
+      assert.strictEqual(incPullB.ok, true);
+      assert.strictEqual(MalAuthService.getSession()?.accessToken, 'devA-initial-acc', 'Incremental pull null senza tombstone deve preservare sessione MAL');
+
+      const snapB = snapshotDeviceState();
+
+      // Switch back to Device A: perform forced token refresh -> pushes rotated token -> Device B pulls it via LWW
+      restoreDeviceState(snapA);
+      // Ensure refresh timestamp strictly advances past initial login timestamp
+      await new Promise((r) => setTimeout(r, 15));
+      const refreshedTokA = await MalAuthService.getValidAccessToken(true);
+      assert.strictEqual(refreshedTokA, 'devA-rotated-acc');
+      SyncManager.cancelAutoSync();
+      await SyncManager.pushPending(true);
+      const snapAAfterRefresh = snapshotDeviceState();
+
+      restoreDeviceState(snapB);
+      await SyncManager.pullDelta();
+      assert.strictEqual(
+        MalAuthService.getSession()?.accessToken,
+        'devA-rotated-acc',
+        'Device B deve adottare il refresh token ruotato da Device A via LWW'
+      );
+
+      // Token refresh 500/offline preserves session; 400 invalid_grant clears local only without tombstone
+      const snapBBeforeRevokeCheck = snapshotDeviceState();
+      MalAuthService.setHttpClientForTest({
+        post: async () => {
+          const e: any = new Error('Server 503');
+          e.response = { status: 503, data: { error: 'temporarily_unavailable' } };
+          throw e;
+        },
+      } as any);
+      await assert.rejects(() => MalAuthService.getValidAccessToken(true), (e: any) => e instanceof MalAuthError && !e.isRevoked);
+      assert.strictEqual(MalAuthService.isConnected(), true, 'Errore 503 su refresh MAL non deve sloggare localmente');
+
+      MalAuthService.setHttpClientForTest({
+        post: async () => {
+          const e: any = new Error('Invalid grant');
+          e.response = { status: 400, data: { error: 'invalid_grant' } };
+          throw e;
+        },
+      } as any);
+      await assert.rejects(() => MalAuthService.getValidAccessToken(true), (e: any) => e instanceof MalAuthError && e.isRevoked);
+      assert.strictEqual(MalAuthService.isConnected(), false, '400 invalid_grant deve invalidare solo localmente');
+      assert.strictEqual(
+        AppStorage.getPendingSyncDeletions().some((d) => d.type === 'mal_auth'),
+        false,
+        'invalid_grant locale non deve emettere tombstone mal_auth distruttivo verso altri device'
+      );
+
+      // Restore valid Device B and test explicit logout on Device A -> propagates tombstone to Device B
+      restoreDeviceState(snapBBeforeRevokeCheck);
+      const snapBValid = snapshotDeviceState();
+
+      restoreDeviceState(snapAAfterRefresh);
+      await new Promise((r) => setTimeout(r, 15));
+      MalAuthService.logout();
+      SyncManager.cancelAutoSync();
+      await SyncManager.pushPending(true);
+      assert.strictEqual(serverProfiles.get('prof-1')?.malAuth, null, 'Push logout A deve cancellare mal_auth su server');
+
+      restoreDeviceState(snapBValid);
+      await SyncManager.pullDelta();
+      assert.strictEqual(
+        MalAuthService.isConnected(),
+        false,
+        'Pull del tombstone mal_auth su Device B deve sloggare Device B'
+      );
+
+      // Re-login on Device B -> clears tombstone -> propagates to Device A!
+      await new Promise((r) => setTimeout(r, 15));
+      MalAuthService.setHttpClientForTest({
+        post: async () => ({
+          data: { access_token: 'devB-relogin-acc', refresh_token: 'devB-relogin-ref', expires_in: 3600, token_type: 'Bearer' },
+        }),
+        get: async () => ({
+          data: { id: 888, name: 'devB_relogin', picture: 'https://cdn.example/b.png' },
+        }),
+      } as any);
+      (WebBrowser as any).setMockOpenAuthSessionHandler(async (authUrl: string) => {
+        const stateParam = new URL(authUrl).searchParams.get('state');
+        return { type: 'success', url: `kurotv://mal-callback?code=codeB&state=${stateParam}` };
+      });
+      const reloginRes = await MalAuthService.startLogin(TEST_CLIENT_ID);
+      assert.strictEqual(reloginRes.ok, true);
+      SyncManager.cancelAutoSync();
+
+      // SwitchProfile pre-switch flush test: right after prof-2 links MAL, switching before debounce pushes prof-2!
+      const switchedToP2 = await SyncManager.switchProfile('prof-2', 'Giulia');
+      assert.strictEqual(switchedToP2, true);
+      assert.strictEqual(serverProfiles.get('prof-1')?.malAuth?.username, 'devB_relogin', 'switchProfile deve fare flush best-effort di prof-1 prima del cambio');
+      assert.strictEqual(MalAuthService.isConnected(), false, 'prof-2 non deve ereditare malAuth o tombstones da prof-1');
+
+      // Link different MAL account on prof-2 -> immediately switch back to prof-1 without manual push
+      MalAuthService.setHttpClientForTest({
+        post: async () => ({
+          data: { access_token: 'p2-acc', refresh_token: 'p2-ref', expires_in: 3600, token_type: 'Bearer' },
+        }),
+        get: async () => ({
+          data: { id: 202, name: 'giulia_profile_mal' },
+        }),
+      } as any);
+      const loginP2 = await MalAuthService.startLogin(TEST_CLIENT_ID);
+      assert.strictEqual(loginP2.ok, true);
+      SyncManager.cancelAutoSync();
+
+      const switchedBackToP1 = await SyncManager.switchProfile('prof-1', 'Marco');
+      assert.strictEqual(switchedBackToP1, true);
+      assert.strictEqual(MalAuthService.getStatus().username, 'devB_relogin', 'Ritornando a prof-1 si ripristina l account MAL di prof-1');
+      assert.strictEqual(serverProfiles.get('prof-2')?.malAuth?.username, 'giulia_profile_mal', 'prof-2 deve aver salvato il proprio account MAL su server');
+
+      // SyncManager.disconnect() wipes synced prof-1 tokens & returns cleanly to untouched 'local' scope
+      await SyncManager.disconnect();
+      assert.strictEqual(getActiveMalProfileScope(), 'local');
+      assert.strictEqual(MalAuthService.getStatus().username, 'local_safe_user', 'Disconnect KuroSync deve ripristinare scope local intatto');
+      assert.strictEqual(
+        AppStorage.getObject(getMalScopedKey(StorageKeys.MAL_AUTH_SESSION, 'prof-1')),
+        null,
+        'Disconnect KuroSync deve rimuovere la sessione MAL synced di prof-1'
+      );
+
+      // Legacy server (without 'malAuth' in deltas) compatibility: never push malAuth or 'mal_auth' tombstone
+      legacyServerMode = true;
+      await SyncManager.connectWithToken('https://legacy-kurosync.test', 'devA-tok', 'prof-1', 'Marco');
+      SyncManager.cancelAutoSync();
+      assert.strictEqual(
+        AppStorage.getSyncServerSupportsMalAuth('https://legacy-kurosync.test'),
+        false,
+        'Server legacy senza chiave malAuth deve impostare capability flag a false'
+      );
+      setStoredMalClientId(TEST_CLIENT_ID);
+      const loginLegacy = await MalAuthService.startLogin(TEST_CLIENT_ID);
+      assert.strictEqual(loginLegacy.ok, true);
+      SyncManager.cancelAutoSync();
+      MalAuthService.logout();
+      SyncManager.cancelAutoSync();
+      const beforeLegacyPushLen = capturedPushPayloads.length;
+      const legacyPushRes = await SyncManager.pushPending(false);
+      assert.strictEqual(legacyPushRes.ok, true, 'Push verso server legacy deve filtrare mal_auth senza fallire 500');
+      assert.strictEqual(
+        capturedPushPayloads.length,
+        beforeLegacyPushLen,
+        'Nessuna richiesta push inutile se il server legacy non supporta mal_auth'
+      );
+      assert(
+        AppStorage.getPendingSyncDeletions().some((d) => d.type === 'mal_auth'),
+        'La deletion mal_auth resta preservata finché il server non viene aggiornato'
+      );
+    } finally {
+      SyncManager.cancelAutoSync();
+      SyncManager.stopPeriodicSync();
+      globalThis.fetch = originalFetch;
+    }
+
+    console.log('✓ Integrazione MyAnimeList (OAuth PKCE, Client, Mapper, Sync Diff, Auto-Sync Mode/Threshold, Profili KuroSync, Parità _kurosync_ref & UI) verificata con successo.');
   } finally {
     resetMalTestEnvironment();
   }

@@ -1679,8 +1679,11 @@ export const AppStorage = {
             );
             if (pendingMutations.searchHistory.length !== before) mutModified = true;
           } else if (item.type === 'mal_auth' && pendingMutations.malAuth !== undefined) {
-            delete pendingMutations.malAuth;
-            mutModified = true;
+            const delTime = item.deletedAt || now;
+            if (delTime >= (pendingMutations.malAuth?.updatedAt || 0)) {
+              delete pendingMutations.malAuth;
+              mutModified = true;
+            }
           }
         }
         if (mutModified) {
@@ -1713,15 +1716,32 @@ export const AppStorage = {
   },
 
   removePendingSyncDeletions: (
-    processedDeletions: Array<{ type: string; key: string }>
+    processedDeletions: Array<{ type: string; key: string; deletedAt?: number }>
   ): void => {
     if (!Array.isArray(processedDeletions) || processedDeletions.length === 0) return;
     try {
       const current = AppStorage.getPendingSyncDeletions();
       if (current.length === 0) return;
 
-      const processedSet = new Set(processedDeletions.map((d) => `${d.type}:${d.key}`));
-      const remaining = current.filter((d) => !processedSet.has(`${d.type}:${d.key}`));
+      const isMalAuthVariantKey = (k: string): boolean => {
+        const lower = (k || '').trim().toLowerCase();
+        return lower === 'default' || lower === 'malauth';
+      };
+
+      const remaining = current.filter((d) => {
+        const matched = processedDeletions.find((p) => {
+          if (p.type !== d.type) return false;
+          if (d.type === 'mal_auth' && isMalAuthVariantKey(d.key) && isMalAuthVariantKey(p.key)) {
+            return true;
+          }
+          return p.key === d.key;
+        });
+        if (!matched) return true;
+        if (typeof matched.deletedAt === 'number' && typeof d.deletedAt === 'number') {
+          return d.deletedAt > matched.deletedAt;
+        }
+        return false;
+      });
 
       if (remaining.length === 0) {
         AppStorage.remove(StorageKeys.SYNC_PENDING_DELETIONS);
@@ -1878,7 +1898,11 @@ export const AppStorage = {
       }
 
       if (current.malAuth && typeof current.malAuth === 'object') {
-        const t = tombMap.get('mal_auth:default') ?? tombMap.get('mal_auth:malauth');
+        const malTombs = [
+          tombMap.get('mal_auth:default'),
+          tombMap.get('mal_auth:malauth'),
+        ].filter((val): val is number => typeof val === 'number');
+        const t = malTombs.length > 0 ? Math.max(...malTombs) : undefined;
         if (t !== undefined && (current.malAuth.updatedAt || 0) <= t) {
           delete current.malAuth;
           changed = true;
@@ -1969,18 +1993,35 @@ export const AppStorage = {
             : typeof item.timestamp === 'number'
             ? item.timestamp
             : Date.now();
+        const isMatchingTombKey = (typeCandidate: string, keyCandidate: string): boolean => {
+          if (typeCandidate !== tombType) return false;
+          const lowerCandidate = (keyCandidate || '').trim().toLowerCase();
+          if (tombType === 'mal_auth') {
+            return lowerCandidate === 'default' || lowerCandidate === 'malauth';
+          }
+          return lowerCandidate === tombKey!.toLowerCase();
+        };
+
         const knownTombs = AppStorage.getKnownTombstones();
-        const targetK = `${tombType}:${tombKey.toLowerCase()}`;
-        const existingTomb = knownTombs.find((t) => `${t.type}:${t.key.toLowerCase()}` === targetK);
+        const matchingTombs = knownTombs.filter((t) => isMatchingTombKey(t.type, t.key));
+        const maxTombDeletedAt =
+          matchingTombs.length > 0
+            ? Math.max(...matchingTombs.map((t) => t.deletedAt || 0))
+            : undefined;
 
         // Tombstone dominance: if item has an explicit past timestamp <= existing tombstone, ignore it
-        if (existingTomb && hasExplicitTime && itemTime <= existingTomb.deletedAt) {
+        if (maxTombDeletedAt !== undefined && hasExplicitTime && itemTime <= maxTombDeletedAt) {
           return;
         }
 
         // Legitimate re-addition: mutation has no past timestamp or is newer than tombstone
-        if (existingTomb) {
-          AppStorage.removeKnownTombstone(tombType, tombKey);
+        if (matchingTombs.length > 0) {
+          if (tombType === 'mal_auth') {
+            AppStorage.removeKnownTombstone('mal_auth', 'default');
+            AppStorage.removeKnownTombstone('mal_auth', 'malAuth');
+          } else {
+            AppStorage.removeKnownTombstone(tombType, tombKey);
+          }
         }
 
         const existingDeletions =
@@ -1989,7 +2030,7 @@ export const AppStorage = {
           );
         if (Array.isArray(existingDeletions) && existingDeletions.length > 0) {
           const filteredTombstones = existingDeletions.filter(
-            (d) => !(d.type === tombType && d.key.toLowerCase() === tombKey!.toLowerCase())
+            (d) => !isMatchingTombKey(d.type, d.key)
           );
           if (filteredTombstones.length !== existingDeletions.length) {
             AppStorage.setObject(StorageKeys.SYNC_PENDING_DELETIONS, filteredTombstones);

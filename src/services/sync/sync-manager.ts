@@ -615,7 +615,7 @@ class SyncManagerClass {
       MalSyncService.handleSyncScopeChanged();
 
       // Trigger initial full sync
-      const syncRes = await this.performFullSync(0);
+      const syncRes = await this.performFullSync(0, true);
       if (!syncRes.ok && syncRes.error && (syncRes.error.includes('401') || syncRes.error.toLowerCase().includes('unauthorized'))) {
         AppStorage.remove(StorageKeys.SYNC_DEVICE_TOKEN);
         AppStorage.remove(StorageKeys.SYNC_DEVICE_ID);
@@ -775,7 +775,7 @@ class SyncManagerClass {
       MalSyncService.handleSyncScopeChanged();
 
       // Trigger initial full sync
-      const syncRes = await this.performFullSync(0);
+      const syncRes = await this.performFullSync(0, true);
       if (!syncRes.ok && syncRes.error && (syncRes.error.includes('401') || syncRes.error.toLowerCase().includes('unauthorized'))) {
         AppStorage.remove(StorageKeys.SYNC_DEVICE_TOKEN);
         AppStorage.remove(StorageKeys.SYNC_DEVICE_ID);
@@ -877,7 +877,7 @@ class SyncManagerClass {
       this.client.setDeviceToken(token);
 
       // Initial full sync with pullDelta(0)
-      const syncRes = await this.performFullSync(0);
+      const syncRes = await this.performFullSync(0, true);
       if (!syncRes.ok && syncRes.error && (syncRes.error.includes('401') || syncRes.error.toLowerCase().includes('unauthorized'))) {
         AppStorage.remove(StorageKeys.SYNC_DEVICE_TOKEN);
         AppStorage.remove(StorageKeys.SYNC_DEVICE_ID);
@@ -974,7 +974,21 @@ class SyncManagerClass {
       this.client.setDeviceToken(token);
 
       // Initial full sync
-      await this.performFullSync(0);
+      const syncRes = await this.performFullSync(0, true);
+      if (!syncRes.ok && isSyncAuthError(syncRes.error, (syncRes as any).status)) {
+        AppStorage.remove(StorageKeys.SYNC_DEVICE_TOKEN);
+        AppStorage.remove(StorageKeys.SYNC_DEVICE_ID);
+        AppStorage.remove(StorageKeys.SYNC_PROFILE_ID);
+        AppStorage.remove(StorageKeys.SYNC_PROFILE_NAME);
+        AppStorage.setBoolean(StorageKeys.SYNC_IS_ENABLED, false);
+        this.client.setDeviceToken(undefined);
+        MalAuthService.handleSyncScopeChanged();
+        MalSyncService.handleSyncScopeChanged();
+        this.isSyncing = false;
+        this.lastError = syncRes.error || 'Autenticazione fallita';
+        this.notify();
+        return { ok: false, message: this.lastError };
+      }
 
       this.isSyncing = false;
       this.notify();
@@ -1106,6 +1120,50 @@ class SyncManagerClass {
       this.lastError = null;
       this.notify();
 
+      this.cancelAutoSync();
+
+      // Best-effort flush of pending changes for the previous profile before switching
+      if (this.pendingPlaybackPayload) {
+        this.commitPlaybackPayload();
+      }
+      const prevPendingDeletions = AppStorage.getPendingSyncDeletions();
+      const prevPendingMutations = AppStorage.getPendingSyncMutations();
+      if (prevPendingDeletions.length > 0 || Object.keys(prevPendingMutations).length > 0) {
+        try {
+          const prevSupportsMalAuth = AppStorage.getSyncServerSupportsMalAuth();
+          const preSwitchPayload = sanitizePushPayload(
+            {
+              ...prevPendingMutations,
+              deletions: prevPendingDeletions,
+            },
+            prevSupportsMalAuth
+          );
+          if (
+            Array.isArray(prevPendingMutations.searchHistory) ||
+            prevPendingDeletions.some((d) => d.type === 'search_history')
+          ) {
+            preSwitchPayload.searchHistory = AppStorage.getSearchHistory();
+          }
+          const hasPreSwitchData = Boolean(
+            (preSwitchPayload.favorites && preSwitchPayload.favorites.length > 0) ||
+              (preSwitchPayload.continueWatching && preSwitchPayload.continueWatching.length > 0) ||
+              (preSwitchPayload.watchHistory && preSwitchPayload.watchHistory.length > 0) ||
+              (preSwitchPayload.watchProgress && preSwitchPayload.watchProgress.length > 0) ||
+              (preSwitchPayload.sharedSettings && Object.keys(preSwitchPayload.sharedSettings).length > 0) ||
+              (preSwitchPayload.searchHistory && preSwitchPayload.searchHistory.length > 0) ||
+              preSwitchPayload.malAuth ||
+              (preSwitchPayload.deletions && preSwitchPayload.deletions.length > 0)
+          );
+          if (hasPreSwitchData) {
+            await this.client.pushDelta(preSwitchPayload);
+            AppStorage.removePendingSyncDeletions(preSwitchPayload.deletions || []);
+            AppStorage.removePendingSyncMutations(preSwitchPayload);
+          }
+        } catch {
+          // Non-blocking: continue switching profile safely
+        }
+      }
+
       // 1. Switch device binding on backend (POST /api/auth/switch-profile)
       const switchRes = await this.client.switchProfile(profileId);
       const activeName = profileName || switchRes.profile?.name || 'Profilo';
@@ -1120,9 +1178,13 @@ class SyncManagerClass {
         ? getMalAuthSyncRecordForScope(profileId)
         : undefined;
 
-      // 3. Clear pending mutations and deletions from previous profile
+      // 3. Clear pending mutations, deletions and known tombstones from previous profile
       AppStorage.clearPendingSyncMutations();
       AppStorage.clearPendingSyncDeletions();
+      AppStorage.clearKnownTombstones();
+      if (Array.isArray(pullRes.tombstones) && pullRes.tombstones.length > 0) {
+        AppStorage.recordKnownTombstones(pullRes.tombstones);
+      }
 
       // 4. Update local MMKV storage profile binding
       AppStorage.setString(StorageKeys.SYNC_PROFILE_ID, profileId);
@@ -1289,7 +1351,10 @@ class SyncManagerClass {
   // Synchronization Core (Pull + Merge + Push)
   // --------------------------------------------------------------------------
 
-  async performFullSync(forcedSince?: number): Promise<{
+  async performFullSync(
+    forcedSince?: number,
+    allowNestedSync = false
+  ): Promise<{
     ok: boolean;
     upserts: number;
     deletions: number;
@@ -1301,7 +1366,7 @@ class SyncManagerClass {
 
     this.ensureClientConfigured();
 
-    if (this.isSyncing) {
+    if (this.isSyncing && !allowNestedSync) {
       return { ok: true, upserts: 0, deletions: 0 };
     }
 
@@ -1418,6 +1483,13 @@ class SyncManagerClass {
       // If initial bootstrap (since === 0), also push current local data to populate the profile
       let pushPayload: DeltaPushRequest;
       if (since === 0) {
+        const shouldBootstrapPushMalAuth = Boolean(
+          serverSupportsMalAuth &&
+            mergedState.malAuth &&
+            (!remotePull.deltas?.malAuth ||
+              (mergedState.malAuth.updatedAt || 0) > (remotePull.deltas.malAuth.updatedAt || 0) ||
+              Boolean(pendingMutations.malAuth))
+        );
         pushPayload = sanitizePushPayload(
           {
             favorites: mergedState.favorites,
@@ -1426,7 +1498,7 @@ class SyncManagerClass {
             watchProgress: mergedState.watchProgress,
             sharedSettings: mergedState.sharedSettings,
             searchHistory: mergedState.searchHistory,
-            ...(serverSupportsMalAuth && mergedState.malAuth ? { malAuth: mergedState.malAuth } : {}),
+            ...(shouldBootstrapPushMalAuth ? { malAuth: mergedState.malAuth } : {}),
             deletions: pendingDeletions,
           },
           serverSupportsMalAuth

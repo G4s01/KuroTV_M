@@ -369,7 +369,7 @@ export function getMalAuthSyncRecordForScope(scopeId: string): MalAuthSyncRecord
     username: session.username,
     userId: session.userId,
     picture: session.picture,
-    updatedAt: typeof session.updatedAt === 'number' && session.updatedAt > 0 ? session.updatedAt : Date.now(),
+    updatedAt: typeof session.updatedAt === 'number' && session.updatedAt > 0 ? session.updatedAt : 0,
   };
 }
 
@@ -404,6 +404,10 @@ export function applyRemoteMalAuthRecordForScope(
     accessToken?: string;
     refreshToken?: string;
     expiresAt?: number;
+    tokenType?: string;
+    username?: string;
+    userId?: number;
+    picture?: string;
     updatedAt?: number;
   }>(sessionKey);
   const prevClientId = normalizeMalClientId(AppStorage.getString(clientIdKey));
@@ -413,6 +417,10 @@ export function applyRemoteMalAuthRecordForScope(
     prevSession?.accessToken === record.accessToken &&
     prevSession?.refreshToken === record.refreshToken &&
     prevSession?.expiresAt === record.expiresAt &&
+    (prevSession?.tokenType || 'Bearer') === (record.tokenType || 'Bearer') &&
+    prevSession?.username === record.username &&
+    prevSession?.userId === record.userId &&
+    prevSession?.picture === record.picture &&
     prevSession?.updatedAt === record.updatedAt &&
     (!nextClientId || prevClientId === nextClientId);
 
