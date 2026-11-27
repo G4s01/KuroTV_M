@@ -18,6 +18,7 @@ import {
   type HistoryRetentionDays,
   type AniSkipSettings,
   type NavBarMode,
+  type PlayerTapDelayMs,
 } from '@/services/storage';
 import { SyncManager, type SyncStatus } from '@/services/sync';
 import { MalAuthService, addMalDataListener, type MalAuthStatus } from '@/services/mal';
@@ -95,6 +96,7 @@ export default function SettingsScreen() {
   });
   const [navBarMode, setNavBarMode] = useState<NavBarMode>(() => AppStorage.getNavBarMode());
   const [aniSkipSettings, setAniSkipSettings] = useState<AniSkipSettings>(() => AppStorage.getAniSkipSettings());
+  const [playerTapDelayMs, setPlayerTapDelayMs] = useState<PlayerTapDelayMs>(() => AppStorage.getPlayerTapDelayMs());
   const [syncStatus, setSyncStatus] = useState<SyncStatus>(() => SyncManager.getStatus());
   const [malStatus, setMalStatus] = useState<MalAuthStatus>(() => MalAuthService.getStatus());
   const [downloadSettings, setDownloadSettings] = useState<DownloadSettings>(() => DownloadService.getSettings());
@@ -134,6 +136,7 @@ export default function SettingsScreen() {
 
       setNavBarMode(AppStorage.getNavBarMode());
       setAniSkipSettings(AppStorage.getAniSkipSettings());
+      setPlayerTapDelayMs(AppStorage.getPlayerTapDelayMs());
       setSyncStatus(SyncManager.getStatus());
       setMalStatus(MalAuthService.getStatus());
       setDownloadSettings(DownloadService.getSettings());
@@ -169,6 +172,7 @@ export default function SettingsScreen() {
     const unsubStorage = AppStorage.addSettingsListener(() => {
       setNavBarMode(AppStorage.getNavBarMode());
       setAniSkipSettings(AppStorage.getAniSkipSettings());
+      setPlayerTapDelayMs(AppStorage.getPlayerTapDelayMs());
     });
 
     return () => {
@@ -185,12 +189,14 @@ export default function SettingsScreen() {
   // --------------------------------------------------------------------------
   const appearanceSubtitle = `${themeFamily.toUpperCase()} • NAVBAR ${navBarMode === 'auto-hide' ? 'AUTO' : 'FISSA'}`;
 
-  const playbackSubtitle =
+  const aniskipLabel =
     aniSkipSettings.mode === 'auto'
       ? 'ANISKIP AUTOMATICO'
       : aniSkipSettings.mode === 'manual'
         ? `ANISKIP MANUALE (${aniSkipSettings.buttonDuration ?? 10}S)`
         : 'ANISKIP DISATTIVATO';
+  const tapDelayLabel = playerTapDelayMs === 0 ? 'TAP OFF' : `TAP ${playerTapDelayMs}MS`;
+  const playbackSubtitle = `${aniskipLabel} • ${tapDelayLabel}`;
 
   const syncSubtitle = syncStatus.isConnected
     ? `CONNESSO • ${(syncStatus.profileName || 'PRINCIPALE').toUpperCase()}`

@@ -105,6 +105,7 @@ export interface SharedSettings {
   historyRetentionDays?: number;
   searchHistoryRetentionDays?: number;
   search_history?: SearchHistoryItem[];
+  playerTapDelayMs?: number;
   [key: string]: any;
 }
 

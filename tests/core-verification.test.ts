@@ -31,7 +31,13 @@ import {
   Orientation,
   getContrastTextColor,
 } from '../src/theme/unistyles';
-import { AppStorage, StorageKeys } from '../src/services/storage/index';
+import {
+  AppStorage,
+  StorageKeys,
+  DEFAULT_PLAYER_TAP_DELAY_MS,
+  PLAYER_TAP_DELAY_VALUES,
+  normalizePlayerTapDelayMs,
+} from '../src/services/storage/index';
 import { scraperConfig } from '../src/services/scraper/config';
 import { ProviderRegistry } from '../src/services/scraper/registry';
 import {
@@ -57,7 +63,10 @@ import {
   computeSystemVolumeGesture,
   computeWindowBrightnessGesture,
   DOUBLE_TAP_WINDOW_MS,
+  CENTER_EXCLUSION_START_RATIO,
+  CENTER_EXCLUSION_END_RATIO,
   resolveTapSide,
+  resolveTapZone,
   resolvePlayerTapAction,
   resolveOverlayBackgroundTapAction,
 } from '../src/components/player/index';
@@ -75,6 +84,8 @@ import {
   AniSkipSlider,
   AniSkipDurationSlider,
   ANISKIP_DURATION_STEPS,
+  PlayerTapDelaySlider,
+  PLAYER_TAP_DELAY_STEPS,
   formatAniSkipAutoDescription,
   formatAniSkipManualDescription,
 } from '../src/components/index';
@@ -6260,57 +6271,215 @@ console.log('\n[39/39] Verifica Player Instant Tap Overlay & Navbar Immersiva a 
 assert.strictEqual(resolveTapSide(100, 800), 'left');
 assert.strictEqual(resolveTapSide(450, 800), 'right');
 
-// 1. Primo tap a overlay nascosto: apertura immediata senza attesa double-tap
-const openTap = resolvePlayerTapAction({
-  side: 'right',
+// 0. Verifica 3 fasce orizzontali (35% sinistra · 30% centro escluso · 35% destra)
+assert.strictEqual(CENTER_EXCLUSION_START_RATIO, 0.35);
+assert.strictEqual(CENTER_EXCLUSION_END_RATIO, 0.65);
+assert.strictEqual(resolveTapZone(100, 1000), 'left');
+assert.strictEqual(resolveTapZone(349, 1000), 'left');
+assert.strictEqual(resolveTapZone(350, 1000), 'center');
+assert.strictEqual(resolveTapZone(500, 1000), 'center');
+assert.strictEqual(resolveTapZone(650, 1000), 'center');
+assert.strictEqual(resolveTapZone(651, 1000), 'right');
+assert.strictEqual(resolveTapZone(900, 1000), 'right');
+assert.strictEqual(resolveTapZone(100, 0), 'center');
+
+// 1. Con delay configurabile (default 200ms):
+//    - Il centro (35..65%) apre SEMPRE subito a 0ms e NON fa mai skip (nemmeno durante skip cumulativo)
+const centerOpenTap = resolvePlayerTapAction({
+  zone: 'center',
+  tapDelayMs: 200,
   now: 1000,
-  accumulatedSkip: null,
+  accumulatedSkip: { direction: 'right', seconds: 20 },
+  pendingLateralTap: { time: 950, side: 'right' },
   lastOverlayOpenTap: null,
 });
-assert.deepStrictEqual(openTap, { type: 'open_overlay', side: 'right' });
+assert.deepStrictEqual(centerOpenTap, { type: 'open_overlay_immediate', zone: 'center' });
 
-// 2. Secondo tap sullo stesso lato entro DOUBLE_TAP_WINDOW_MS -> double-tap seek
-const rapidOverlayTap = resolveOverlayBackgroundTapAction({
+//    - Il 1° tap laterale schedula l'apertura dopo tapDelayMs senza flashare subito l'overlay
+const scheduledLateralTap = resolvePlayerTapAction({
+  zone: 'right',
+  tapDelayMs: 200,
+  now: 1000,
+  accumulatedSkip: null,
+  pendingLateralTap: null,
+  lastOverlayOpenTap: null,
+});
+assert.deepStrictEqual(scheduledLateralTap, {
+  type: 'schedule_open_overlay',
   side: 'right',
+  delayMs: 200,
+});
+
+//    - Il 2° tap sullo stesso lato entro 200ms skippa direttamente senza mostrare l'overlay
+const delayedDoubleTapSeek = resolvePlayerTapAction({
+  zone: 'right',
+  tapDelayMs: 200,
+  now: 1180,
+  accumulatedSkip: null,
+  pendingLateralTap: { time: 1000, side: 'right' },
+  lastOverlayOpenTap: null,
+});
+assert.deepStrictEqual(delayedDoubleTapSeek, { type: 'double_tap_seek', side: 'right' });
+
+//    - Tap su lato opposto non fa double-tap errato e rischedula sul nuovo lato
+const oppositePendingTap = resolvePlayerTapAction({
+  zone: 'left',
+  tapDelayMs: 200,
+  now: 1120,
+  accumulatedSkip: null,
+  pendingLateralTap: { time: 1000, side: 'right' },
+  lastOverlayOpenTap: null,
+});
+assert.deepStrictEqual(oppositePendingTap, {
+  type: 'schedule_open_overlay',
+  side: 'left',
+  delayMs: 200,
+});
+
+// 2. Modalità OFF (0ms): apertura immediata anche sui lati con finestra di grazia per sfondo OSD
+const openTap = resolvePlayerTapAction({
+  zone: 'right',
+  tapDelayMs: 0,
+  now: 1000,
+  accumulatedSkip: null,
+  pendingLateralTap: null,
+  lastOverlayOpenTap: null,
+});
+assert.deepStrictEqual(openTap, { type: 'open_overlay_immediate', zone: 'right' });
+
+// 3. Sfondo OSD: secondo tap laterale entro DOUBLE_TAP_WINDOW_MS -> double-tap seek
+const rapidOverlayTap = resolveOverlayBackgroundTapAction({
+  zone: 'right',
   pressTime: 1000 + DOUBLE_TAP_WINDOW_MS - 40,
   lastOverlayOpenTap: { time: 1000, side: 'right' },
 });
 assert.deepStrictEqual(rapidOverlayTap, { type: 'double_tap_seek', side: 'right' });
 
-// 3. Secondo tap sul lato opposto -> chiusura overlay anziché seek errato
+// 4. Sfondo OSD al centro -> chiude sempre l'overlay, MAI skip accidentale anche dentro la finestra
+const centerOverlayTap = resolveOverlayBackgroundTapAction({
+  zone: 'center',
+  pressTime: 1000 + 80,
+  lastOverlayOpenTap: { time: 1000, side: 'right' },
+});
+assert.deepStrictEqual(centerOverlayTap, { type: 'close_overlay' });
+
+// 5. Secondo tap sul lato opposto -> chiusura overlay anziché seek errato
 const oppositeOverlayTap = resolveOverlayBackgroundTapAction({
-  side: 'left',
+  zone: 'left',
   pressTime: 1000 + 120,
   lastOverlayOpenTap: { time: 1000, side: 'right' },
 });
 assert.deepStrictEqual(oppositeOverlayTap, { type: 'close_overlay' });
 
-// 4. Secondo tap dopo la finestra di grazia -> normale chiusura overlay
+// 6. Secondo tap dopo la finestra di grazia -> normale chiusura overlay
 const lateOverlayTap = resolveOverlayBackgroundTapAction({
-  side: 'right',
+  zone: 'right',
   pressTime: 1000 + DOUBLE_TAP_WINDOW_MS + 50,
   lastOverlayOpenTap: { time: 1000, side: 'right' },
 });
 assert.deepStrictEqual(lateOverlayTap, { type: 'close_overlay' });
 
-// 5. Tap singolo durante skip cumulativo attivo -> avanza skip cumulativo
+// 7. Tap singolo laterale durante skip cumulativo attivo -> avanza skip cumulativo
 const cumulativeTap = resolvePlayerTapAction({
-  side: 'right',
+  zone: 'right',
+  tapDelayMs: 200,
   now: 1500,
   accumulatedSkip: { direction: 'right', seconds: 10 },
+  pendingLateralTap: null,
   lastOverlayOpenTap: null,
 });
 assert.deepStrictEqual(cumulativeTap, { type: 'advance_cumulative', side: 'right' });
 
-// 6. Verifiche statiche: assenza Gesture.Exclusive bloccante & presenza stack NavigationBar + setImmersiveMode
+// 8. Persistenza MMKV playerTapDelayMs (default 200ms) e sync sharedSettings KuroSync
+assert.strictEqual(DEFAULT_PLAYER_TAP_DELAY_MS, 200);
+assert.deepStrictEqual([...PLAYER_TAP_DELAY_VALUES], [0, 100, 150, 200, 250]);
+assert.strictEqual(normalizePlayerTapDelayMs(150), 150);
+assert.strictEqual(normalizePlayerTapDelayMs(999), 200);
+assert.strictEqual(normalizePlayerTapDelayMs(undefined), 200);
+
+const prevTapDelay = AppStorage.getPlayerTapDelayMs();
+assert.strictEqual(prevTapDelay, 200, 'playerTapDelayMs predefinito deve essere 200 ms');
+AppStorage.setPlayerTapDelayMs(150);
+assert.strictEqual(AppStorage.getPlayerTapDelayMs(), 150);
+const tapDelayPendingMutations = AppStorage.getPendingSyncMutations();
+assert.strictEqual(
+  tapDelayPendingMutations.sharedSettings?.playerTapDelayMs,
+  150,
+  'setPlayerTapDelayMs deve accodare playerTapDelayMs nelle pending mutations sharedSettings di KuroSync'
+);
+const mergeTapDelayResult = mergeLocalAndRemote(
+  {
+    favorites: [],
+    continueWatching: [],
+    watchHistory: [],
+    watchProgress: [],
+    sharedSettings: { playerTapDelayMs: 150 },
+    searchHistory: [],
+  },
+  {
+    serverTime: Date.now(),
+    deltas: {
+      favorites: [],
+      continueWatching: [],
+      watchHistory: [],
+      watchProgress: [],
+      sharedSettings: { playerTapDelayMs: 0 },
+      searchHistory: [],
+    },
+    tombstones: [],
+  },
+  [],
+  { sharedSettings: { playerTapDelayMs: 150 } }
+);
+assert.strictEqual(
+  mergeTapDelayResult.state.sharedSettings.playerTapDelayMs,
+  150,
+  'mergeLocalAndRemote deve preservare playerTapDelayMs pendente in sharedSettings'
+);
+AppStorage.setPlayerTapDelayMs(prevTapDelay);
+
+// 9. UI Slider PlayerTapDelaySlider & integrazione Settings
+assert(
+  typeof PlayerTapDelaySlider === 'function' || typeof PlayerTapDelaySlider === 'object',
+  'PlayerTapDelaySlider deve essere esportato'
+);
+assert.deepStrictEqual(
+  PLAYER_TAP_DELAY_STEPS.map((s) => s.value),
+  [0, 100, 150, 200, 250]
+);
+const playbackSettingsSrc = fs.readFileSync(
+  path.resolve(process.cwd(), 'app/settings/playback.tsx'),
+  'utf-8'
+);
+assert(
+  playbackSettingsSrc.includes('PlayerTapDelaySlider'),
+  'app/settings/playback.tsx deve mostrare PlayerTapDelaySlider'
+);
+const settingsTabSrc = fs.readFileSync(
+  path.resolve(process.cwd(), 'app/(tabs)/settings.tsx'),
+  'utf-8'
+);
+assert(
+  settingsTabSrc.includes('getPlayerTapDelayMs'),
+  'app/(tabs)/settings.tsx deve esporre il delay tap nel sottotitolo Player'
+);
+
+// 10. Verifiche statiche player: nessun pointerEvents bloccante sul tasto Play/Pause, 3 fasce & Stack NavigationBar
 const playerUxSrc = fs.readFileSync(path.resolve(process.cwd(), 'app/player/[id].tsx'), 'utf-8');
 assert(
   !playerUxSrc.includes('Gesture.Exclusive(doubleTap, singleTap)'),
   'app/player/[id].tsx non deve bloccare singleTap con Gesture.Exclusive'
 );
 assert(
-  playerUxSrc.includes('resolvePlayerTapAction') && playerUxSrc.includes('resolveOverlayBackgroundTapAction'),
-  'app/player/[id].tsx deve usare la state machine tap-gestures per risposta immediata'
+  !playerUxSrc.includes('isDoubleTapGrace'),
+  'app/player/[id].tsx non deve bloccare pointerEvents su osdControlsLayer impedendo il Play/Pause al volo'
+);
+assert(
+  playerUxSrc.includes('resolveTapZone') &&
+    playerUxSrc.includes('resolvePlayerTapAction') &&
+    playerUxSrc.includes('resolveOverlayBackgroundTapAction') &&
+    playerUxSrc.includes('clearPendingTapOpen'),
+  'app/player/[id].tsx deve usare la state machine a 3 fasce e delay configurabile'
 );
 assert(
   playerUxSrc.includes('<NavigationBar.NavigationBar hidden={true} style="light" />'),

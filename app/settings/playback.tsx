@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -15,9 +15,11 @@ import {
   AppStorage,
   type AniSkipSettings,
   type AniSkipMode,
+  type PlayerTapDelayMs,
 } from '@/services/storage';
 import { AniSkipSlider } from '@/components/AniSkipSlider';
 import { AniSkipDurationSlider } from '@/components/AniSkipDurationSlider';
+import { PlayerTapDelaySlider } from '@/components/PlayerTapDelaySlider';
 import { useResponsiveLayout } from '@/hooks';
 import {
   SettingsHeader,
@@ -48,12 +50,23 @@ export default function PlaybackSettingsScreen() {
   const [aniSkipSettings, setAniSkipSettings] = useState<AniSkipSettings>(() => {
     return AppStorage.getAniSkipSettings();
   });
+  const [playerTapDelayMs, setPlayerTapDelayMs] = useState<PlayerTapDelayMs>(() => {
+    return AppStorage.getPlayerTapDelayMs();
+  });
 
   useFocusEffect(
     useCallback(() => {
       setAniSkipSettings(AppStorage.getAniSkipSettings());
+      setPlayerTapDelayMs(AppStorage.getPlayerTapDelayMs());
     }, [])
   );
+
+  useEffect(() => {
+    return AppStorage.addSettingsListener(() => {
+      setAniSkipSettings(AppStorage.getAniSkipSettings());
+      setPlayerTapDelayMs(AppStorage.getPlayerTapDelayMs());
+    });
+  }, []);
 
   const handleUpdateAniSkipMode = (mode: AniSkipMode) => {
     Haptics.selectionAsync().catch(() => {});
@@ -103,11 +116,17 @@ export default function PlaybackSettingsScreen() {
     setAniSkipSettings(updated);
   };
 
+  const handleUpdatePlayerTapDelay = (delayMs: PlayerTapDelayMs) => {
+    Haptics.selectionAsync().catch(() => {});
+    const updated = AppStorage.setPlayerTapDelayMs(delayMs);
+    setPlayerTapDelayMs(updated);
+  };
+
   return (
     <View style={[styles.root, { paddingTop: insets.top, backgroundColor: theme.colors.background }]}>
       <SettingsHeader
         title="PLAYER"
-        subtitle="SALTO AUTOMATICO O MANUALE DI INTRO, RECAP ED ENDING"
+        subtitle="ANISKIP E RITARDO GESTI TAP DEL PLAYER"
       />
 
       <ScrollView
@@ -192,6 +211,20 @@ export default function PlaybackSettingsScreen() {
               </View>
             </>
           )}
+        </View>
+
+        {/* CONTROLLI & GESTI TAP (Ritardo apertura overlay & fascia centrale esclusa dallo skip) */}
+        <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+          <Text style={[styles.cardTitle, { color: theme.colors.text }]}>CONTROLLI &amp; GESTI TAP</Text>
+
+          <Text style={[styles.aniskipSubTitle, { color: theme.colors.textSecondary, marginBottom: 8 }]}>
+            RITARDO APERTURA OVERLAY SU DOPPIO TAP (MS)
+          </Text>
+          <PlayerTapDelaySlider
+            value={playerTapDelayMs}
+            onChange={handleUpdatePlayerTapDelay}
+            theme={theme}
+          />
         </View>
       </ScrollView>
     </View>

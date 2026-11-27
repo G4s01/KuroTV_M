@@ -158,6 +158,19 @@ export type EndingThreshold = 90 | 60 | 30 | 0;
 export type PreferredQuality = 'auto' | '1080p' | '720p' | '480p' | '360p';
 export type HistoryRetentionDays = -1 | 0 | 30 | 60 | 90 | 180;
 export type SearchMode = 'auto' | 'manual';
+export type PlayerTapDelayMs = 0 | 100 | 150 | 200 | 250;
+
+export const PLAYER_TAP_DELAY_VALUES: readonly PlayerTapDelayMs[] = [0, 100, 150, 200, 250];
+export const DEFAULT_PLAYER_TAP_DELAY_MS: PlayerTapDelayMs = 200;
+
+export function normalizePlayerTapDelayMs(value: unknown): PlayerTapDelayMs {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    for (const candidate of PLAYER_TAP_DELAY_VALUES) {
+      if (candidate === value) return candidate;
+    }
+  }
+  return DEFAULT_PLAYER_TAP_DELAY_MS;
+}
 
 export interface AppSettings {
   themeMode: ThemeMode;
@@ -179,6 +192,7 @@ export interface AppSettings {
   searchMinChars: number;
   aniSkipSettings?: AniSkipSettings;
   navBarMode?: NavBarMode;
+  playerTapDelayMs?: PlayerTapDelayMs;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -199,6 +213,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   searchMinChars: 3,
   aniSkipSettings: DEFAULT_ANISKIP_SETTINGS,
   navBarMode: 'visible',
+  playerTapDelayMs: DEFAULT_PLAYER_TAP_DELAY_MS,
 };
 
 export interface SearchHistoryItem {
@@ -522,41 +537,50 @@ export const AppStorage = {
       DEFAULT_SETTINGS.themeMode;
     const customColors = AppStorage.getCustomColors();
     const aniSkipSettings = AppStorage.getAniSkipSettings();
+    const playerTapDelayMs =
+      saved?.playerTapDelayMs !== undefined
+        ? normalizePlayerTapDelayMs(saved.playerTapDelayMs)
+        : DEFAULT_PLAYER_TAP_DELAY_MS;
 
     return {
       ...DEFAULT_SETTINGS,
       ...saved,
       themeMode,
       aniSkipSettings,
+      playerTapDelayMs,
       ...(Object.keys(customColors).length > 0 ? { customColors } : {}),
     };
   },
 
   saveSettings: (partial: Partial<AppSettings>, isRemoteSync = false): AppSettings => {
     const current = AppStorage.getSettings();
+    const normalizedPartial: Partial<AppSettings> =
+      partial.playerTapDelayMs !== undefined
+        ? { ...partial, playerTapDelayMs: normalizePlayerTapDelayMs(partial.playerTapDelayMs) }
+        : partial;
     const updated: AppSettings = {
       ...current,
-      ...partial,
+      ...normalizedPartial,
     };
     AppStorage.setObject(StorageKeys.APP_SETTINGS, updated);
 
-    if (partial.themeMode) {
-      AppStorage.setString(StorageKeys.THEME_MODE, partial.themeMode);
+    if (normalizedPartial.themeMode) {
+      AppStorage.setString(StorageKeys.THEME_MODE, normalizedPartial.themeMode);
     }
-    if (partial.customColors) {
-      AppStorage.setObject(StorageKeys.CUSTOM_THEME_COLORS, partial.customColors);
+    if (normalizedPartial.customColors) {
+      AppStorage.setObject(StorageKeys.CUSTOM_THEME_COLORS, normalizedPartial.customColors);
     }
-    if (partial.tld) {
-      AppStorage.setTld(partial.tld);
+    if (normalizedPartial.tld) {
+      AppStorage.setTld(normalizedPartial.tld);
     }
-    if (partial.historyRetentionDays !== undefined) {
-      AppStorage.cleanupExpiredHistory(partial.historyRetentionDays);
+    if (normalizedPartial.historyRetentionDays !== undefined) {
+      AppStorage.cleanupExpiredHistory(normalizedPartial.historyRetentionDays);
     }
-    if (partial.searchHistoryRetentionDays !== undefined) {
-      AppStorage.cleanupExpiredSearchHistory(partial.searchHistoryRetentionDays);
+    if (normalizedPartial.searchHistoryRetentionDays !== undefined) {
+      AppStorage.cleanupExpiredSearchHistory(normalizedPartial.searchHistoryRetentionDays);
     }
-    if (partial.aniSkipSettings) {
-      AppStorage.saveAniSkipSettings(partial.aniSkipSettings, isRemoteSync);
+    if (normalizedPartial.aniSkipSettings) {
+      AppStorage.saveAniSkipSettings(normalizedPartial.aniSkipSettings, isRemoteSync);
     }
 
     if (!isRemoteSync) {
@@ -569,13 +593,14 @@ export const AppStorage = {
         'customDomain',
         'historyRetentionDays',
         'searchHistoryRetentionDays',
+        'playerTapDelayMs',
       ] as const;
 
       const sharedMutation: Record<string, any> = {};
       let hasShared = false;
       for (const k of sharedKeys) {
-        if (partial[k] !== undefined) {
-          sharedMutation[k] = partial[k];
+        if (normalizedPartial[k] !== undefined) {
+          sharedMutation[k] = normalizedPartial[k];
           hasShared = true;
         }
       }
@@ -870,6 +895,19 @@ export const AppStorage = {
 
   setNavBarMode: (mode: NavBarMode): void => {
     AppStorage.saveSettings({ navBarMode: mode });
+  },
+
+  // ----------------------------------------------------
+  // Player Tap Delay Preference (synced via sharedSettings)
+  // ----------------------------------------------------
+  getPlayerTapDelayMs: (): PlayerTapDelayMs => {
+    return normalizePlayerTapDelayMs(AppStorage.getSettings().playerTapDelayMs);
+  },
+
+  setPlayerTapDelayMs: (delayMs: PlayerTapDelayMs): PlayerTapDelayMs => {
+    const normalized = normalizePlayerTapDelayMs(delayMs);
+    AppStorage.saveSettings({ playerTapDelayMs: normalized });
+    return normalized;
   },
 
   // ----------------------------------------------------

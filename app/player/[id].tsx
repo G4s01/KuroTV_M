@@ -32,7 +32,7 @@ import {
   type AniSkipNextPrompt,
   type AniSkipOverlayState,
 } from '@/services/aniskip';
-import { AppStorage } from '@/services/storage';
+import { AppStorage, type PlayerTapDelayMs } from '@/services/storage';
 import { SyncManager } from '@/services/sync';
 import { DownloadService, type DownloadStatus } from '@/services/downloads';
 import {
@@ -56,12 +56,12 @@ import {
   computeVerticalGestureTravelRange,
   computeSystemVolumeGesture,
   computeWindowBrightnessGesture,
-  DOUBLE_TAP_WINDOW_MS,
   getTapTimestampMs,
-  resolveTapSide,
+  resolveTapZone,
   resolvePlayerTapAction,
   resolveOverlayBackgroundTapAction,
   type OverlayOpenTapRecord,
+  type PendingLateralTapRecord,
 } from '@/components/player';
 import KuroDeviceControls from '../../modules/kuro-device-controls';
 import { playerStyles as styles } from '@/components/player/player.styles';
@@ -328,6 +328,29 @@ export default function VideoPlayerScreen() {
   const skipTriggeredTimeRef = React.useRef<number>(0);
   const autoSkippedIdsRef = React.useRef<Set<string>>(new Set());
   const aniSkipSettingsRef = React.useRef(AppStorage.getAniSkipSettings());
+  const tapDelayMsRef = React.useRef<PlayerTapDelayMs>(AppStorage.getPlayerTapDelayMs());
+  const lastOverlayOpenTapRef = React.useRef<OverlayOpenTapRecord | null>(null);
+  const pendingLateralTapRef = React.useRef<PendingLateralTapRecord | null>(null);
+  const pendingTapOpenTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const osdBgPressInRef = React.useRef<{ time: number; x: number } | null>(null);
+
+  const clearPendingTapOpen = React.useCallback(() => {
+    if (pendingTapOpenTimerRef.current) {
+      clearTimeout(pendingTapOpenTimerRef.current);
+      pendingTapOpenTimerRef.current = null;
+    }
+    pendingLateralTapRef.current = null;
+  }, []);
+
+  const clearActiveSkipFeedback = React.useCallback(() => {
+    if (skipTimeoutRef.current) {
+      clearTimeout(skipTimeoutRef.current);
+      skipTimeoutRef.current = null;
+    }
+    accumulatedSkipRef.current = null;
+    setCumulativeSkip(null);
+  }, []);
+
   const handleNavigateToEpisodeRef = React.useRef<
     | ((
         targetEp: Episode | { id: string; number: number; dataId?: string; thumbnail?: string },
@@ -738,6 +761,8 @@ export default function VideoPlayerScreen() {
   // Ensure player-only window brightness & immersive system bars are active while player is focused/mounted
   useFocusEffect(
     React.useCallback(() => {
+      aniSkipSettingsRef.current = AppStorage.getAniSkipSettings();
+      tapDelayMsRef.current = AppStorage.getPlayerTapDelayMs();
       enforcePlayerImmersiveBars();
       if (Platform.OS === 'android' && KuroDeviceControls) {
         if (screenBrightnessRef.current >= 0) {
@@ -758,6 +783,14 @@ export default function VideoPlayerScreen() {
       };
     }, [enforcePlayerImmersiveBars])
   );
+
+  // Live sync player tap delay & AniSkip settings if updated while mounted (e.g. KuroSync pull)
+  React.useEffect(() => {
+    return AppStorage.addSettingsListener((updated) => {
+      aniSkipSettingsRef.current = updated.aniSkipSettings ?? AppStorage.getAniSkipSettings();
+      tapDelayMsRef.current = AppStorage.getPlayerTapDelayMs();
+    });
+  }, []);
 
   // Save latest progress on exit / screen unmount (only when leaving the screen)
   React.useEffect(() => {
@@ -1089,12 +1122,8 @@ export default function VideoPlayerScreen() {
     autoSkippedIdsRef.current.clear();
     skipTriggeredTimeRef.current = 0;
     lastOverlayOpenTapRef.current = null;
-    if (doubleTapGraceTimerRef.current) {
-      clearTimeout(doubleTapGraceTimerRef.current);
-      doubleTapGraceTimerRef.current = null;
-    }
-    setIsDoubleTapGrace(false);
-  }, [episodeId, episodeNumber, params.orientation, initialResumePosition]);
+    clearPendingTapOpen();
+  }, [episodeId, episodeNumber, params.orientation, initialResumePosition, clearPendingTapOpen]);
 
   // Fetch AniSkip timestamps & episode batch metadata for advancing next episode
   React.useEffect(() => {
@@ -1207,40 +1236,24 @@ export default function VideoPlayerScreen() {
     [player, isBuffering, showManualReload, resetControlsTimer]
   );
 
-  const [isDoubleTapGrace, setIsDoubleTapGrace] = React.useState(false);
-  const lastOverlayOpenTapRef = React.useRef<OverlayOpenTapRecord | null>(null);
-  const doubleTapGraceTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const osdBgPressInRef = React.useRef<{ time: number; x: number } | null>(null);
-
-  const clearDoubleTapGrace = React.useCallback(() => {
-    if (doubleTapGraceTimerRef.current) {
-      clearTimeout(doubleTapGraceTimerRef.current);
-      doubleTapGraceTimerRef.current = null;
-    }
-    setIsDoubleTapGrace(false);
-  }, []);
-
   React.useEffect(() => {
     return () => {
-      if (doubleTapGraceTimerRef.current) {
-        clearTimeout(doubleTapGraceTimerRef.current);
-        doubleTapGraceTimerRef.current = null;
-      }
+      clearPendingTapOpen();
     };
-  }, []);
+  }, [clearPendingTapOpen]);
 
   React.useEffect(() => {
     if (!showControls) {
-      clearDoubleTapGrace();
       return;
     }
+    clearPendingTapOpen();
     resetControlsTimer();
     return () => {
       if (controlsTimeoutRef.current) {
         clearTimeout(controlsTimeoutRef.current);
       }
     };
-  }, [showControls, resetControlsTimer, clearDoubleTapGrace]);
+  }, [showControls, resetControlsTimer, clearPendingTapOpen]);
 
   const isBufferingOrLoading = Boolean(
     videoUrl && (isLoadingSource || playerStatus === 'loading' || isBuffering)
@@ -1248,7 +1261,7 @@ export default function VideoPlayerScreen() {
 
   const toggleControls = () => {
     lastOverlayOpenTapRef.current = null;
-    clearDoubleTapGrace();
+    clearPendingTapOpen();
     Haptics.selectionAsync().catch(() => {});
     setShowControls((prev) => !prev);
   };
@@ -1534,43 +1547,58 @@ export default function VideoPlayerScreen() {
     resetControlsTimer();
   };
 
-  // Gesture Handlers: singleTap activates immediately on release without waiting for
-  // a double-tap timeout, while a short grace window catches a rapid 2nd tap.
+  // Gesture Handlers:
+  // - Center zone (35%..65%) is strictly excluded from double-tap skip and opens OSD at 0 ms.
+  // - Lateral skip zones respect configurable playerTapDelayMs so double-tap skips cleanly
+  //   without flashing the overlay when delay > 0 ms.
   const singleTap = Gesture.Tap()
     .numberOfTaps(1)
     .onEnd((e) => {
-      const side = resolveTapSide(e.x, windowWidth);
+      const zone = resolveTapZone(e.x, windowWidth);
       const now = getTapTimestampMs();
       const action = resolvePlayerTapAction({
-        side,
+        zone,
+        tapDelayMs: tapDelayMsRef.current,
         now,
         accumulatedSkip: accumulatedSkipRef.current,
+        pendingLateralTap: pendingLateralTapRef.current,
         lastOverlayOpenTap: lastOverlayOpenTapRef.current,
       });
 
       if (action.type === 'advance_cumulative') {
+        clearPendingTapOpen();
         handleDoubleTap(action.side);
         return;
       }
 
       if (action.type === 'double_tap_seek') {
+        clearPendingTapOpen();
         lastOverlayOpenTapRef.current = null;
-        clearDoubleTapGrace();
         setShowControls(false);
         handleDoubleTap(action.side);
         return;
       }
 
-      lastOverlayOpenTapRef.current = { time: now, side };
-      if (doubleTapGraceTimerRef.current) {
-        clearTimeout(doubleTapGraceTimerRef.current);
+      if (action.type === 'schedule_open_overlay') {
+        clearPendingTapOpen();
+        pendingLateralTapRef.current = { time: now, side: action.side };
+        pendingTapOpenTimerRef.current = setTimeout(() => {
+          pendingTapOpenTimerRef.current = null;
+          pendingLateralTapRef.current = null;
+          lastOverlayOpenTapRef.current = null;
+          Haptics.selectionAsync().catch(() => {});
+          setShowControls(true);
+        }, action.delayMs);
+        return;
       }
-      setIsDoubleTapGrace(true);
-      doubleTapGraceTimerRef.current = setTimeout(() => {
-        doubleTapGraceTimerRef.current = null;
-        setIsDoubleTapGrace(false);
-      }, DOUBLE_TAP_WINDOW_MS);
 
+      clearPendingTapOpen();
+      if (action.zone === 'center') {
+        clearActiveSkipFeedback();
+        lastOverlayOpenTapRef.current = null;
+      } else {
+        lastOverlayOpenTapRef.current = { time: now, side: action.zone };
+      }
       Haptics.selectionAsync().catch(() => {});
       setShowControls(true);
     })
@@ -1595,17 +1623,17 @@ export default function VideoPlayerScreen() {
         : typeof e?.nativeEvent?.pageX === 'number'
         ? e.nativeEvent.pageX
         : pressIn?.x ?? windowWidth / 2;
-    const side = resolveTapSide(x, windowWidth);
+    const zone = resolveTapZone(x, windowWidth);
     const pressTime = pressIn?.time ?? getTapTimestampMs();
     const action = resolveOverlayBackgroundTapAction({
-      side,
+      zone,
       pressTime,
       lastOverlayOpenTap: lastOverlayOpenTapRef.current,
     });
 
     if (action.type === 'double_tap_seek') {
       lastOverlayOpenTapRef.current = null;
-      clearDoubleTapGrace();
+      clearPendingTapOpen();
       setShowControls(false);
       handleDoubleTap(action.side);
       return;
@@ -1620,6 +1648,7 @@ export default function VideoPlayerScreen() {
     .activeOffsetY([-18, 18])
     .failOffsetX([-14, 14])
     .onStart((e) => {
+      clearPendingTapOpen();
       startPanTranslationYRef.current = e.translationY;
       if (hasNativeDeviceControls && KuroDeviceControls) {
         const volInfo = KuroDeviceControls.getSystemVolumeInfo();
@@ -1753,6 +1782,7 @@ export default function VideoPlayerScreen() {
               autoExitOnRotate: true,
             }}
             onPictureInPictureStart={() => {
+              clearPendingTapOpen();
               if (pipStopTimerRef.current) {
                 clearTimeout(pipStopTimerRef.current);
                 pipStopTimerRef.current = null;
@@ -1979,7 +2009,7 @@ export default function VideoPlayerScreen() {
 
             <View
               style={styles.osdControlsLayer}
-              pointerEvents={isDoubleTapGrace ? 'none' : 'box-none'}
+              pointerEvents="box-none"
             >
               {/* OSD Header */}
               <PlayerHeader

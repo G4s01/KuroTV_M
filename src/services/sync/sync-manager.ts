@@ -1408,6 +1408,7 @@ class SyncManagerClass {
         customDomain: settings.customDomain,
         historyRetentionDays: settings.historyRetentionDays,
         searchHistoryRetentionDays: settings.searchHistoryRetentionDays,
+        playerTapDelayMs: settings.playerTapDelayMs,
       };
 
       const activeScopeId = getActiveMalProfileScope();

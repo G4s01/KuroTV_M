@@ -14,13 +14,13 @@ export interface ChangelogEntry {
 
 export const CURRENT_CHANGELOG: ChangelogEntry = {
   version: "1.0.0",
-  versionCode: 73,
-  releaseDate: "2026-11-27",
+  versionCode: 75,
+  releaseDate: "2026-11-28",
   title: "RELEASE UFFICIALE KUROTV MOBILE",
   highlights: [
-  "FIX SYSTEM NAVBAR ON ROTATION IN VIDEO-PLAYER FULL SCREEN."
+  "RELEASE UFFICIALE V1.0.0 (BUILD 75)"
 ],
-  releaseNotes: "## [1.0.0] - 2026-11-27\n\n- FIX SYSTEM NAVBAR ON ROTATION IN VIDEO-PLAYER FULL SCREEN.",
+  releaseNotes: "## [1.0.0] - 2026-11-28\n\nPLAYER GESTURES",
 };
 
 export function formatChangelog(entry: ChangelogEntry): string {

@@ -9,6 +9,7 @@ export * from './HistorySlider';
 export * from './useBottomSheetDragDismiss';
 export * from './AniSkipSlider';
 export * from './AniSkipDurationSlider';
+export * from './PlayerTapDelaySlider';
 export * from './ConfirmModal';
 export * from './SelectionAppBar';
 export * from './UpdateModal';

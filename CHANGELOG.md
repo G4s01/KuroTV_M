@@ -184,6 +184,6 @@ e questo progetto aderisce al [Semantic Versioning](https://semver.org/lang/it/)
 
 Minor Player Fixes
 
-## [1.0.0] - 2026-11-27
+## [1.0.0] - 2026-11-28
 
-- FIX SYSTEM NAVBAR ON ROTATION IN VIDEO-PLAYER FULL SCREEN.
+PLAYER GESTURES
