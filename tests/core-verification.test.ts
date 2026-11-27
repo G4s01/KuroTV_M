@@ -6336,6 +6336,12 @@ for (const token of [
   'BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE',
   'WindowInsetsCompat.Type.systemBars()',
   'OnWindowFocusChangeListener',
+  'DisplayManager.DisplayListener',
+  'refreshImmersiveSystemBarsForRotation',
+  'syncImmersiveBarsOrRefreshRotation',
+  'clearPendingRotationRefreshes',
+  'decorView.requestLayout()',
+  'ViewCompat.requestApplyInsets',
 ]) {
   assert(
     immersiveKtSrc.includes(token),
