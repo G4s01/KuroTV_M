@@ -5965,6 +5965,15 @@ const notAppliedStatus = BatteryStore.verifyAfterReturn();
 assert.strictEqual(notAppliedStatus.isUnrestricted, false);
 assert.strictEqual(BatteryStore.getState().verificationState, 'not_applied', 'Se l\'utente non applica la modifica, deve entrare in stato not_applied');
 
+// Verifica che dopo not_applied sia comunque possibile rilanciare startUnrestrictedRequest()
+requestedMethodCalled = null;
+const retryReqLaunch = BatteryStore.startUnrestrictedRequest();
+assert.strictEqual(retryReqLaunch.launched, true);
+assert.strictEqual(requestedMethodCalled, 'request_dialog');
+assert.strictEqual(BatteryStore.getState().verificationState, 'awaiting_return');
+BatteryStore.verifyAfterReturn();
+assert.strictEqual(BatteryStore.getState().verificationState, 'not_applied');
+
 const settingsLaunch = BatteryStore.openSystemSettings();
 assert.strictEqual(settingsLaunch.launched, true);
 assert.strictEqual(requestedMethodCalled, 'app_details');
@@ -6009,6 +6018,15 @@ assert.strictEqual(
   true,
   'Il modale resta visibile nello stato verified per mostrare la conferma prima della chiusura'
 );
+
+// Verifica che startUnrestrictedRequest() resti attivo anche dopo l'abilitazione (isUnrestricted=true)
+mockRestricted = false;
+BatteryStore.refreshStatus();
+requestedMethodCalled = null;
+const recheckLaunch = BatteryStore.startUnrestrictedRequest();
+assert.strictEqual(recheckLaunch.launched, true);
+assert.strictEqual(requestedMethodCalled, 'request_dialog');
+assert.strictEqual(BatteryStore.getState().verificationState, 'verified');
 
 BatteryStore.dismissForSession();
 assert.strictEqual(
@@ -6152,6 +6170,11 @@ assert(batteryModalSrc.includes('getContrastTextColor'), 'BatteryOptimizationMod
 assert(batteryModalSrc.includes('NESSUNA RESTRIZIONE'), 'BatteryOptimizationModal deve riferirsi esplicitamente a Nessuna restrizione');
 assert(batteryModalSrc.includes('resetDismissedOnAppReopen'), 'BatteryOptimizationModal deve resettare dismissForSession alla riapertura da background');
 assert(batteryModalSrc.includes('wentToBackgroundRef'), 'BatteryOptimizationModal deve distinguere background->active da transizioni transienti');
+assert(
+  batteryModalSrc.includes('onPress={handleSetUnrestricted}') &&
+    !batteryModalSrc.includes("isNotApplied || isAwaiting\n      ? 'APRI IMPOSTAZIONI"),
+  'BatteryOptimizationModal deve mantenere sempre visibile IMPOSTA NESSUNA RESTRIZIONE anche dopo tentativi, tocchi o abilitazione'
+);
 
 const batteryCardSrc = fs.readFileSync(
   path.resolve(process.cwd(), 'src/components/settings/BatterySettingsCard.tsx'),
@@ -6159,6 +6182,12 @@ const batteryCardSrc = fs.readFileSync(
 );
 assert(!batteryCardSrc.includes('Alert.alert'), 'BatterySettingsCard non deve usare Alert.alert');
 assert(batteryCardSrc.includes('NESSUNA RESTRIZIONE'), 'BatterySettingsCard deve mostrare lo stato Nessuna restrizione');
+assert(
+  batteryCardSrc.includes('onPress={handleSetUnrestricted}') &&
+    batteryCardSrc.includes('onPress={handleOpenBatterySettings}') &&
+    !batteryCardSrc.includes("isUnrestricted\n              ? 'IMPOSTAZIONI BATTERIA'"),
+  'BatterySettingsCard deve mantenere sempre visibili sia IMPOSTA NESSUNA RESTRIZIONE che IMPOSTAZIONI BATTERIA'
+);
 
 const rootLayoutBatterySrc = fs.readFileSync(path.resolve(process.cwd(), 'app/_layout.tsx'), 'utf-8');
 assert(rootLayoutBatterySrc.includes('<BatteryOptimizationModal'), 'app/_layout.tsx deve montare BatteryOptimizationModal');

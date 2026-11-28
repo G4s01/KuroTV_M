@@ -20,16 +20,12 @@ export const BatterySettingsCard: React.FC = React.memo(() => {
   const statusColor = isUnrestricted ? successColor : warningColor;
   const primaryContrast = getContrastTextColor(theme.colors.primary);
 
-  const handleConfigure = () => {
+  const handleSetUnrestricted = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    if (isUnrestricted || isNotApplied) {
-      BatteryStore.openSystemSettings();
-    } else {
-      BatteryStore.startUnrestrictedRequest();
-    }
+    BatteryStore.startUnrestrictedRequest();
   };
 
-  const handleOpenAppSettings = () => {
+  const handleOpenBatterySettings = () => {
     Haptics.selectionAsync().catch(() => {});
     BatteryStore.openSystemSettings();
   };
@@ -103,27 +99,22 @@ export const BatterySettingsCard: React.FC = React.memo(() => {
         </View>
       ) : null}
 
-      {/* Actions */}
-      <View style={cardStyles.actionsRow}>
+      {/* Actions: always keep both 'IMPOSTA NESSUNA RESTRIZIONE' and 'IMPOSTAZIONI BATTERIA' accessible */}
+      <View style={cardStyles.actionsColumn}>
         <Pressable
           style={[
             cardStyles.primaryBtn,
             {
               backgroundColor: isUnrestricted ? theme.colors.card : theme.colors.primary,
               borderColor: isUnrestricted ? theme.colors.border : theme.colors.primary,
-              flex: 1,
             },
           ]}
-          onPress={handleConfigure}
+          onPress={handleSetUnrestricted}
           accessibilityRole="button"
-          accessibilityLabel={
-            isUnrestricted
-              ? 'APRI IMPOSTAZIONI BATTERIA'
-              : 'IMPOSTA NESSUNA RESTRIZIONE'
-          }
+          accessibilityLabel="IMPOSTA NESSUNA RESTRIZIONE"
         >
           <Ionicons
-            name="settings-outline"
+            name="battery-charging-outline"
             size={16}
             color={isUnrestricted ? theme.colors.text : primaryContrast}
           />
@@ -134,31 +125,30 @@ export const BatterySettingsCard: React.FC = React.memo(() => {
             ]}
             numberOfLines={1}
           >
-            {isUnrestricted
-              ? 'IMPOSTAZIONI BATTERIA'
-              : isNotApplied
-                ? 'APRI IMPOSTAZIONI BATTERIA'
-                : 'IMPOSTA NESSUNA RESTRIZIONE'}
+            IMPOSTA NESSUNA RESTRIZIONE
           </Text>
         </Pressable>
 
-        {!isUnrestricted && !isNotApplied ? (
-          <Pressable
-            style={[
-              cardStyles.iconBtn,
-              {
-                backgroundColor: theme.colors.card,
-                borderColor: theme.colors.border,
-              },
-            ]}
-            onPress={handleOpenAppSettings}
-            hitSlop={6}
-            accessibilityRole="button"
-            accessibilityLabel="APRI IMPOSTAZIONI BATTERIA"
+        <Pressable
+          style={[
+            cardStyles.primaryBtn,
+            {
+              backgroundColor: theme.colors.card,
+              borderColor: theme.colors.border,
+            },
+          ]}
+          onPress={handleOpenBatterySettings}
+          accessibilityRole="button"
+          accessibilityLabel="IMPOSTAZIONI BATTERIA"
+        >
+          <Ionicons name="settings-outline" size={16} color={theme.colors.text} />
+          <Text
+            style={[cardStyles.primaryBtnText, { color: theme.colors.text }]}
+            numberOfLines={1}
           >
-            <Ionicons name="open-outline" size={18} color={theme.colors.text} />
-          </Pressable>
-        ) : null}
+            IMPOSTAZIONI BATTERIA
+          </Text>
+        </Pressable>
       </View>
 
       {/* Startup Prompt Silence Toggle */}
@@ -293,9 +283,7 @@ const cardStyles = StyleSheet.create({
     fontFamily: 'monospace',
     textTransform: 'uppercase',
   },
-  actionsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  actionsColumn: {
     gap: 8,
   },
   primaryBtn: {
@@ -314,14 +302,6 @@ const cardStyles = StyleSheet.create({
     fontFamily: 'monospace',
     textTransform: 'uppercase',
     letterSpacing: 0.4,
-  },
-  iconBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 10,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   toggleRow: {
     flexDirection: 'row',

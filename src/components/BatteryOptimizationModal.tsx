@@ -236,24 +236,18 @@ export const BatteryOptimizationModal: React.FC<BatteryOptimizationModalProps> =
     BatteryStore.silencePrompt(true);
   };
 
-  const handlePrimaryAction = () => {
+  const handleSetUnrestricted = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-    if (isVerified) {
-      BatteryStore.dismissForSession();
-      return;
-    }
-    if (isNotApplied) {
-      BatteryStore.openSystemSettings();
-      return;
-    }
-    if (isAwaiting) {
-      const latest = BatteryStore.verifyAfterReturn();
-      if (!latest.isUnrestricted) {
-        BatteryStore.openSystemSettings();
-      }
-      return;
+    if (autoCloseTimerRef.current) {
+      clearTimeout(autoCloseTimerRef.current);
+      autoCloseTimerRef.current = null;
     }
     BatteryStore.startUnrestrictedRequest();
+  };
+
+  const handleContinueVerified = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    BatteryStore.dismissForSession();
   };
 
   const handleOpenAppSettingsManual = () => {
@@ -277,16 +271,10 @@ export const BatteryOptimizationModal: React.FC<BatteryOptimizationModalProps> =
   const messageText = isVerified
     ? 'OTTIMIZZAZIONE BATTERIA DISABILITATA CON SUCCESSO. DOWNLOAD, PLAYER IN BACKGROUND E KUROSYNC OPERERANNO SENZA RESTRIZIONI.'
     : isNotApplied
-      ? "L'IMPOSTAZIONE NON È ANCORA STATA APPLICATA. APRI LE IMPOSTAZIONI BATTERIA DELL'APP E SELEZIONA 'NESSUNA RESTRIZIONE'."
+      ? "L'IMPOSTAZIONE NON È ANCORA STATA APPLICATA. RIPROVA CON 'IMPOSTA NESSUNA RESTRIZIONE' OPPURE APRI LE IMPOSTAZIONI BATTERIA DELL'APP."
       : isAwaiting
-        ? "CONFERMA LA RICHIESTA DI SISTEMA OPPURE IMPOSTA 'NESSUNA RESTRIZIONE' NELLE IMPOSTAZIONI BATTERIA DELL'APP."
+        ? "CONFERMA LA RICHIESTA DI SISTEMA OPPURE APRI LE IMPOSTAZIONI BATTERIA DELL'APP PER SELEZIONARE 'NESSUNA RESTRIZIONE'."
         : "PER EVITARE INTERRUZIONI DI DOWNLOAD, RIPRODUZIONE IN BACKGROUND E SINCRONIZZAZIONE, IMPOSTA IL RISPARMIO ENERGETICO DI KUROTV SU 'NESSUNA RESTRIZIONE'.";
-
-  const primaryBtnText = isVerified
-    ? 'CONTINUA'
-    : isNotApplied || isAwaiting
-      ? 'APRI IMPOSTAZIONI BATTERIA'
-      : 'IMPOSTA NESSUNA RESTRIZIONE';
 
   return (
     <Modal
@@ -383,37 +371,88 @@ export const BatteryOptimizationModal: React.FC<BatteryOptimizationModalProps> =
           </Text>
 
           {/* Primary Action */}
+          {isVerified ? (
+            <Pressable
+              style={[
+                styles.primaryButton,
+                {
+                  backgroundColor: successColor,
+                  borderColor: successColor,
+                },
+              ]}
+              onPress={handleContinueVerified}
+              hitSlop={6}
+              accessibilityRole="button"
+              accessibilityLabel="CONTINUA"
+            >
+              <Ionicons
+                name="checkmark-done"
+                size={17}
+                color={getContrastTextColor(successColor)}
+              />
+              <Text
+                style={[
+                  styles.primaryButtonText,
+                  { color: getContrastTextColor(successColor) },
+                ]}
+              >
+                CONTINUA
+              </Text>
+            </Pressable>
+          ) : null}
+
+          {/* Always keep 'IMPOSTA NESSUNA RESTRIZIONE' visible across attempts, taps, and completion */}
           <Pressable
             style={[
-              styles.primaryButton,
+              isVerified ? styles.verifyButton : styles.primaryButton,
               {
-                backgroundColor: isVerified ? successColor : theme.colors.primary,
-                borderColor: isVerified ? successColor : theme.colors.primary,
+                backgroundColor: isVerified ? theme.colors.card : theme.colors.primary,
+                borderColor: isVerified ? theme.colors.border : theme.colors.primary,
               },
             ]}
-            onPress={handlePrimaryAction}
+            onPress={handleSetUnrestricted}
             hitSlop={6}
             accessibilityRole="button"
-            accessibilityLabel={primaryBtnText}
+            accessibilityLabel="IMPOSTA NESSUNA RESTRIZIONE"
           >
             <Ionicons
-              name={isVerified ? 'checkmark-done' : 'settings-outline'}
-              size={17}
-              color={isVerified ? getContrastTextColor(successColor) : primaryContrast}
+              name="battery-charging-outline"
+              size={isVerified ? 15 : 17}
+              color={isVerified ? theme.colors.text : primaryContrast}
             />
             <Text
               style={[
-                styles.primaryButtonText,
+                isVerified ? styles.verifyButtonText : styles.primaryButtonText,
                 {
-                  color: isVerified ? getContrastTextColor(successColor) : primaryContrast,
+                  color: isVerified ? theme.colors.text : primaryContrast,
                 },
               ]}
             >
-              {primaryBtnText}
+              IMPOSTA NESSUNA RESTRIZIONE
             </Text>
           </Pressable>
 
-          {/* Verification / Manual Settings quick actions when restricted */}
+          {/* Direct Battery Settings Action */}
+          <Pressable
+            style={[
+              styles.verifyButton,
+              {
+                backgroundColor: theme.colors.card,
+                borderColor: theme.colors.border,
+              },
+            ]}
+            onPress={handleOpenAppSettingsManual}
+            hitSlop={6}
+            accessibilityRole="button"
+            accessibilityLabel="APRI IMPOSTAZIONI BATTERIA"
+          >
+            <Ionicons name="settings-outline" size={14} color={theme.colors.textSecondary} />
+            <Text style={[styles.verifyButtonText, { color: theme.colors.textSecondary }]}>
+              APRI IMPOSTAZIONI BATTERIA
+            </Text>
+          </Pressable>
+
+          {/* Manual Verify quick action when awaiting or not applied */}
           {!isVerified && (isAwaiting || isNotApplied) ? (
             <Pressable
               style={[
@@ -431,25 +470,6 @@ export const BatteryOptimizationModal: React.FC<BatteryOptimizationModalProps> =
               <Ionicons name="refresh-outline" size={15} color={theme.colors.primary} />
               <Text style={[styles.verifyButtonText, { color: theme.colors.primary }]}>
                 HO GIÀ IMPOSTATO • VERIFICA STATO
-              </Text>
-            </Pressable>
-          ) : !isVerified ? (
-            <Pressable
-              style={[
-                styles.verifyButton,
-                {
-                  backgroundColor: theme.colors.card,
-                  borderColor: theme.colors.border,
-                },
-              ]}
-              onPress={handleOpenAppSettingsManual}
-              hitSlop={6}
-              accessibilityRole="button"
-              accessibilityLabel="APRI DIRETTAMENTE IMPOSTAZIONI BATTERIA"
-            >
-              <Ionicons name="open-outline" size={14} color={theme.colors.textSecondary} />
-              <Text style={[styles.verifyButtonText, { color: theme.colors.textSecondary }]}>
-                APRI DIRETTAMENTE IMPOSTAZIONI BATTERIA
               </Text>
             </Pressable>
           ) : null}

@@ -79,6 +79,8 @@ export const BatteryStore = {
       verificationState = 'verified';
     } else if (latest.isUnrestricted && verificationState === 'not_applied') {
       verificationState = 'verified';
+    } else if (!latest.isUnrestricted && verificationState === 'verified') {
+      verificationState = 'idle';
     }
     notify();
     return latest;
@@ -114,20 +116,22 @@ export const BatteryStore = {
     hasAttemptedConfigure = true;
     const current = BatteryService.getStatus();
     status = current;
-    if (current.isUnrestricted) {
-      verificationState = 'verified';
-      lastLaunchMethod = 'none';
+    if (!current.isUnrestricted) {
+      verificationState = 'awaiting_return';
       notify();
-      return { launched: false, alreadyUnrestricted: true, method: 'none' };
     }
-
-    verificationState = 'awaiting_return';
-    notify();
 
     const result = BatteryService.requestUnrestricted();
     lastLaunchMethod = result.method;
-    if (result.alreadyUnrestricted) {
-      status = { ...current, isIgnoringBatteryOptimizations: true, isBackgroundRestricted: false, isUnrestricted: true };
+    if (current.isUnrestricted) {
+      verificationState = 'verified';
+    } else if (result.alreadyUnrestricted) {
+      status = {
+        ...current,
+        isIgnoringBatteryOptimizations: true,
+        isBackgroundRestricted: false,
+        isUnrestricted: true,
+      };
       verificationState = 'verified';
     } else if (!result.launched) {
       verificationState = 'not_applied';
