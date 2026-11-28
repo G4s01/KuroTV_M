@@ -14,11 +14,11 @@ export interface ChangelogEntry {
 
 export const CURRENT_CHANGELOG: ChangelogEntry = {
   version: "1.0.0",
-  versionCode: 75,
+  versionCode: 76,
   releaseDate: "2026-11-28",
   title: "RELEASE UFFICIALE KUROTV MOBILE",
   highlights: [
-  "RELEASE UFFICIALE V1.0.0 (BUILD 75)"
+  "RELEASE UFFICIALE V1.0.0 (BUILD 76)"
 ],
   releaseNotes: "## [1.0.0] - 2026-11-28\n\nPLAYER GESTURES",
 };

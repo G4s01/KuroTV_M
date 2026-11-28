@@ -1,5 +1,6 @@
 import { StyleSheet } from 'react-native';
 import { oledTheme } from '@/theme';
+import { CENTER_PLAY_BUTTON_SIZE } from './tap-gestures';
 
 export const playerStyles = StyleSheet.create({
   root: {
@@ -201,9 +202,9 @@ export const playerStyles = StyleSheet.create({
     height: 48,
   },
   centerPlayBtn: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    width: CENTER_PLAY_BUTTON_SIZE,
+    height: CENTER_PLAY_BUTTON_SIZE,
+    borderRadius: CENTER_PLAY_BUTTON_SIZE / 2,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,

@@ -1548,7 +1548,8 @@ export default function VideoPlayerScreen() {
   };
 
   // Gesture Handlers:
-  // - Center zone (35%..65%) is strictly excluded from double-tap skip and opens OSD at 0 ms.
+  // - Center Play button zone (72dp centered) is excluded from double-tap skip and opens OSD at 0 ms,
+  //   keeping Prev/Next episode buttons outside the safe zone.
   // - Lateral skip zones respect configurable playerTapDelayMs so double-tap skips cleanly
   //   without flashing the overlay when delay > 0 ms.
   const singleTap = Gesture.Tap()

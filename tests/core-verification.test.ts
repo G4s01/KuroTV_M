@@ -63,8 +63,8 @@ import {
   computeSystemVolumeGesture,
   computeWindowBrightnessGesture,
   DOUBLE_TAP_WINDOW_MS,
-  CENTER_EXCLUSION_START_RATIO,
-  CENTER_EXCLUSION_END_RATIO,
+  CENTER_PLAY_BUTTON_SIZE,
+  CENTER_PLAY_EXCLUSION_WIDTH,
   resolveTapSide,
   resolveTapZone,
   resolvePlayerTapAction,
@@ -6271,16 +6271,23 @@ console.log('\n[39/39] Verifica Player Instant Tap Overlay & Navbar Immersiva a 
 assert.strictEqual(resolveTapSide(100, 800), 'left');
 assert.strictEqual(resolveTapSide(450, 800), 'right');
 
-// 0. Verifica 3 fasce orizzontali (35% sinistra · 30% centro escluso · 35% destra)
-assert.strictEqual(CENTER_EXCLUSION_START_RATIO, 0.35);
-assert.strictEqual(CENTER_EXCLUSION_END_RATIO, 0.65);
-assert.strictEqual(resolveTapZone(100, 1000), 'left');
-assert.strictEqual(resolveTapZone(349, 1000), 'left');
-assert.strictEqual(resolveTapZone(350, 1000), 'center');
-assert.strictEqual(resolveTapZone(500, 1000), 'center');
-assert.strictEqual(resolveTapZone(650, 1000), 'center');
-assert.strictEqual(resolveTapZone(651, 1000), 'right');
-assert.strictEqual(resolveTapZone(900, 1000), 'right');
+// 0. Verifica zona centrale ristretta alla sola larghezza del pulsante Play (72dp)
+//    così i tasti episodio precedente/successivo restano fuori dalla safe zone
+assert.strictEqual(CENTER_PLAY_BUTTON_SIZE, 72);
+assert.strictEqual(CENTER_PLAY_EXCLUSION_WIDTH, 72);
+// Landscape 844dp (centro 422 ± 36 => [386..458]); prev/next (~300..346 / 498..546) restano nelle fasce skip
+assert.strictEqual(resolveTapZone(320, 844), 'left');
+assert.strictEqual(resolveTapZone(385, 844), 'left');
+assert.strictEqual(resolveTapZone(386, 844), 'center');
+assert.strictEqual(resolveTapZone(422, 844), 'center');
+assert.strictEqual(resolveTapZone(458, 844), 'center');
+assert.strictEqual(resolveTapZone(459, 844), 'right');
+assert.strictEqual(resolveTapZone(520, 844), 'right');
+// Portrait 390dp (centro 195 ± 36 => [159..231]); prev/next (~87..135 / 255..303) restano nelle fasce skip
+assert.strictEqual(resolveTapZone(120, 390), 'left');
+assert.strictEqual(resolveTapZone(159, 390), 'center');
+assert.strictEqual(resolveTapZone(231, 390), 'center');
+assert.strictEqual(resolveTapZone(265, 390), 'right');
 assert.strictEqual(resolveTapZone(100, 0), 'center');
 
 // 1. Con delay configurabile (default 200ms):

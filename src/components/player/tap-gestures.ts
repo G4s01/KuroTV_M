@@ -1,6 +1,6 @@
 export const DOUBLE_TAP_WINDOW_MS = 260;
-export const CENTER_EXCLUSION_START_RATIO = 0.35;
-export const CENTER_EXCLUSION_END_RATIO = 0.65;
+export const CENTER_PLAY_BUTTON_SIZE = 72;
+export const CENTER_PLAY_EXCLUSION_WIDTH = CENTER_PLAY_BUTTON_SIZE;
 
 export type TapSide = 'left' | 'right';
 export type TapZone = TapSide | 'center';
@@ -31,18 +31,27 @@ export type OverlayBackgroundTapAction =
   | { type: 'close_overlay' };
 
 /**
- * Resolves whether a horizontal coordinate falls on the left skip band (0..35%),
- * the center Play/Pause exclusion band (35..65%), or the right skip band (65..100%).
+ * Resolves whether a horizontal coordinate falls on the left skip zone, the central
+ * Play/Pause exclusion zone (matching the 72dp Play button width), or the right skip zone.
  */
-export function resolveTapZone(x: number, viewportWidth: number): TapZone {
+export function resolveTapZone(
+  x: number,
+  viewportWidth: number,
+  centerExclusionWidth: number = CENTER_PLAY_EXCLUSION_WIDTH
+): TapZone {
   if (!Number.isFinite(viewportWidth) || viewportWidth <= 0 || !Number.isFinite(x)) {
     return 'center';
   }
-  const ratio = x / viewportWidth;
-  if (ratio < CENTER_EXCLUSION_START_RATIO) {
+  const safeWidth =
+    Number.isFinite(centerExclusionWidth) && centerExclusionWidth > 0
+      ? Math.min(centerExclusionWidth, viewportWidth * 0.4)
+      : CENTER_PLAY_EXCLUSION_WIDTH;
+  const center = viewportWidth / 2;
+  const halfBand = safeWidth / 2;
+  if (x < center - halfBand) {
     return 'left';
   }
-  if (ratio <= CENTER_EXCLUSION_END_RATIO) {
+  if (x <= center + halfBand) {
     return 'center';
   }
   return 'right';
@@ -68,7 +77,7 @@ export function getTapTimestampMs(): number {
 /**
  * Resolves a single tap on the hidden-controls player surface across the three horizontal
  * zones and configurable lateral tap delay:
- * - Center exclusion band (35%..65%) always opens the OSD immediately (0 ms) and never skips.
+ * - Center Play button zone (72dp centered) always opens the OSD immediately (0 ms) and never skips.
  * - Lateral bands respect `tapDelayMs`: when > 0, tap 1 schedules OSD opening so a rapid
  *   second tap triggers a clean double-tap skip with zero overlay flash; when 0 (OFF), tap 1
  *   opens OSD immediately while preserving a post-open grace window on that lateral band.
