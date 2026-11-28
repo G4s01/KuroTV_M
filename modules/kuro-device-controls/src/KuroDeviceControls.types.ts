@@ -15,8 +15,11 @@ export interface BatteryOptimizationStatus {
 
 export type BatteryLaunchMethod =
   | 'request_dialog'
-  | 'app_details'
+  | 'miui_app_battery'
+  | 'miui_battery_list'
+  | 'app_battery_usage'
   | 'battery_list'
+  | 'app_details'
   | 'system_settings'
   | 'none';
 

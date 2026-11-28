@@ -6021,11 +6021,52 @@ assert.strictEqual(
   false
 );
 
+// Riapertura app dopo "Più tardi": resetta isDismissedForSession così il popup riappare
+mockRestricted = true;
+BatteryStore.resetForTest();
+BatteryStore.setStartupModalPresented(true);
+BatteryStore.dismissForSession();
+assert.strictEqual(BatteryStore.getState().isDismissedForSession, true);
+assert.strictEqual(
+  BatteryStore.shouldShowStartupModal({
+    startupUpdateCheckFinished: true,
+    hasVisibleUpdateModal: false,
+    isUpdateFlowActive: false,
+    currentPathname: '/',
+  }),
+  false
+);
+BatteryStore.resetDismissedOnAppReopen();
+assert.strictEqual(BatteryStore.getState().isDismissedForSession, false);
+assert.strictEqual(BatteryStore.getState().verificationState, 'idle');
+assert.strictEqual(
+  BatteryStore.shouldShowStartupModal({
+    startupUpdateCheckFinished: true,
+    hasVisibleUpdateModal: false,
+    isUpdateFlowActive: false,
+    currentPathname: '/',
+  }),
+  true,
+  'Dopo aver premuto Più tardi, alla riapertura dell\'app il popup deve tornare eleggibile'
+);
+
+// Non deve alterare awaiting_return se il modale è attivamente in attesa dalle impostazioni
+BatteryStore.setStartupModalPresented(true);
+BatteryStore.startUnrestrictedRequest();
+assert.strictEqual(BatteryStore.getState().verificationState, 'awaiting_return');
+BatteryStore.resetDismissedOnAppReopen();
+assert.strictEqual(
+  BatteryStore.getState().verificationState,
+  'awaiting_return',
+  'resetDismissedOnAppReopen non deve azzerare awaiting_return mentre il modale è aperto'
+);
+
 // Silenziamento permanente
 mockRestricted = true;
 BatteryStore.resetForTest();
 BatteryStore.silencePrompt(true);
 assert.strictEqual(AppStorage.isBatteryPromptSilenced(), true);
+BatteryStore.resetDismissedOnAppReopen();
 BatteryStore.resetForTest();
 assert.strictEqual(
   BatteryStore.shouldShowStartupModal({
@@ -6055,6 +6096,20 @@ assert(
   manifestBatterySrc.includes('android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS'),
   'AndroidManifest.xml deve dichiarare REQUEST_IGNORE_BATTERY_OPTIMIZATIONS'
 );
+const moduleManifestBatterySrc = fs.readFileSync(
+  path.resolve(process.cwd(), 'modules/kuro-device-controls/android/src/main/AndroidManifest.xml'),
+  'utf-8'
+);
+for (const queryToken of [
+  'com.miui.powerkeeper',
+  'android.settings.VIEW_ADVANCED_POWER_USAGE_DETAIL',
+  'android.settings.IGNORE_BATTERY_OPTIMIZATION_SETTINGS',
+]) {
+  assert(
+    moduleManifestBatterySrc.includes(queryToken),
+    `modules/kuro-device-controls AndroidManifest.xml deve dichiarare <queries> per ${queryToken}`
+  );
+}
 
 const updatedDeviceControlsKt = fs.readFileSync(
   path.resolve(process.cwd(), 'modules/kuro-device-controls/android/src/main/java/expo/modules/kurodevicecontrols/KuroDeviceControlsModule.kt'),
@@ -6066,6 +6121,10 @@ for (const token of [
   'ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS',
   'ACTION_APPLICATION_DETAILS_SETTINGS',
   'ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS',
+  'HiddenAppsConfigActivity',
+  'POWER_HIDE_MODE_APP_LIST',
+  'VIEW_ADVANCED_POWER_USAGE_DETAIL',
+  'APP_BATTERY_SETTINGS',
   'OnActivityEntersForeground',
   'OnActivityResult',
   'onBatteryOptimizationStatusChanged',
@@ -6075,6 +6134,14 @@ for (const token of [
     `KuroDeviceControlsModule.kt deve implementare ${token}`
   );
 }
+const openBatteryFnStart = updatedDeviceControlsKt.indexOf('private fun openBatteryOptimizationSettingsInternal');
+const openBatteryFnSlice = updatedDeviceControlsKt.slice(openBatteryFnStart);
+assert(
+  openBatteryFnSlice.indexOf('HiddenAppsConfigActivity') < openBatteryFnSlice.indexOf('ACTION_APPLICATION_DETAILS_SETTINGS') &&
+    openBatteryFnSlice.indexOf('VIEW_ADVANCED_POWER_USAGE_DETAIL') < openBatteryFnSlice.indexOf('ACTION_APPLICATION_DETAILS_SETTINGS') &&
+    openBatteryFnSlice.indexOf('ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS') < openBatteryFnSlice.indexOf('ACTION_APPLICATION_DETAILS_SETTINGS'),
+  'openBatteryOptimizationSettingsInternal deve provare le impostazioni risparmio energetico prima di ACTION_APPLICATION_DETAILS_SETTINGS'
+);
 
 const batteryModalSrc = fs.readFileSync(
   path.resolve(process.cwd(), 'src/components/BatteryOptimizationModal.tsx'),
@@ -6083,6 +6150,8 @@ const batteryModalSrc = fs.readFileSync(
 assert(!batteryModalSrc.includes('Alert.alert'), 'BatteryOptimizationModal non deve usare Alert.alert');
 assert(batteryModalSrc.includes('getContrastTextColor'), 'BatteryOptimizationModal deve usare getContrastTextColor');
 assert(batteryModalSrc.includes('NESSUNA RESTRIZIONE'), 'BatteryOptimizationModal deve riferirsi esplicitamente a Nessuna restrizione');
+assert(batteryModalSrc.includes('resetDismissedOnAppReopen'), 'BatteryOptimizationModal deve resettare dismissForSession alla riapertura da background');
+assert(batteryModalSrc.includes('wentToBackgroundRef'), 'BatteryOptimizationModal deve distinguere background->active da transizioni transienti');
 
 const batteryCardSrc = fs.readFileSync(
   path.resolve(process.cwd(), 'src/components/settings/BatterySettingsCard.tsx'),

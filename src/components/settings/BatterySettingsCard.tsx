@@ -98,7 +98,7 @@ export const BatterySettingsCard: React.FC = React.memo(() => {
         >
           <Ionicons name="alert-circle-outline" size={16} color={warningColor} />
           <Text style={[cardStyles.noticeText, { color: warningColor }]}>
-            RESTRIZIONE ANCORA ATTIVA: APRI LE IMPOSTAZIONI DELL&apos;APP, TOCCA BATTERIA / RISPARMIO ENERGETICO E SELEZIONA &apos;NESSUNA RESTRIZIONE&apos;.
+            RESTRIZIONE ANCORA ATTIVA: APRI LE IMPOSTAZIONI BATTERIA DELL&apos;APP E SELEZIONA &apos;NESSUNA RESTRIZIONE&apos;.
           </Text>
         </View>
       ) : null}
@@ -137,7 +137,7 @@ export const BatterySettingsCard: React.FC = React.memo(() => {
             {isUnrestricted
               ? 'IMPOSTAZIONI BATTERIA'
               : isNotApplied
-                ? 'APRI IMPOSTAZIONI APP'
+                ? 'APRI IMPOSTAZIONI BATTERIA'
                 : 'IMPOSTA NESSUNA RESTRIZIONE'}
           </Text>
         </Pressable>
@@ -154,7 +154,7 @@ export const BatterySettingsCard: React.FC = React.memo(() => {
             onPress={handleOpenAppSettings}
             hitSlop={6}
             accessibilityRole="button"
-            accessibilityLabel="APRI IMPOSTAZIONI APP"
+            accessibilityLabel="APRI IMPOSTAZIONI BATTERIA"
           >
             <Ionicons name="open-outline" size={18} color={theme.colors.text} />
           </Pressable>

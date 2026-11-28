@@ -160,10 +160,23 @@ export const BatteryStore = {
   dismissForSession: (): void => {
     isDismissedForSession = true;
     isStartupModalPresented = false;
-    if (verificationState === 'verified') {
-      verificationState = 'idle';
-    }
+    verificationState = 'idle';
     notify();
+  },
+
+  resetDismissedOnAppReopen: (): void => {
+    let changed = false;
+    if (isDismissedForSession) {
+      isDismissedForSession = false;
+      changed = true;
+    }
+    if (verificationState !== 'idle' && !isStartupModalPresented) {
+      verificationState = 'idle';
+      changed = true;
+    }
+    if (changed) {
+      notify();
+    }
   },
 
   silencePrompt: (silenced = true): void => {

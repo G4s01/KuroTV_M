@@ -43,6 +43,9 @@ export const BatteryOptimizationModal: React.FC<BatteryOptimizationModalProps> =
   const verifyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autoCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevAppStateRef = useRef<AppStateStatus>((AppState.currentState || 'active') as AppStateStatus);
+  const wentToBackgroundRef = useRef<boolean>((AppState.currentState || 'active') === 'background');
+  const pathnameRef = useRef<string>(pathname);
+  pathnameRef.current = pathname;
   const hasPlayedSuccessHapticRef = useRef(false);
 
   const clearVerifyTimer = () => {
@@ -135,13 +138,28 @@ export const BatteryOptimizationModal: React.FC<BatteryOptimizationModalProps> =
       const prevState = prevAppStateRef.current;
       prevAppStateRef.current = nextState;
 
+      if (nextState === 'background') {
+        wentToBackgroundRef.current = true;
+        return;
+      }
+
       if (prevState !== 'active' && nextState === 'active') {
+        const returnedFromBackground = wentToBackgroundRef.current || prevState === 'background';
+        wentToBackgroundRef.current = false;
+
         const latestStatus = BatteryStore.refreshStatus();
         const currentVerState = BatteryStore.getState().verificationState;
         if (!latestStatus.isUnrestricted && currentVerState === 'awaiting_return') {
           scheduleVerificationFallback();
         } else if (latestStatus.isUnrestricted) {
           clearVerifyTimer();
+        }
+
+        const currentPath = pathnameRef.current || '';
+        const isExcludedRoute =
+          currentPath.startsWith('/player') || currentPath.startsWith('/settings/about');
+        if (returnedFromBackground && !latestStatus.isUnrestricted && !isExcludedRoute) {
+          BatteryStore.resetDismissedOnAppReopen();
         }
       }
     });
@@ -259,15 +277,15 @@ export const BatteryOptimizationModal: React.FC<BatteryOptimizationModalProps> =
   const messageText = isVerified
     ? 'OTTIMIZZAZIONE BATTERIA DISABILITATA CON SUCCESSO. DOWNLOAD, PLAYER IN BACKGROUND E KUROSYNC OPERERANNO SENZA RESTRIZIONI.'
     : isNotApplied
-      ? "L'IMPOSTAZIONE NON È ANCORA STATA APPLICATA. APRI LE IMPOSTAZIONI DELL'APP, TOCCA BATTERIA / RISPARMIO ENERGETICO E SELEZIONA 'NESSUNA RESTRIZIONE'."
+      ? "L'IMPOSTAZIONE NON È ANCORA STATA APPLICATA. APRI LE IMPOSTAZIONI BATTERIA DELL'APP E SELEZIONA 'NESSUNA RESTRIZIONE'."
       : isAwaiting
-        ? "CONFERMA LA RICHIESTA DI SISTEMA OPPURE IMPOSTA BATTERIA → 'NESSUNA RESTRIZIONE' NELLE IMPOSTAZIONI DELL'APP."
+        ? "CONFERMA LA RICHIESTA DI SISTEMA OPPURE IMPOSTA 'NESSUNA RESTRIZIONE' NELLE IMPOSTAZIONI BATTERIA DELL'APP."
         : "PER EVITARE INTERRUZIONI DI DOWNLOAD, RIPRODUZIONE IN BACKGROUND E SINCRONIZZAZIONE, IMPOSTA IL RISPARMIO ENERGETICO DI KUROTV SU 'NESSUNA RESTRIZIONE'.";
 
   const primaryBtnText = isVerified
     ? 'CONTINUA'
     : isNotApplied || isAwaiting
-      ? 'APRI IMPOSTAZIONI APP'
+      ? 'APRI IMPOSTAZIONI BATTERIA'
       : 'IMPOSTA NESSUNA RESTRIZIONE';
 
   return (
@@ -427,11 +445,11 @@ export const BatteryOptimizationModal: React.FC<BatteryOptimizationModalProps> =
               onPress={handleOpenAppSettingsManual}
               hitSlop={6}
               accessibilityRole="button"
-              accessibilityLabel="APRI IMPOSTAZIONI MANUALI APP"
+              accessibilityLabel="APRI DIRETTAMENTE IMPOSTAZIONI BATTERIA"
             >
               <Ionicons name="open-outline" size={14} color={theme.colors.textSecondary} />
               <Text style={[styles.verifyButtonText, { color: theme.colors.textSecondary }]}>
-                APRI DIRETTAMENTE IMPOSTAZIONI APP
+                APRI DIRETTAMENTE IMPOSTAZIONI BATTERIA
               </Text>
             </Pressable>
           ) : null}
