@@ -6154,11 +6154,24 @@ for (const token of [
 }
 const openBatteryFnStart = updatedDeviceControlsKt.indexOf('private fun openBatteryOptimizationSettingsInternal');
 const openBatteryFnSlice = updatedDeviceControlsKt.slice(openBatteryFnStart);
+const perAppFnStart = updatedDeviceControlsKt.indexOf('private fun openPerAppBatterySettingsInternal');
+const perAppFnSlice = updatedDeviceControlsKt.slice(perAppFnStart, openBatteryFnStart);
 assert(
-  openBatteryFnSlice.indexOf('HiddenAppsConfigActivity') < openBatteryFnSlice.indexOf('ACTION_APPLICATION_DETAILS_SETTINGS') &&
-    openBatteryFnSlice.indexOf('VIEW_ADVANCED_POWER_USAGE_DETAIL') < openBatteryFnSlice.indexOf('ACTION_APPLICATION_DETAILS_SETTINGS') &&
+  perAppFnSlice.includes('HiddenAppsConfigActivity') &&
+    perAppFnSlice.includes('VIEW_ADVANCED_POWER_USAGE_DETAIL') &&
+    perAppFnSlice.includes('APP_BATTERY_SETTINGS') &&
+    openBatteryFnSlice.includes('openPerAppBatterySettingsInternal(ctx)') &&
+    openBatteryFnSlice.indexOf('openPerAppBatterySettingsInternal(ctx)') < openBatteryFnSlice.indexOf('ACTION_APPLICATION_DETAILS_SETTINGS') &&
     openBatteryFnSlice.indexOf('ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS') < openBatteryFnSlice.indexOf('ACTION_APPLICATION_DETAILS_SETTINGS'),
-  'openBatteryOptimizationSettingsInternal deve provare le impostazioni risparmio energetico prima di ACTION_APPLICATION_DETAILS_SETTINGS'
+  'openBatteryOptimizationSettingsInternal deve provare prima il menu per-app di KuroTV rispetto ad ACTION_APPLICATION_DETAILS_SETTINGS'
+);
+const reqIgnoreStart = updatedDeviceControlsKt.indexOf('Function("requestIgnoreBatteryOptimizations")');
+const reqIgnoreEnd = updatedDeviceControlsKt.indexOf('Function("openBatteryOptimizationSettings")');
+const reqIgnoreSlice = updatedDeviceControlsKt.slice(reqIgnoreStart, reqIgnoreEnd);
+assert(
+  reqIgnoreSlice.includes('allowAllAppsListFallback = false') &&
+    !reqIgnoreSlice.includes('ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS'),
+  'requestIgnoreBatteryOptimizations non deve aprire la lista globale di tutte le app, ma il menu specifico di KuroTV'
 );
 
 const batteryModalSrc = fs.readFileSync(
