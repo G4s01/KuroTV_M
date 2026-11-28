@@ -1347,6 +1347,21 @@ export async function runMalVerificationTests(): Promise<void> {
     assert(favSrc.includes('rightActions='), 'FavoritesScreen deve passare rightActions a SelectionAppBar');
     assert(favSrc.includes("router.push('/mal'"), 'Pulsante MAL in Preferiti deve navigare a /mal');
 
+    const tabletRailSrc = fs.readFileSync(path.join(projectRoot, 'src/components/TabletNavigationRail.tsx'), 'utf-8');
+    assert(!tabletRailSrc.includes('Alert.alert'), 'TabletNavigationRail non deve usare Alert.alert');
+    assert(!tabletRailSrc.includes('@expo/ui'), 'TabletNavigationRail non deve importare @expo/ui');
+    assert(!/from\s+['"]node:/.test(tabletRailSrc), 'TabletNavigationRail non deve importare moduli node:*');
+    assert(tabletRailSrc.includes("route.name === 'favorites' && onMalPress"), 'TabletNavigationRail deve mostrare il pulsante MAL accanto ai preferiti');
+    assert(tabletRailSrc.includes('myanimelist.svg'), 'TabletNavigationRail deve usare l icona myanimelist.svg per il pulsante MAL');
+    assert(tabletRailSrc.includes('isMalConnected'), 'TabletNavigationRail deve esporre stato connessione MAL');
+    assert(tabletRailSrc.includes('APRI MYANIMELIST'), 'TabletNavigationRail deve avere accessibilityLabel accessibile per MAL');
+
+    const tabsLayoutSrc = fs.readFileSync(path.join(projectRoot, 'app/(tabs)/_layout.tsx'), 'utf-8');
+    assert(tabsLayoutSrc.includes('isMalConnected={isMalConnected}'), 'TabLayout deve passare isMalConnected a TabletNavigationRail');
+    assert(tabsLayoutSrc.includes('onMalPress={handleMalPress}'), 'TabLayout deve passare onMalPress a TabletNavigationRail');
+    assert(tabsLayoutSrc.includes("router.push('/mal'"), 'TabLayout handleMalPress deve navigare a /mal');
+    assert(tabsLayoutSrc.includes('MalAuthService.addAuthListener') && tabsLayoutSrc.includes('addMalDataListener'), 'TabLayout deve sincronizzare isMalConnected dai listener MAL');
+
     const selBarSrc = fs.readFileSync(path.join(projectRoot, 'src/components/SelectionAppBar.tsx'), 'utf-8');
     assert(selBarSrc.includes('rightActions'), 'SelectionAppBar deve supportare rightActions');
 

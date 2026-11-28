@@ -14,6 +14,8 @@ export const BatterySettingsCard: React.FC = React.memo(() => {
   }
 
   const isUnrestricted = batteryState.status.isUnrestricted;
+  const canLaunchUnrestrictedPrompt =
+    !isUnrestricted && !batteryState.status.isIgnoringBatteryOptimizations;
   const isNotApplied = !isUnrestricted && batteryState.verificationState === 'not_applied';
   const successColor = theme.colors.success || '#22C55E';
   const warningColor = theme.colors.warning || '#F59E0B';
@@ -99,35 +101,34 @@ export const BatterySettingsCard: React.FC = React.memo(() => {
         </View>
       ) : null}
 
-      {/* Actions: always keep both 'IMPOSTA NESSUNA RESTRIZIONE' and 'IMPOSTAZIONI BATTERIA' accessible */}
+      {/* Actions: show 'IMPOSTA NESSUNA RESTRIZIONE' only when OS prompt differs from 'IMPOSTAZIONI BATTERIA' */}
       <View style={cardStyles.actionsColumn}>
-        <Pressable
-          style={[
-            cardStyles.primaryBtn,
-            {
-              backgroundColor: isUnrestricted ? theme.colors.card : theme.colors.primary,
-              borderColor: isUnrestricted ? theme.colors.border : theme.colors.primary,
-            },
-          ]}
-          onPress={handleSetUnrestricted}
-          accessibilityRole="button"
-          accessibilityLabel="IMPOSTA NESSUNA RESTRIZIONE"
-        >
-          <Ionicons
-            name="battery-charging-outline"
-            size={16}
-            color={isUnrestricted ? theme.colors.text : primaryContrast}
-          />
-          <Text
+        {canLaunchUnrestrictedPrompt ? (
+          <Pressable
             style={[
-              cardStyles.primaryBtnText,
-              { color: isUnrestricted ? theme.colors.text : primaryContrast },
+              cardStyles.primaryBtn,
+              {
+                backgroundColor: theme.colors.primary,
+                borderColor: theme.colors.primary,
+              },
             ]}
-            numberOfLines={1}
+            onPress={handleSetUnrestricted}
+            accessibilityRole="button"
+            accessibilityLabel="IMPOSTA NESSUNA RESTRIZIONE"
           >
-            IMPOSTA NESSUNA RESTRIZIONE
-          </Text>
-        </Pressable>
+            <Ionicons
+              name="battery-charging-outline"
+              size={16}
+              color={primaryContrast}
+            />
+            <Text
+              style={[cardStyles.primaryBtnText, { color: primaryContrast }]}
+              numberOfLines={1}
+            >
+              IMPOSTA NESSUNA RESTRIZIONE
+            </Text>
+          </Pressable>
+        ) : null}
 
         <Pressable
           style={[

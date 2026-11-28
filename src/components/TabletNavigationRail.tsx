@@ -1,9 +1,11 @@
 import React from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import type { Theme } from '@/theme';
 import type { SyncStatus } from '@/services/sync';
+import malSvg from '../../assets/icons/myanimelist.svg';
 
 export interface TabletNavigationRailProps {
   state: any;
@@ -14,6 +16,8 @@ export interface TabletNavigationRailProps {
   emitter?: any;
   syncStatus: SyncStatus;
   onProfilePress: () => void;
+  isMalConnected?: boolean;
+  onMalPress?: () => void;
   theme: Theme;
 }
 
@@ -27,12 +31,20 @@ export const TabletNavigationRail = React.memo<TabletNavigationRailProps>(
     insets,
     syncStatus,
     onProfilePress,
+    isMalConnected = false,
+    onMalPress,
     theme,
   }) {
     const handleProfilePress = React.useCallback(() => {
       Haptics.selectionAsync().catch(() => {});
       onProfilePress();
     }, [onProfilePress]);
+
+    const handleMalPress = React.useCallback(() => {
+      if (!onMalPress) return;
+      Haptics.selectionAsync().catch(() => {});
+      onMalPress();
+    }, [onMalPress]);
 
     const activeProfileName = syncStatus.profileName?.trim();
     const profileInitial = activeProfileName
@@ -188,7 +200,7 @@ export const TabletNavigationRail = React.memo<TabletNavigationRailProps>(
               size: 24,
             });
 
-            return (
+            const tabButton = (
               <Pressable
                 key={route.key}
                 style={({ pressed }) => [
@@ -212,6 +224,49 @@ export const TabletNavigationRail = React.memo<TabletNavigationRailProps>(
                 {icon}
               </Pressable>
             );
+
+            if (route.name === 'favorites' && onMalPress) {
+              return (
+                <React.Fragment key={route.key}>
+                  {tabButton}
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.tabItem,
+                      pressed && styles.pressedBtn,
+                    ]}
+                    onPress={handleMalPress}
+                    accessibilityRole="button"
+                    accessibilityLabel={
+                      isMalConnected
+                        ? 'APRI LISTE MYANIMELIST (CONNESSO)'
+                        : 'APRI MYANIMELIST'
+                    }
+                    hitSlop={6}
+                  >
+                    <View style={styles.malIconWrapper}>
+                      <Image
+                        source={malSvg}
+                        style={styles.malIcon}
+                        contentFit="contain"
+                      />
+                      {isMalConnected && (
+                        <View
+                          style={[
+                            styles.malStatusDot,
+                            {
+                              backgroundColor: theme.colors.success || '#10B981',
+                              borderColor: theme.colors.background,
+                            },
+                          ]}
+                        />
+                      )}
+                    </View>
+                  </Pressable>
+                </React.Fragment>
+              );
+            }
+
+            return tabButton;
           })}
         </View>
 
@@ -289,6 +344,27 @@ const styles = StyleSheet.create({
   },
   tabItemActive: {
     borderWidth: 1,
+  },
+  malIconWrapper: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  malIcon: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+  },
+  malStatusDot: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 9,
+    height: 9,
+    borderRadius: 4.5,
+    borderWidth: 1.5,
   },
   pressedBtn: {
     opacity: 0.7,

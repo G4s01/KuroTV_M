@@ -1,5 +1,5 @@
 import React from 'react';
-import { Tabs } from 'expo-router';
+import { Tabs, usePathname, useRouter } from 'expo-router';
 import { Platform, View, Text, StyleSheet, Animated, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,6 +7,7 @@ import * as Haptics from 'expo-haptics';
 import { useTheme, getContrastTextColor } from '@/theme';
 import { AppStorage } from '@/services/storage';
 import { SyncManager, type SyncStatus } from '@/services/sync';
+import { MalAuthService, addMalDataListener } from '@/services/mal';
 import { SyncConnectModal, SyncProfileModal } from '@/components/settings';
 import { usePendingUpdate } from '@/services/updater';
 import { useResponsiveLayout } from '@/hooks';
@@ -312,6 +313,8 @@ function ProfileTabIcon({
 
 export default function TabLayout() {
   const { theme } = useTheme();
+  const router = useRouter();
+  const pathname = usePathname();
   const insets = useSafeAreaInsets();
   const { isTablet } = useResponsiveLayout();
 
@@ -320,14 +323,30 @@ export default function TabLayout() {
   });
 
   const [syncStatus, setSyncStatus] = React.useState<SyncStatus>(() => SyncManager.getStatus());
+  const [isMalConnected, setIsMalConnected] = React.useState<boolean>(() =>
+    MalAuthService.isConnected()
+  );
   const [isProfileModalOpen, setIsProfileModalOpen] = React.useState(false);
   const [isConnectModalOpen, setIsConnectModalOpen] = React.useState(false);
+  const pathnameRef = React.useRef(pathname);
+  pathnameRef.current = pathname;
+  const lastMalPressRef = React.useRef(0);
 
   React.useEffect(() => {
     const unsubSync = SyncManager.addSyncListener((status) => {
       setSyncStatus(status);
     });
-    return unsubSync;
+    const unsubMalAuth = MalAuthService.addAuthListener((status) => {
+      setIsMalConnected(status.isConnected);
+    });
+    const unsubMalData = addMalDataListener(() => {
+      setIsMalConnected(MalAuthService.isConnected());
+    });
+    return () => {
+      unsubSync();
+      unsubMalAuth();
+      unsubMalData();
+    };
   }, []);
 
   const handleProfilePress = React.useCallback(() => {
@@ -338,6 +357,15 @@ export default function TabLayout() {
       setIsConnectModalOpen(true);
     }
   }, []);
+
+  const handleMalPress = React.useCallback(() => {
+    const now = Date.now();
+    if (pathnameRef.current === '/mal' || now - lastMalPressRef.current < 350) {
+      return;
+    }
+    lastMalPressRef.current = now;
+    router.push('/mal' as any);
+  }, [router]);
 
   React.useEffect(() => {
     const unsubscribe = AppStorage.addSettingsListener(() => {
@@ -361,6 +389,8 @@ export default function TabLayout() {
                   {...props}
                   syncStatus={syncStatus}
                   onProfilePress={handleProfilePress}
+                  isMalConnected={isMalConnected}
+                  onMalPress={handleMalPress}
                   theme={theme}
                 />
               )

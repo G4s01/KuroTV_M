@@ -6196,10 +6196,12 @@ const batteryCardSrc = fs.readFileSync(
 assert(!batteryCardSrc.includes('Alert.alert'), 'BatterySettingsCard non deve usare Alert.alert');
 assert(batteryCardSrc.includes('NESSUNA RESTRIZIONE'), 'BatterySettingsCard deve mostrare lo stato Nessuna restrizione');
 assert(
-  batteryCardSrc.includes('onPress={handleSetUnrestricted}') &&
+  batteryCardSrc.includes('canLaunchUnrestrictedPrompt') &&
+    batteryCardSrc.includes('!isUnrestricted && !batteryState.status.isIgnoringBatteryOptimizations') &&
+    batteryCardSrc.includes('onPress={handleSetUnrestricted}') &&
     batteryCardSrc.includes('onPress={handleOpenBatterySettings}') &&
-    !batteryCardSrc.includes("isUnrestricted\n              ? 'IMPOSTAZIONI BATTERIA'"),
-  'BatterySettingsCard deve mantenere sempre visibili sia IMPOSTA NESSUNA RESTRIZIONE che IMPOSTAZIONI BATTERIA'
+    !batteryCardSrc.includes('verificationState === \'not_applied\' ?'),
+  'BatterySettingsCard deve mostrare IMPOSTA NESSUNA RESTRIZIONE solo finché non è già abilitata/equivalente a IMPOSTAZIONI BATTERIA'
 );
 
 const rootLayoutBatterySrc = fs.readFileSync(path.resolve(process.cwd(), 'app/_layout.tsx'), 'utf-8');
